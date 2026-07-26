@@ -1,0 +1,42 @@
+# User data and credentials
+avatars/
+active.json
+config.json
+.env
+.env.*
+!.env.example
+
+# Generated avatar/runtime media
+web/assets/
+qa/proof/
+models/
+.electron-models/
+.electron-ffmpeg/
+
+# Local analysis records
+.learnings/
+
+# Python
+.venv/
+.electron-python-runtime/
+.electron-site-packages/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Electron
+node_modules/
+dist/
+dist-electron/
+*.dmg
+*.zip
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.pid
+.DS_Store
+assets/icon.iconset/

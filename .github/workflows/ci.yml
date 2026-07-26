@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+      - name: Install test dependencies
+        run: |
+          uv venv .venv --python python3.12
+          uv pip install --python .venv/bin/python -r requirements-test.txt
+          npm ci --ignore-scripts
+      - name: Test and privacy audit
+        run: npm run check
+      - name: Audit production dependencies
+        run: npm audit --omit=dev

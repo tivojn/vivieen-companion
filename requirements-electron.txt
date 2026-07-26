@@ -1,0 +1,17 @@
+# Runtime shipped inside the macOS app. Versions are locked for Apple Silicon.
+# Kokoro/misaki/eSpeak NG remain source-install options and are intentionally
+# excluded here so the MIT application does not redistribute GPL components.
+fastapi==0.140.0
+uvicorn==0.51.0
+python-multipart==0.0.32
+pydantic==2.13.4
+httpx==0.28.1
+numpy==2.4.6
+scipy==1.18.0
+soundfile==0.14.0
+pillow==12.3.0
+opencv-contrib-python==5.0.0.93
+mediapipe==0.10.35
+mlx-whisper==0.4.3
+edge-tts==7.2.8
+torch==2.13.0

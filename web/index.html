@@ -1,0 +1,743 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vivieen</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#0b0d10;color:#f2efe9;
+  font:400 15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,sans-serif;overflow:hidden}
+#stage{position:fixed;inset:0}
+canvas{width:100%;height:100%;display:block}
+#vignette{position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(120% 90% at 50% 35%,transparent 45%,rgba(0,0,0,.55) 100%)}
+#bar{position:fixed;left:0;right:0;bottom:0;padding:20px 24px 26px;
+  background:linear-gradient(to top,rgba(6,8,11,.94) 40%,transparent);
+  display:flex;flex-direction:column;align-items:center;gap:14px}
+#log{width:min(720px,92vw);min-height:52px;text-align:center}
+#you{opacity:.5;font-size:13px;letter-spacing:.01em;margin-bottom:5px}
+#her{font-size:19px;line-height:1.45;letter-spacing:-.01em}
+#row{display:flex;align-items:center;gap:12px;width:min(720px,92vw)}
+#ptt{flex:1;height:54px;border:0;border-radius:27px;cursor:pointer;
+  background:#d81f4a;color:#fff;font:600 15px/1 inherit;letter-spacing:.02em;
+  transition:transform .12s ease,background .2s ease,box-shadow .2s ease;
+  box-shadow:0 6px 24px rgba(216,31,74,.32)}
+#ptt:active,#ptt.rec{background:#f43c66;transform:scale(.985);
+  box-shadow:0 0 0 6px rgba(244,60,102,.16),0 6px 24px rgba(216,31,74,.4)}
+#ptt[disabled]{background:#2b2f36;box-shadow:none;cursor:default;color:#7c828c}
+#txt{flex:1.1;height:54px;border-radius:27px;border:1px solid #262b33;background:#12151a;
+  color:#f2efe9;padding:0 22px;font:400 15px/1 inherit;outline:none}
+#txt:focus{border-color:#3a414c}
+#status{position:fixed;top:20px;left:24px;font-size:12px;letter-spacing:.08em;
+  text-transform:uppercase;opacity:.55;display:flex;align-items:center;gap:9px}
+#st{max-width:calc(100vw - 190px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#dot{width:7px;height:7px;border-radius:50%;background:#5b6472;transition:background .25s}
+#dot.on{background:#38d17a;box-shadow:0 0 10px #38d17a}
+#dot.busy{background:#e8b13a;box-shadow:0 0 10px #e8b13a}
+#dot.rec{background:#f43c66;box-shadow:0 0 10px #f43c66;animation:p 1s infinite}
+@keyframes p{50%{opacity:.35}}
+#vz{position:fixed;top:52px;right:26px;font:500 11px/1 ui-monospace,SFMono-Regular,monospace;
+  letter-spacing:.14em;opacity:0;transition:opacity .3s;color:#8b93a0}
+#vz.on{opacity:.5}
+#gear{position:fixed;top:14px;right:18px;display:flex;align-items:center;gap:8px;
+  padding:8px 13px;border-radius:20px;color:#8b93a0;text-decoration:none;opacity:.5;
+  font:500 11px/1 inherit;letter-spacing:.14em;text-transform:uppercase;
+  border:1px solid transparent;transition:opacity .2s,color .2s,border-color .2s,background .2s}
+#gear:hover{opacity:1;color:#f2efe9;border-color:#262b33;background:rgba(18,21,26,.72)}
+#gear svg{width:14px;height:14px;flex:none}
+#gear.alert{opacity:1;color:#e8b13a;border-color:rgba(232,177,58,.32)}
+#emptyState{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:32px;
+  background:radial-gradient(circle at 50% 28%,rgba(216,31,74,.16),transparent 38%),#0b0d10}
+#emptyState[hidden]{display:none}
+#emptyCard{width:min(440px,88vw);padding:38px;border:1px solid #292d34;border-radius:28px;
+  background:rgba(18,21,26,.92);text-align:center;box-shadow:0 28px 80px rgba(0,0,0,.38)}
+#emptyMark{width:72px;height:72px;margin:0 auto 22px;border-radius:22px;display:grid;place-items:center;
+  background:linear-gradient(145deg,#ee5b4f,#d81f6a);font-size:30px;box-shadow:0 14px 38px rgba(216,31,74,.25)}
+#emptyCard h1{font-size:28px;letter-spacing:-.04em;margin-bottom:10px}
+#emptyCard p{color:#9ba2ad;line-height:1.65;margin-bottom:24px}
+#emptyAction{display:inline-flex;height:48px;align-items:center;padding:0 24px;border-radius:24px;
+  color:#fff;text-decoration:none;background:#d81f4a;font-weight:650;box-shadow:0 8px 28px rgba(216,31,74,.3)}
+#shell{display:none}
+html.electron,html.electron body{background:transparent}
+html.electron body{border-radius:22px;overflow:hidden}
+html.electron body:after{content:"";position:fixed;inset:0;border-radius:22px;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.10);pointer-events:none;z-index:99}
+html.electron #shell{display:flex;position:fixed;z-index:90;left:0;right:0;top:0;
+  height:44px;align-items:center;padding:0 11px 0 16px;background:linear-gradient(to bottom,rgba(6,8,11,.72),transparent)}
+#drag{height:100%;flex:1;-webkit-app-region:drag}
+#shellBtns{display:flex;gap:5px;-webkit-app-region:no-drag}
+.shellBtn{width:28px;height:28px;border:0;border-radius:9px;background:rgba(18,21,26,.7);
+  color:#8b93a0;font:500 15px/1 inherit;cursor:pointer;transition:.15s}
+.shellBtn:hover{color:#fff;background:#292d34}.shellBtn.on{color:#e2483a}
+html.electron #status{top:54px}
+html.electron #gear{top:8px;right:112px;z-index:95;-webkit-app-region:no-drag}
+html.electron #vz{top:84px}
+</style></head><body>
+<div id="shell"><div id="drag"></div><div id="shellBtns">
+  <button class="shellBtn" id="shellPin" title="Always on top">◇</button>
+  <button class="shellBtn" id="shellMin" title="Minimize">−</button>
+  <button class="shellBtn" id="shellHide" title="Hide avatar">×</button>
+</div></div>
+<div id="stage"><canvas id="cv"></canvas></div><div id="vignette"></div>
+<div id="emptyState" hidden><div id="emptyCard">
+  <div id="emptyMark">◉</div><h1>Create your first avatar</h1>
+  <p>Your portrait stays out of the app bundle and Git repository. Add one in Settings, review the crop, then build the local animation assets.</p>
+  <a id="emptyAction" href="/settings">Open Settings</a>
+</div></div>
+<div id="status"><span id="dot"></span><span id="st">booting</span></div>
+<div id="vz"></div>
+<a id="gear" href="/settings" title="Avatar, models and voice">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 15a1.6 1.6 0 0 0 .32 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-.97 1.47V21a2 2 0 1 1-4 0v-.11a1.6 1.6 0 0 0-1.05-1.46 1.6 1.6 0 0 0-1.77.32l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.6 1.6 0 0 0 .32-1.77 1.6 1.6 0 0 0-1.47-.97H3a2 2 0 1 1 0-4h.11a1.6 1.6 0 0 0 1.46-1.05 1.6 1.6 0 0 0-.32-1.77l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.6 1.6 0 0 0 1.77.32H9a1.6 1.6 0 0 0 .97-1.47V3a2 2 0 1 1 4 0v.11a1.6 1.6 0 0 0 .97 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.6 1.6 0 0 0-.32 1.77V9a1.6 1.6 0 0 0 1.47.97H21a2 2 0 1 1 0 4h-.11a1.6 1.6 0 0 0-1.47.97z"/></svg>
+Settings</a>
+<div id="bar">
+  <div id="log"><div id="you"></div><div id="her"></div></div>
+  <div id="row">
+    <button id="ptt" disabled>Hold to talk &nbsp;·&nbsp; Space</button>
+    <input id="txt" placeholder="or type…" autocomplete="off">
+  </div>
+</div>
+<script>
+const SHELL=window.vivieen;
+if(SHELL&&SHELL.isElectron){
+  document.documentElement.classList.add('electron');
+  const gear=document.getElementById('gear'),pin=document.getElementById('shellPin');
+  gear.addEventListener('click',e=>{e.preventDefault();SHELL.openSettings();});
+  document.getElementById('shellMin').onclick=()=>SHELL.minimize();
+  document.getElementById('shellHide').onclick=()=>SHELL.hideAvatar();
+  pin.onclick=()=>SHELL.toggleAlwaysOnTop();
+  const sync=s=>{if(s)pin.classList.toggle('on',!!s.alwaysOnTop);};
+  SHELL.getState().then(sync);SHELL.onState(sync);
+}
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d',{alpha:false});
+const st=document.getElementById('st'),dot=document.getElementById('dot');
+const ptt=document.getElementById('ptt'),txt=document.getElementById('txt');
+const elYou=document.getElementById('you'),elHer=document.getElementById('her');
+const elVz=document.getElementById('vz');
+let M=null,IMG={},EYE={},GZ={},BW={},CK={},ready=false;
+
+async function refreshAssetsIfChanged(){
+  if(!M||document.hidden)return;
+  try{
+    const rev=Date.now().toString(36);
+    const next=await(await fetch(`assets/manifest.json?v=${rev}`,{cache:'no-store'})).json();
+    const currentKey=((M.avatar&&M.avatar.slug)||'')+':'+(M.built||'');
+    const nextKey=((next.avatar&&next.avatar.slug)||'')+':'+(next.built||'');
+    if(nextKey!==currentKey)location.reload();
+  }catch(e){}
+}
+addEventListener('focus',refreshAssetsIfChanged);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshAssetsIfChanged();});
+
+function fit(){const d=devicePixelRatio||1;cv.width=innerWidth*d;cv.height=innerHeight*d;}
+addEventListener('resize',fit);fit();
+function setStatus(s,cls){st.textContent=s;dot.className=cls||'';}
+function routedStatus(route,fallback=''){
+  if(route&&route.display){
+    if(route.state==='failed')return `route failed · ${route.display}`;
+    if(route.state==='success')return `ready · ${route.display}`;
+  }
+  return fallback?`ready · ${fallback}`:'ready';
+}
+
+(async()=>{
+  const assetRev=Date.now().toString(36);
+  try{
+    const response=await fetch(`assets/manifest.json?v=${assetRev}`,{cache:'no-store'});
+    if(!response.ok)throw new Error('no active avatar');
+    M=await response.json();
+  }catch(e){
+    document.getElementById('emptyState').hidden=false;
+    setStatus('avatar setup required','busy');
+    ptt.disabled=true;txt.disabled=true;
+    return;
+  }
+  Object.assign(BT,M.blink||{});
+  const load=src=>new Promise(res=>{const i=new Image();
+    i.onload=()=>res(i);i.onerror=()=>res(null);
+    i.src=`${src}${src.includes('?')?'&':'?'}v=${assetRev}`;});
+  await Promise.all([
+    ...M.visemes.map(async v=>{IMG[v]={};
+      for(const e of ['open','shut'])
+        if(M.frames[v][e])IMG[v][e]=await load(M.frames[v][e]);}),
+    ...(M.eyes?['l','r'].map(async s=>{EYE[s]=await load(M.eyes[s].src);}):[]),
+    ...(M.gaze?['l','r'].map(async s=>{GZ[s]=await load(M.gaze[s].src);}):[]),
+    ...(M.brow?['l','r'].map(async s=>{BW[s]=await load(M.brow[s].src);}):[]),
+    ...(M.cheek?['l','r'].map(async s=>{CK[s]=await load(M.cheek[s].src);}):[])
+  ]);
+  ready=true;requestAnimationFrame(loop);poll();
+})();
+
+async function poll(){
+  try{const h=await(await fetch('health')).json();
+    const providerOK=h.llm_ok??h.provider_ok??h.ollama;
+    document.getElementById('gear').classList.toggle('alert',!providerOK);
+    if(h.warm&&providerOK){setStatus(routedStatus(h.last_llm,h.llm),'on');ptt.disabled=false;return;}
+    setStatus(providerOK?(h.warming?'loading '+h.warming:'loading models')
+                         :'model unreachable \u2014 check settings','busy');
+  }catch(e){setStatus('server offline','');}
+  setTimeout(poll,1500);
+}
+
+/* ================= face runtime =================
+   The mouth is driven by a timed viseme track that the server derives from
+   Kokoro's own duration predictor - the same numbers the vocoder used to make
+   the audio. So this is a schedule lookup against the audio clock, not a guess
+   from the waveform. The analyser is kept only for breath/emphasis, and as a
+   graceful fallback if a track ever fails to arrive.                        */
+let actx=null,analyser=null,speaking=false,lvl=0;
+let track=[],tIdx=0,audioT0=0;
+let curV='sil',prevV='sil',switchAt=0;
+const XFADE=0.018;                       // ~one frame: never double teeth
+const MIN_POSE=0.085;                    // photographic poses need a readable dwell
+const LOCKED_POSES=new Set(['sil','PP']);
+
+function stabiliseTrack(raw,duration){
+  const valid=new Set((M&&M.visemes)||[]);
+  let ev=(Array.isArray(raw)?raw:[])
+    .filter(e=>Array.isArray(e)&&Number.isFinite(+e[0])&&valid.has(e[1]))
+    .map(e=>[Math.max(0,+e[0]),e[1]])
+    .sort((a,b)=>a[0]-b[0]);
+  const compact=events=>{
+    const out=[];
+    for(const e of events){
+      if(out.length&&Math.abs(e[0]-out[out.length-1][0])<1e-4)out[out.length-1]=e;
+      else if(!out.length||out[out.length-1][1]!==e[1])out.push(e);
+    }
+    return out;
+  };
+  ev=compact(ev);
+  for(let pass=0;pass<5;pass++){
+    let changed=false;
+    for(let i=0;i+1<ev.length;i++){
+      const dwell=ev[i+1][0]-ev[i][0],v=ev[i][1];
+      if(dwell>=MIN_POSE||LOCKED_POSES.has(v))continue;
+      const before=i?ev[i-1][1]:null,after=ev[i+1][1];
+      const replacement=after&&after!=='sil'?after:before;
+      if(replacement&&replacement!==v){ev[i][1]=replacement;changed=true;}
+    }
+    ev=compact(ev);
+    if(!changed)break;
+  }
+  if(ev.length&&duration>0&&ev[ev.length-1][0]>duration)
+    ev[ev.length-1][0]=duration;
+  return ev;
+}
+
+/* ---- eyelids -------------------------------------------------------------
+   A blink is a trajectory, not a state.  The lid falls in ~85ms with its
+   velocity peaking early, rests shut for ~25ms, is levered back up over ~205ms
+   - the reopen is always the slow half - and creeps the last few percent home.
+   Cutting to a fully-closed frame and back skips every position in between,
+   and the eye reads that as a dropped frame rather than an eyelid.  So the
+   frames carry no eyes at all now: assets/eye_*.png hold 8 baked lid heights
+   per eye, we interpolate between them, and each eye runs on its own clock
+   because two real lids are never in perfect lockstep.                      */
+let BT={close:85,hold:25,open:205,settle:150,creep:0.09};
+let blinks=[],nextBlink=performance.now()+1600;
+
+function lidAt(ms,amp,k){
+  if(ms<0)return 0;
+  const c=BT.close*k,h=BT.hold*k,o=BT.open*k;
+  if(ms<c)return amp*(1-Math.pow(1-ms/c,2.3));   // fall: fastest off the mark
+  if(ms<c+h)return amp;                          // contact
+  const u=(ms-c-h)/o;
+  if(u<1)return amp*((1-u*u*(3-2*u))*(1-BT.creep)+BT.creep);
+  const s=(ms-c-h-o)/BT.settle;                  // the last few percent creep home
+  return s<1?amp*BT.creep*Math.pow(1-s,2):0;
+}
+function lidFor(now,side){
+  const off=side==='r'?1:0;let L=0;
+  for(const b of blinks){const v=lidAt(now-b.t0-off*b.skew,b.amp,b.k);if(v>L)L=v;}
+  return L>1?1:L;
+}
+function planBlink(now){
+  const skew=()=>(Math.random()*2-1)*13;          // ms of eye-to-eye asymmetry
+  blinks.push({t0:now,k:0.88+Math.random()*0.26,
+    amp:0.93+Math.random()*0.07,skew:skew()});
+  // people blink noticeably more while they talk, and less while listening
+  nextBlink=now+(speaking?1500+Math.random()*3400:2400+Math.random()*5400);
+}
+/* ---- gaze: locked to the lens ----------------------------------------------
+   She is an anchor addressing an audience, not someone scanning a room, so the
+   eyes stay on the camera. That is NOT the same as a static iris. When the head
+   moves and the target does not, the eyes must counter-rotate to hold the lock -
+   the vestibulo-ocular reflex - so the iris slides continuously in the socket,
+   always against the head. That coupling is the whole effect: it is what reads
+   as "she is looking at me". Eyes that wander on their own schedule read as
+   distracted, which is worse than a dead stare; eyes welded to the skull read
+   as a doll.
+
+   Gain: idle head movement is mostly rotation about the neck, not translation,
+   so an apparent head shift of dx px means a yaw of about dx/L (L = neck to
+   eye, 579px for this rig) and the eye must counter-rotate by that plus a
+   small parallax term - an in-socket shift of ~0.12*dx. Pure translation would
+   only need 0.02*dx; the difference between those two numbers is the difference
+   between a person and a mannequin.                                           */
+const VOR_X=0.12, VOR_Y=0.10, VOR_T=0.02;
+let msX=0,msY=0,msT=0,msNext=0;
+
+/* Fixational micro-saccades: flick off the target, then a corrective flick back.
+   Real ones run 0.1-0.5 deg a few times a second, and one degree is only 0.73px
+   on this face - so these are deliberately sub-pixel, enough that the iris is
+   never a frozen texture, never enough to read as looking somewhere else.
+
+   The magnitude has a FLOOR rather than being uniform around zero. Real
+   micro-saccades do too, and here it also matters mechanically: the baked grid
+   is quantised at a quarter pixel, so a flick smaller than that paints the
+   identical state and the eye visibly parks. 0.22-0.5px is 0.3-0.7 deg - real,
+   and always at least one state wide. */
+function micro(now){
+  if(now>msNext){
+    const s=()=>Math.random()<0.5?-1:1;
+    msX=s()*(0.22+Math.random()*0.28);msY=s()*(0.12+Math.random()*0.18);
+    msT=now;msNext=now+300+Math.random()*620;
+  }
+  const k=Math.min(1,(now-msT)/420);          // corrective return to the target
+  return [msX*(1-k),msY*(1-k)];
+}
+/* Two gains, because these are two different motions. Drift and nods are the
+   head ROTATING, which swings the socket as well as carrying it, so they need
+   the full 0.12. A tilt only carries the eye sideways - the socket does not yaw
+   - so it needs the parallax term alone, R_eye/D ~ 0.02. Driving the tilt at
+   0.12 would over-rotate the iris six-fold and shove it past the baked range. */
+function gazeFor(now,h,lever){
+  const [mx,my]=micro(now);
+  const cant=lever*h.r*Math.PI/180;          // px the cant carries the eye
+  return {x:-VOR_X*h.x-VOR_T*cant+mx, y:-VOR_Y*h.y+my};
+}
+
+/* ---- head on neck ----------------------------------------------------------
+   The first version translated the WHOLE FRAME - head, shoulders, jacket and
+   backdrop as one block. That is not a head moving, it is a camera moving, and
+   it is precisely why she read as stiff-necked. A nod is not a nod if the
+   shoulders come with it.
+
+   A head moves by turning ON THE NECK, so the motion must TAPER: crown most,
+   chin far less, collar not at all. And because a rigid rotation about a pivot
+   is linear in y, that taper is exactly an AFFINE transform - one setTransform,
+   no bands, no seams, no cost. The nod's foreshortening falls out of it free:
+   the chin travels less than the brow, so the face shortens as it drops.
+
+   Motion is value noise, not a sum of sines. Detuned sines never repeat, but
+   they also never PAUSE, and that unbroken glide is the other half of why the
+   old head felt mechanical. Noise holds still sometimes. */
+function vn(t,seed){
+  const i=Math.floor(t),f=t-i,u=f*f*(3-2*f);
+  const h=n=>{const x=Math.sin(n*127.1+seed*311.7)*43758.5453;
+              return (x-Math.floor(x))*2-1;};
+  return h(i)*(1-u)+h(i+1)*u;
+}
+
+/* Nods and tilts are EVENTS, not waveforms: a damped down-and-back, and a cant
+   of the head held for a beat before it relaxes. Both fire far more often while
+   talking than while listening. */
+const ease=t=>t*t*(3-2*t);
+let nods=[],nextNod=performance.now()+1500;
+let tilt={a:0,t0:-1e9,ti:400,hold:1200,to:700},nextTilt=performance.now()+3000;
+
+/* Amplitude is in px AT THE EYES, and it has to be sized in degrees or it comes
+   out invisible: the lever from eye to neck pivot is ~580px, so even a slight
+   0.6 deg nod carries the eyes ~6px. A first pass at ~1px looked like nothing
+   at all - that is 0.1 deg, ten times under a real one. */
+function planNod(now){
+  nods.push({t0:now,a:(speaking?1.0:0.6)*(4.1+Math.random()*4.7),
+             d:360+Math.random()*240,n:Math.random()<0.3?2:1});
+  nextNod=now+(speaking?1500+Math.random()*2800:4500+Math.random()*9000);
+}
+function nodAt(now){
+  let v=0;
+  for(const g of nods){
+    const t=(now-g.t0)/g.d;
+    if(t>=0&&t<g.n)v+=g.a*Math.sin(2*Math.PI*t)*Math.exp(-1.5*t);
+  }
+  return v;
+}
+function planTilt(now){
+  tilt={a:(Math.random()<0.5?-1:1)*(0.25+Math.random()*0.45),t0:now,
+        ti:380+Math.random()*320,hold:700+Math.random()*2300,
+        to:600+Math.random()*700};
+  nextTilt=now+5000+Math.random()*11000;
+}
+function tiltAt(now){
+  const e=now-tilt.t0;if(e<0)return 0;
+  if(e<tilt.ti)return tilt.a*ease(e/tilt.ti);
+  if(e<tilt.ti+tilt.hold)return tilt.a;
+  const k=(e-tilt.ti-tilt.hold)/tilt.to;
+  return k>=1?0:tilt.a*(1-ease(k));
+}
+function headAt(now){
+  const t=now/1000;
+  // Amplitudes run a little hotter than the sine bed they replaced: noise
+  // spends most of its time well inside its bounds, where three summed sines
+  // sat near their envelope, so matching peak-for-peak under-drives it.
+  return {x:3.4*vn(t*0.17,1)+1.5*vn(t*0.43,2)+0.55*vn(t*1.05,3),
+          y:2.3*vn(t*0.21,4)+1.0*vn(t*0.51,5)+0.35*vn(t*1.25,6)
+            +nodAt(now),
+          r:0.40*vn(t*0.11,7)+0.15*vn(t*0.33,8)+tiltAt(now)};   // degrees
+}
+
+/* ---- brow -----------------------------------------------------------------
+   Humans punctuate speech with their brows almost continuously - a raise on a
+   stressed word, a knit while weighing something. A frozen brow over a moving
+   mouth is the second corpse tell. Two drivers: a fast follower on the audio
+   level for per-syllable accents, and scheduled gestures for the deliberate
+   ones. The two brows are deliberately not identical.                        */
+let browAmp=0,browT0=-1e9,browDur=1,browEnv=0,nextBrow=performance.now()+2200;
+const BROW_ASYM=0.86+Math.random()*0.1;
+
+function planBrow(now){
+  const r=Math.random();
+  if(speaking){
+    if(r<0.52){browAmp=0.9+Math.random()*1.1;browDur=260+Math.random()*360;}
+    else if(r<0.80){browAmp=2.0+Math.random()*1.3;browDur=340+Math.random()*460;}
+    else{browAmp=-(0.5+Math.random()*0.9);browDur=380+Math.random()*560;}
+    nextBrow=now+650+Math.random()*1700;
+  }else{
+    if(r<0.55){browAmp=0.5+Math.random()*0.8;browDur=420+Math.random()*700;}
+    else if(r<0.82){browAmp=-(0.4+Math.random()*0.7);browDur=600+Math.random()*900;}
+    else{browAmp=1.4+Math.random()*1.1;browDur=350+Math.random()*450;}
+    nextBrow=now+2400+Math.random()*4600;
+  }
+  browT0=now;
+}
+function browGesture(now){
+  const ms=now-browT0;
+  if(ms<0||ms>browDur+320)return 0;
+  const u=Math.min(1,ms/130),rise=u*u*(3-2*u);   // muscle, not a step function
+  const f=ms>browDur?Math.max(0,1-(ms-browDur)/300):1;
+  return browAmp*rise*f*f;
+}
+function browFor(now,side,lid){
+  const t=now/1000,k=side==='l'?BROW_ASYM:1;
+  const drift=0.20*Math.sin(t*0.31+(side==='l'?1.7:0))+0.11*Math.sin(t*0.73);
+  const v=(browGesture(now)+1.1*browEnv)*k+drift-0.4*lid;
+  return v<-1.5?-1.5:v>3.5?3.5:v;
+}
+
+/* ---- cheek ----------------------------------------------------------------
+   The warmth cue, and the one layer that could not be built the obvious way: a
+   warp of bare cheek skin is invisible, because there is no texture there to
+   carry a two-pixel shift. What actually shows a cheek raise is the structure
+   along its TOP edge - the lower lid margin lifting, the lash line with it - so
+   the layer is anchored there and fades downward over the malar.
+
+   SECOND CUT. The first version drove this off LOUDNESS, through two more
+   low-passes stacked on an already smoothed level, then snapped the result to a
+   0.65px ladder. Through continuous speech the value sat at sd 0.27px - under
+   half a step - so the painted state never moved: 0.51 changes per second
+   against the brow's 4.98. A cheek that holds still while the mouth works is
+   the tell, and no amount of extra gain on a DC signal fixes it.
+
+   Loudness was the wrong driver anyway. The malar is dragged by the LIP
+   CORNERS, so the apple follows the SHAPE of the mouth: wide spreads (E, ih,
+   SS, CH) haul it up, an open aa stretches it up and out over the zygomatic,
+   rounded oh/ou hollow it, and PP/FF recruit no cheek at all. Loudness only
+   decides how hard each shape is hit. So the target is a per-viseme
+   coefficient riding the same cross-fade the lips ride, and the follower is
+   quick enough to keep up with a syllable - about 55ms to recruit and 130ms to
+   let go, because muscle pulls faster than it releases.
+
+   It idles just off zero rather than at zero: a face held at dead neutral is
+   the resting state of someone who has stopped listening. */
+const CHEEK_V={sil:0,PP:.05,FF:.10,TH:.22,DD:.26,kk:.30,CH:.62,SS:.58,nn:.24,
+               RR:.14,aa:.55,E:.85,ih:.72,oh:.20,ou:.06};
+const CHEEK_ASYM=0.93+Math.random()*0.06;  // two cheeks are never a matched pair
+let cheek=0,cheekT=-1;
+const JAW_V={sil:0,PP:0,FF:.10,TH:.16,DD:.18,kk:.28,CH:.16,SS:.12,nn:.14,
+             RR:.13,aa:1,E:.62,ih:.38,oh:.56,ou:.20};
+let jaw=0,jawT=-1;
+function jawFor(now,mix){
+  const a=JAW_V[prevV]||0,b=JAW_V[curV]||0;
+  const shape=a+(b-a)*mix;
+  const target=(speaking?shape:0)*(0.70+0.30*Math.min(1,lvl*6));
+  const dt=jawT<0?16:Math.min(80,now-jawT);jawT=now;
+  jaw+=(target-jaw)*(1-Math.exp(-dt/(target>jaw?55:95)));
+  return jaw*2.4;
+}
+function cheekFor(now,lid,mix){
+  const top=(M.cheek&&M.cheek.ups[M.cheek.ups.length-1])||2.7;
+  let tgt;
+  if(speaking){
+    const a=CHEEK_V[prevV]||0,b=CHEEK_V[curV]||0;
+    const shape=a+(b-a)*mix;                 // the same dissolve the lips ride
+    tgt=top*(0.14+0.86*shape)*(0.55+0.65*Math.min(1,lvl*7))+0.22*browEnv;
+  }else{
+    tgt=top*(0.10+0.14*(vn(now/1000*0.13,11)+1)/2);
+  }
+  const dt=cheekT<0?16:Math.min(80,now-cheekT);cheekT=now;
+  cheek+=(tgt-cheek)*(1-Math.exp(-dt/(tgt>cheek?55:130)));
+  const v=cheek+0.30*lid;              // a blink squeezes the lower lid up too
+  return v<0?0:v>top?top:v;
+}
+
+/* Nearest baked state, no cross-fade. Blending two baked warps doubles every
+   hard edge inside the patch at partial alpha - the limbus for gaze, the brow
+   hairs for brow. Both grids are fine enough (a quarter pixel, half a pixel)
+   that snapping is below the threshold for seeing steps but well above the
+   threshold for seeing a double image. */
+function nearest(vals,v){
+  let i=0,d=1e9;
+  for(let j=0;j<vals.length;j++){const e=Math.abs(vals[j]-v);if(e<d){d=e;i=j;}}
+  return i;
+}
+/* Everything below draws in KEYFRAME pixels. The canvas fit and the head-on-neck
+   affine are already on the context, so a patch just goes at its own box and is
+   carried, sheared and tapered exactly as the face under it is. */
+function drawSnap(img,geom,vals,v,row){
+  if(!img)return;
+  const g=geom.box,ew=g[2],eh=g[3];
+  ctx.drawImage(img,0,(nearest(vals,v)+(row||0)*vals.length)*eh,ew,eh,
+                g[0],g[1],ew,eh);
+}
+
+/* Anatomical order, and it matters: the brow slides the skin, the cheek lifts
+   the lid margin from below, the eyeball turns under both, and the lid occludes
+   the eyeball. Paint them in any other order and a blink stamps the eyes back
+   to centre. */
+function drawFace(lids,gv,bv,ck){
+  if(M.brow)for(const s of ['l','r'])
+    drawSnap(BW[s],M.brow[s],M.brow.dys,bv[s],0);
+  if(M.cheek)for(const s of ['l','r'])
+    drawSnap(CK[s],M.cheek[s],M.cheek.ups,ck[s],0);
+  if(M.gaze){
+    const row=nearest(M.gaze.dys,gv.y);
+    for(const s of ['l','r'])drawSnap(GZ[s],M.gaze[s],M.gaze.dxs,gv.x,row);
+  }
+  drawEyes(lids);
+}
+
+function drawEyes(lids){
+  const st=M.eyes.states,n=st.length;
+  for(const side of ['l','r']){
+    const img=EYE[side],L=lids[side];
+    if(!img||L<=0.004)continue;
+    const g=M.eyes[side].box,ew=g[2],eh=g[3];
+    let hi=0;while(hi<n-1&&st[hi]<L)hi++;         // straddle the two nearest states
+    const lo=hi-1,a=lo<0?L/st[0]:(L-st[lo])/(st[hi]-st[lo]);
+    if(lo>=0)ctx.drawImage(img,0,lo*eh,ew,eh,g[0],g[1],ew,eh);
+    ctx.globalAlpha=a<0?0:a>1?1:a;
+    ctx.drawImage(img,0,hi*eh,ew,eh,g[0],g[1],ew,eh);
+    ctx.globalAlpha=1;
+  }
+}
+const td=new Uint8Array(2048),fd=new Uint8Array(512);
+
+function level(){
+  if(!analyser)return 0;
+  analyser.getByteTimeDomainData(td);
+  let s=0;for(let i=0;i<td.length;i++){const v=(td[i]-128)/128;s+=v*v;}
+  return Math.sqrt(s/td.length);
+}
+
+/* fallback only: no track, so infer a coarse shape from spectrum */
+function byEnergy(){
+  if(lvl<0.035)return'sil';
+  analyser.getByteFrequencyData(fd);
+  const bin=(actx.sampleRate/2)/fd.length;let lo=0,hi=0;
+  for(let i=0;i<fd.length;i++){const f=i*bin;
+    if(f>=120&&f<900)lo+=fd[i];else if(f>=1400&&f<4200)hi+=fd[i];}
+  const hr=hi/(lo+hi+1e-6);
+  if(lvl>0.20&&hr<0.30)return'aa';
+  if(hr>0.42)return'E';
+  if(lvl>0.10)return'oh';
+  return'ou';
+}
+
+function wanted(){
+  if(!speaking)return'sil';
+  if(track.length){
+    const t=actx.currentTime-audioT0;
+    if(t<0)return'sil';
+    while(tIdx+1<track.length&&track[tIdx+1][0]<=t)tIdx++;
+    return track[tIdx][1];
+  }
+  return byEnergy();
+}
+
+function loop(now){
+  requestAnimationFrame(loop);if(!ready)return;
+  const ts=now/1000;
+  lvl=lvl*0.55+level()*0.45;
+
+  const w=wanted();
+  if(w!==curV){prevV=curV;curV=w;switchAt=ts;}
+  const mu=XFADE?Math.min(1,(ts-switchAt)/XFADE):1;
+  const mix=mu*mu*(3-2*mu);
+
+  if(now>nextBlink)planBlink(now);
+  while(blinks.length&&now-blinks[0].t0>1500)blinks.shift();
+  if(now>nextBrow)planBrow(now);
+  // brow accent follower: fires only on the louder moments, and relaxes slower
+  // than it fires, the way muscle does
+  const bt=speaking?Math.max(0,Math.min(1,lvl*8-0.35)):0;
+  browEnv+=(bt-browEnv)*(bt>browEnv?0.18:0.05);
+
+  // Head movement, held in KEYFRAME px because the eye counter-rotation below
+  // is derived from it and must not change with the window size. Never drive
+  // this from discrete visemes: that steps the lash position at every switch.
+  if(now>nextNod)planNod(now);
+  while(nods.length&&now-nods[0].t0>2200)nods.shift();
+  if(now>nextTilt)planTilt(now);
+  const h=headAt(now);
+
+  const N=M.neck||{ref:406,pivot:985,x:512};
+  const lever=N.pivot-N.ref;               // eyes to neck pivot, in keyframe px
+  const gv=gazeFor(now,h,lever);           // eyes hold the lens while that moves
+
+  const lids={l:lidFor(now,'l'),r:lidFor(now,'r')};
+  const bv={l:browFor(now,'l',lids.l),r:browFor(now,'r',lids.r)};
+  const c0=cheekFor(now,(lids.l+lids.r)/2,mix);
+  const ck={l:c0*CHEEK_ASYM,r:c0};
+  const jawPx=jawFor(now,mix);
+  const legacy=!M.eyes;                    // pre-v2 asset set: two states, no travel
+  const eyes=legacy&&(lids.l+lids.r)/2>0.5?'shut':'open';
+
+  const cw=cv.width,ch=cv.height;
+  const ref=IMG[curV][eyes]||IMG[curV].open;
+  /* The head band travels on its own now, so the plate has to sit far enough
+     off the top of the canvas that a nod cannot expose backdrop above the
+     crown. Solve the fit for that headroom instead of guessing an overscan. */
+  const HEADROOM=20;                                       // keyframe px
+  const sc=Math.max(Math.max(cw/ref.width,ch/ref.height)*1.06,
+                    0.455*ch/(ref.height/2-HEADROOM));
+  const x0=(cw-ref.width*sc)/2, y0=(ch-ref.height*sc)/2-ch*0.045;
+
+  /* ---- head on neck, second cut -------------------------------------------
+     The first cut did all three channels with ONE affine, and that is exactly
+     where the periodic squash came from. In an affine the y-translation
+     GRADIENT and the y-SCALE are the same coefficient: asking the crown to
+     travel 1.49x the chin is literally asking for d=1-h.y/lever. Measured, the
+     skull ran 678px crown-to-chin down to 670px and back on every nod - 1.46%
+     peak to peak, cycling with the nod schedule. That is what reads as a hand
+     pressing down on the head. A skull is bone; it cannot shorten.
+
+     What shortens in a real nod is the NECK - the chin closes toward the chest.
+     And the vertical motion itself is very nearly rigid: a nod turns about the
+     ear axis, OUT of the image plane, so to first order every point of the face
+     drops by the same amount and the shape change is second order, a few tenths
+     of a percent. The old model put 1.5% of squash on a motion whose true
+     squash is ~0.4%, and spread it across the skull instead of the neck.
+
+     So the vertical channel is now piecewise: rigid across the skull, the whole
+     taper spent in the neck, zero at the collar. Canvas samples cropped
+     drawImage rectangles independently, so mathematically touching edges can
+     expose a one-device-pixel antialias crack. Each band therefore overscans
+     its neighbours by one source pixel, guaranteeing opaque coverage.
+
+     Roll and sway are unchanged and stay in the matrix: a true rotation about
+     the neck pivot, then a shear in x. Both have determinant 1, so neither one
+     can compress anything. Only the vertical channel ever could. */
+  const th=h.r*Math.PI/180, kx=h.x/lever, dy=h.y;
+  const Yj=N.jaw||(N.pivot-0.32*lever);    // jaw line: bottom of the rigid skull
+  const Ym=N.mouth||(N.ref+0.42*lever);    // upper-lip hinge stays skull-rigid
+  const HK=ref.height;
+  /* Breathing is the chest, not the camera. The old build scaled the ENTIRE
+     plate - backdrop included - on a 7.4s sine, which is a zoom, and a
+     metronome. This lifts the collar under a shorter noise instead, and the
+     neck band carries it up to the jaw. */
+  const br=-0.9*(0.5+0.5*vn(ts*0.21,12))*(0.55+0.45*vn(ts*0.07,13));
+
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle='#0b0d10';ctx.fillRect(0,0,cw,ch);
+  ctx.save();
+  ctx.setTransform(sc,0,0,sc,x0,y0);                       // keyframe px -> canvas
+  ctx.translate(N.x,N.pivot);ctx.rotate(th);ctx.translate(-N.x,-N.pivot);
+  ctx.transform(1,0,-kx,1,kx*N.pivot,0);                   // sway: x taper only
+  const BND=[[0,Ym,dy,Ym+dy],
+             [Ym,Yj,Ym+dy,Yj+dy+jawPx],
+             [Yj,N.pivot,Yj+dy+jawPx,N.pivot+br],
+             [N.pivot,HK,N.pivot+br,HK]];
+  const BAND_PAD=1;                                  // source px on both edges
+  const plate=img=>{for(const b of BND){
+    const srcH=b[1]-b[0],dstH=b[3]-b[2],scaleY=dstH/srcH;
+    const sy=Math.max(0,b[0]-BAND_PAD);
+    const ey=Math.min(img.height,b[1]+BAND_PAD);
+    const dy0=b[2]+(sy-b[0])*scaleY;
+    ctx.drawImage(img,0,sy,img.width,ey-sy,
+                  0,dy0,img.width,(ey-sy)*scaleY);
+  }};
+  // Every frame shares an identical background, so a straight cross-dissolve
+  // between two full frames reads purely as the mouth morphing.
+  if(mix<1&&IMG[prevV]){ctx.globalAlpha=1;
+                        plate(IMG[prevV][eyes]||IMG[prevV].open);
+                        ctx.globalAlpha=mix;}
+  plate(ref);
+  ctx.globalAlpha=1;
+  // Eyes go on last, so a mouth cross-dissolve can never ghost them - and they
+  // sit on the skull, so they ride the rigid band with it.
+  if(!legacy){ctx.translate(0,dy);drawFace(lids,gv,bv,ck);}
+  ctx.restore();
+
+  elVz.textContent=speaking?curV:'';
+  elVz.className=speaking?'on':'';
+}
+
+/* ================= conversation ================= */
+const history=[];
+
+async function speak(b64,tr){
+  actx=actx||new AudioContext();
+  if(actx.state==='suspended')await actx.resume();
+  const bin=atob(b64),u8=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+  const buf=await actx.decodeAudioData(u8.buffer);
+  const src=actx.createBufferSource();src.buffer=buf;
+  analyser=actx.createAnalyser();analyser.fftSize=2048;analyser.smoothingTimeConstant=0.6;
+  src.connect(analyser);analyser.connect(actx.destination);
+  track=stabiliseTrack(tr,buf.duration);tIdx=0;
+  // Schedule slightly ahead so the audio clock and the first shape agree.
+  audioT0=actx.currentTime+0.06;
+  speaking=true;src.start(audioT0);
+  await new Promise(r=>{src.onended=r});
+  speaking=false;track=[];curV='sil';
+}
+
+async function turn(text){
+  ptt.disabled=true;elYou.textContent=text;elHer.textContent='';
+  setStatus('thinking','busy');
+  history.push({role:'user',content:text});
+  let llmRoute=null;
+  try{
+    const r=await(await fetch('reply',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({history})})).json();
+    llmRoute=r.llm_route||null;
+    history.push({role:'assistant',content:r.text});
+    elHer.textContent=r.text;
+    setStatus('speaking','on');
+    await speak(r.audio,r.track);
+  }catch(e){elHer.textContent='(something broke: '+e.message+')';}
+  setStatus(routedStatus(llmRoute),'on');ptt.disabled=false;
+}
+
+let rec=null,chunks=[],recording=false;
+async function startRec(){
+  if(recording||ptt.disabled)return;
+  let stream;
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:true});}
+  catch(e){setStatus('microphone blocked','');return;}
+  rec=new MediaRecorder(stream);chunks=[];
+  rec.ondataavailable=e=>chunks.push(e.data);
+  rec.onstop=async()=>{
+    stream.getTracks().forEach(t=>t.stop());
+    const blob=new Blob(chunks,{type:rec.mimeType||'audio/webm'});
+    if(blob.size<3000){setStatus('ready','on');ptt.disabled=false;return;}
+    ptt.disabled=true;setStatus('transcribing','busy');
+    try{
+      const fd2=new FormData();fd2.append('audio',blob,'a.webm');
+      const r=await(await fetch('stt',{method:'POST',body:fd2})).json();
+      if(!r.text){setStatus('ready','on');ptt.disabled=false;return;}
+      await turn(r.text);
+    }catch(e){setStatus('ready','on');ptt.disabled=false;}
+  };
+  rec.start();recording=true;ptt.classList.add('rec');setStatus('listening','rec');
+}
+function stopRec(){if(!recording)return;recording=false;ptt.classList.remove('rec');rec.stop();}
+
+ptt.addEventListener('mousedown',startRec);
+addEventListener('mouseup',stopRec);
+addEventListener('keydown',e=>{if(e.code==='Space'&&document.activeElement!==txt&&!e.repeat){
+  e.preventDefault();startRec();}});
+addEventListener('keyup',e=>{if(e.code==='Space'&&document.activeElement!==txt){
+  e.preventDefault();stopRec();}});
+txt.addEventListener('keydown',e=>{if(e.key==='Enter'&&txt.value.trim()){
+  const v=txt.value.trim();txt.value='';turn(v);}});
+</script></body></html>

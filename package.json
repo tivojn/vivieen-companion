@@ -1,0 +1,105 @@
+{
+  "name": "vivieen-companion",
+  "version": "0.3.0",
+  "author": "Vivieen contributors",
+  "license": "MIT",
+  "private": false,
+  "description": "Privacy-conscious, provider-agnostic talking avatar for Apple Silicon Macs",
+  "main": "electron/main.cjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tivojn/vivieen-companion.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tivojn/vivieen-companion/issues"
+  },
+  "homepage": "https://github.com/tivojn/vivieen-companion#readme",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "test": ".venv/bin/python -m unittest discover -s tests -v",
+    "check:syntax": "node --check electron/main.cjs && node --check electron/preload.cjs && node --check qa/life_probe.js && node scripts/check-inline-scripts.mjs && .venv/bin/python -m py_compile server/app.py server/providers.py server/align.py server/visemes.py studio/build.py studio/compose.py studio/face.py studio/blink.py tests/test_providers.py scripts/public-release-audit.py",
+    "check:privacy": ".venv/bin/python scripts/public-release-audit.py .",
+    "check:avatar": "node qa/life_probe.js . check && .venv/bin/python -W ignore qa/blink_lash_qa.py && .venv/bin/python -W ignore qa/mouth_motion_qa.py",
+    "check": "npm run check:syntax && npm test && npm run check:privacy",
+    "fetch:model": "scripts/fetch-face-model.sh",
+    "stage:python": "scripts/stage-electron-python.sh",
+    "stage:ffmpeg": "scripts/stage-electron-ffmpeg.sh",
+    "pack": "npm run stage:python && npm run stage:ffmpeg && electron-builder --mac dir",
+    "dist": "npm run stage:python && npm run stage:ffmpeg && electron-builder --mac dmg zip"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.vivieen.companion",
+    "productName": "Vivieen",
+    "asar": true,
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".electron-python-runtime",
+        "to": "python"
+      },
+      {
+        "from": ".electron-site-packages",
+        "to": "python/lib/python3.12/site-packages",
+        "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc", "!**/.DS_Store"]
+      },
+      {
+        "from": "server",
+        "to": "backend/server",
+        "filter": ["**/*.py", "!**/build_sprites.py"]
+      },
+      {
+        "from": "studio",
+        "to": "backend/studio",
+        "filter": ["**/*.py"]
+      },
+      {
+        "from": "web",
+        "to": "backend/web",
+        "filter": ["index.html", "settings.html"]
+      },
+      {
+        "from": ".electron-ffmpeg",
+        "to": "backend/bin"
+      },
+      {
+        "from": "LICENSE",
+        "to": "docs/LICENSE.txt"
+      },
+      {
+        "from": "PRIVACY.md",
+        "to": "docs/PRIVACY.md"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "docs/THIRD_PARTY_NOTICES.md"
+      }
+    ],
+    "mac": {
+      "target": ["dmg", "zip"],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "LSMinimumSystemVersion": "14.0",
+        "NSMicrophoneUsageDescription": "Vivieen uses the microphone only while you hold the talk button."
+      }
+    },
+    "dmg": {
+      "title": "Vivieen ${version}",
+      "artifactName": "Vivieen-${version}-${arch}.${ext}"
+    }
+  }
+}

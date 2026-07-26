@@ -1,0 +1,18 @@
+# Versions proven by the Electron integration test on Apple Silicon.
+fastapi==0.140.0
+uvicorn==0.51.0
+python-multipart==0.0.32
+pydantic==2.13.4
+httpx==0.28.1
+numpy==2.4.6
+scipy==1.18.0
+soundfile==0.14.0
+pillow==12.3.0
+opencv-contrib-python==5.0.0.93
+mediapipe==0.10.35
+kokoro==0.9.4
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+misaki[en]==0.9.4
+mlx-whisper==0.4.3
+edge-tts==7.2.8
+torch==2.13.0
