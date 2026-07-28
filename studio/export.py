@@ -11,9 +11,9 @@ could only ever be a hard cut to fully-shut and a hard cut back - the lid never
 existed in between, which no amount of timing can rescue.  Now the lid has 8
 positions per eye and the two eyes can be driven independently.
 """
-import os, json
+import os, json, shutil
 import numpy as np, cv2
-from . import face, blink, expression, build as reg
+from . import face, blink, expression, cutout, build as reg
 
 # runtime viseme name -> studio shape name
 NAME_MAP = {"sil": "closed", "PP": "PP", "FF": "FF", "TH": "TH", "DD": "DD",
@@ -21,9 +21,88 @@ NAME_MAP = {"sil": "closed", "PP": "PP", "FF": "FF", "TH": "TH", "DD": "DD",
             "aa": "ah", "E": "eh", "ih": "ih", "oh": "oh", "ou": "oo"}
 
 
-def export(slug, dest, quality=92, states=blink.N_STATES, log=print):
-    d = reg.adir(slug)
-    m = reg.read_manifest(slug)
+def _publish_motion(directory, destination, log):
+    for name in os.listdir(destination):
+        if name.startswith("motion-") and name.endswith(".png"):
+            os.remove(os.path.join(destination, name))
+    motion_dir = os.path.join(directory, "motion")
+    manifest_path = os.path.join(motion_dir, "motion.json")
+    if not os.path.isfile(manifest_path):
+        return None
+    with open(manifest_path) as handle:
+        source = json.load(handle)
+    runtime = {"v": source.get("v", 1)}
+    for kind in ("walk", "idle"):
+        clip = dict(source.get(kind) or {})
+        sheets = []
+        for index, sheet in enumerate(clip.get("sheets") or []):
+            name = f"motion-{kind}-{index}.png"
+            shutil.copy2(os.path.join(motion_dir, sheet["image"]), os.path.join(destination, name))
+            sheets.append({**sheet, "image": f"assets/{name}"})
+        poster_name = f"motion-{kind}-poster.png"
+        if clip.get("poster") and os.path.isfile(os.path.join(motion_dir, clip["poster"])):
+            shutil.copy2(os.path.join(motion_dir, clip["poster"]),
+                         os.path.join(destination, poster_name))
+            clip["poster"] = f"assets/{poster_name}"
+        clip["sheets"] = sheets
+        clip.pop("alpha_video", None)
+        clip.pop("source_loop", None)
+        runtime[kind] = clip
+    log("  alpha Pet motion published")
+    return runtime
+
+
+def publish_pet_assets(slug, runtime_dir=None, log=print):
+    """Add Pet layers without rebuilding the calibrated face bank."""
+    directory = reg.adir(slug)
+    destination = runtime_dir or os.path.join(directory, "runtime")
+    manifest_path = os.path.join(destination, "manifest.json")
+    if not os.path.isfile(manifest_path):
+        raise ValueError("avatar runtime is missing")
+    with open(manifest_path) as handle:
+        runtime = json.load(handle)
+    source_manifest = reg.read_manifest(slug) or {}
+    cutout_meta = cutout.render(
+        os.path.join(directory, "keyframe.png"),
+        os.path.join(destination, "cutout.png"),
+        log=log,
+    )
+    body_meta = None
+    body_dir = os.path.join(directory, "body")
+    body_manifest = os.path.join(body_dir, "body.json")
+    if os.path.isfile(body_manifest):
+        with open(body_manifest) as handle:
+            body_meta = json.load(handle)
+        shutil.copy2(os.path.join(body_dir, "body.png"), os.path.join(destination, "body.png"))
+        shutil.copy2(os.path.join(body_dir, "head-mask.png"), os.path.join(destination, "head-mask.png"))
+        body_meta["image"] = "assets/body.png"
+        body_meta["head_mask"] = "assets/head-mask.png"
+    else:
+        for name in ("body.png", "head-mask.png"):
+            try:
+                os.remove(os.path.join(destination, name))
+            except FileNotFoundError:
+                pass
+    motion_meta = _publish_motion(directory, destination, log)
+    runtime.update(
+        v=max(8, int(runtime.get("v", 0))),
+        cutout=cutout_meta,
+        body=body_meta,
+        motion=motion_meta,
+        built=source_manifest.get("updated", runtime.get("built")),
+    )
+    temporary = manifest_path + ".tmp"
+    with open(temporary, "w") as handle:
+        json.dump(runtime, handle, indent=1)
+    os.replace(temporary, manifest_path)
+    log("Pet runtime layers published")
+    return runtime
+
+
+def export(slug, dest, quality=92, states=blink.N_STATES, log=print,
+           source_dir=None, manifest_data=None):
+    d = source_dir or reg.adir(slug)
+    m = manifest_data or reg.read_manifest(slug)
     if not m or m.get("status") != "ready":
         raise ValueError(f"{slug} is not built yet")
     vis = os.path.join(d, "visemes")
@@ -57,6 +136,25 @@ def export(slug, dest, quality=92, states=blink.N_STATES, log=print):
             os.remove(os.path.join(dest, f))
 
     H, W = key.shape[:2]
+    log("extracting transparent person silhouette")
+    cutout_meta = cutout.render(
+        os.path.join(d, "keyframe.png"),
+        os.path.join(dest, "cutout.png"),
+        log=log,
+    )
+    body_meta = None
+    body_dir = os.path.join(d, "body")
+    body_manifest = os.path.join(body_dir, "body.json")
+    if os.path.isfile(body_manifest):
+        with open(body_manifest) as handle:
+            body_meta = json.load(handle)
+        shutil.copy2(os.path.join(body_dir, "body.png"), os.path.join(dest, "body.png"))
+        shutil.copy2(os.path.join(body_dir, "head-mask.png"), os.path.join(dest, "head-mask.png"))
+        body_meta["image"] = "assets/body.png"
+        body_meta["head_mask"] = "assets/head-mask.png"
+        log("  full-body plate published")
+    motion_meta = _publish_motion(d, dest, log)
+
     frames, names = {}, []
     for rt, shape in NAME_MAP.items():
         src = os.path.join(vis, f"v_{shape}.jpg")
@@ -88,10 +186,12 @@ def export(slug, dest, quality=92, states=blink.N_STATES, log=print):
 
     timing = dict(close=blink.CLOSE, hold=blink.HOLD, open=blink.OPEN,
                   settle=blink.SETTLE, creep=blink.CREEP)
-    manifest = dict(v=5, w=W, h=H, avatar=dict(slug=slug, name=m["name"]),
+    manifest = dict(v=8, w=W, h=H, avatar=dict(slug=slug, name=m["name"]),
                     visemes=names, frames=frames, eyes=eyes, gaze=gaze, brow=brow,
-                    cheek=cheek, neck=expression.neck(klm),
-                    blink=timing, built=m.get("updated"), quality=m.get("quality"))
+                    cheek=cheek, neck=expression.neck(klm), cutout=cutout_meta,
+                    body=body_meta, motion=motion_meta, blink=timing,
+                    built=m.get("updated"), quality=m.get("quality"),
+                    rig_profile=m.get("rig_profile"))
     with open(os.path.join(dest, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=1)
     log(f"exported {len(names)} visemes, {states} lid states, "

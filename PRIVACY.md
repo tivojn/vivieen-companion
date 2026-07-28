@@ -7,10 +7,10 @@ Vivieen Companion is designed to keep user-controlled data local unless the user
 Vivieen may store:
 
 - uploaded portrait source images;
-- generated viseme frames, masks, previews, and avatar manifests;
+- generated viseme frames, cut-outs, full-body source images, masks, motion keyframes and source clips, alpha atlases, previews, and avatar manifests;
 - the active-avatar selection;
 - provider configuration and direct API keys;
-- window position and always-on-top state;
+- companion position, framing, zoom, opacity, click-through, lock, and always-on-top state;
 - backend diagnostic logs;
 - downloaded local model weights.
 
@@ -26,6 +26,8 @@ Data leaves the Mac only when a selected operation requires a remote service:
 - a cloud TTS provider receives response text;
 - a cloud STT provider receives recorded audio;
 - portrait-to-viseme generation receives the prepared portrait and generation prompt through the configured EnConvo image provider;
+- Full Body Studio sends the prepared identity portrait and the user's wardrobe, treatment, presence, and additional directions to EnConvo's currently configured image provider; the returned image is segmented locally with macOS Vision and the generated face is not used as the runtime identity;
+- Desktop Motion sends the built full-body image and optional pose reference to EnConvo's configured image provider, then sends the generated walk and idle keyframes to the configured video provider. The pose reference is used only for geometry: the server's staged copy is deleted after the job, it is not stored in the motion directory, and it is never published to the live runtime. Returned clips are decoded and alpha-cut locally with macOS Vision;
 - first portrait use downloads the public, checksum-pinned Face Landmarker model from Google's `storage.googleapis.com`; the portrait is not part of that download request;
 - source setup downloads public runtime dependencies.
 
@@ -49,7 +51,7 @@ Browser-only development does not enable a token unless `VIVIEEN_AUTH_TOKEN` is 
 
 ## Deleting data
 
-Avatars can be deleted from Settings. Uninstalling the app does not automatically erase Electron's `userData` directory. To remove all local Vivieen data, quit the app and remove its application-support directory from your macOS user account.
+Generated body and Desktop Motion assets can be removed independently in Full Body Studio, and complete avatars can be deleted from Settings. Uninstalling the app does not automatically erase Electron's `userData` directory. To remove all local Vivieen data, quit the app and remove its application-support directory from your macOS user account.
 
 ## Repository privacy gate
 

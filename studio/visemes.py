@@ -24,18 +24,20 @@ Three lessons are baked into these prompts:
 """
 
 BASE = (
-    "Edit this portrait photograph. This is a LIP-SYNC MOUTH SHAPE (viseme) frame "
-    "for a talking-head animation, so the ONLY thing that may change is the mouth "
-    "and jaw.\n\n"
+    "Edit this portrait photograph. This is a LIP-SYNC SPEECH SHAPE (viseme) frame "
+    "for a talking-head animation, so the ONLY thing that may change is natural "
+    "speech articulation below the eyes: lips, mouth, jaw, chin, philtrum, mouth "
+    "corners, adjacent lower-cheek tissue and nasolabial folds.\n\n"
     "ABSOLUTELY UNCHANGED, pixel for pixel: the person's identity and facial bone "
     "structure, head position, head angle, head size, camera framing and distance, "
     "crop, eyes, eyebrows, eyelids, gaze direction, nose, ears, hairline, hair, "
     "jewellery, clothing, neckline, shoulders, skin tone, freckles, makeup, "
     "lighting direction, shadows, colour grade and background.\n\n"
     "DO NOT re-frame, re-crop, zoom, rotate, re-pose, re-light or re-render the "
-    "image. DO NOT beautify, smooth or retouch the skin. DO NOT change her "
-    "expression beyond the mouth. Keep photographic realism with visible skin "
-    "texture and pores.\n\n"
+    "image. DO NOT beautify, smooth or retouch the skin. Do not add an emotion or "
+    "a smile; permit only the subtle lower-face muscle movement physically caused "
+    "by the requested sound. Keep photographic realism with visible skin texture "
+    "and pores.\n\n"
 )
 
 AMPLITUDE = (
@@ -46,7 +48,8 @@ AMPLITUDE = (
     "stage or theatrical diction, and NOT an exaggerated phonetics-textbook diagram "
     "of the sound. The jaw barely moves. The lips move a few millimetres, not "
     "centimetres. Her expression stays calm and composed throughout - no grimace, "
-    "no snarl, no baring of the teeth, no strain in the cheeks or chin.\n"
+    "no snarl, no baring of the teeth and no exaggerated strain. The cheeks and "
+    "chin may move subtly when the jaw or mouth corners physically pull them.\n"
     "Keep the change SMALL and UNDERSTATED. If you are unsure, make it SMALLER. An "
     "over-articulated mouth looks like the person is yelling and is a failure.\n\n"
     "BUT THERE IS A FLOOR - small does not mean closed. Unless this shape is "
@@ -56,16 +59,31 @@ AMPLITUDE = (
     "movement; never delete it.\n\n"
 )
 
+FACIAL_COUPLING = (
+    "LOWER-FACE MUSCLE COUPLING - AVOID THE PASTED-ON MOUTH LOOK:\n"
+    "Do not animate an isolated oval around the lips. Let each mouth corner pull "
+    "the immediately adjacent cheek tissue; let jaw opening move the chin and "
+    "lower-cheek volume; let spreading or rounding shift the philtrum and nearby "
+    "nasolabial folds by a tiny anatomically plausible amount. Closed bilabial "
+    "shapes should produce almost no cheek motion; open and rounded vowels may "
+    "produce more, but still at quiet-conversation scale. Keep all motion below "
+    "the lower eyelids. The eyes, brows, nose bridge and overall emotion remain "
+    "unchanged. Preserve pores, freckles and fold texture rather than smoothing "
+    "or redrawing the skin.\n\n"
+)
+
 DENTAL_CONTINUITY = (
     "DENTAL CONTINUITY - FIXED ANATOMY:\n"
-    "Her upper teeth are one rigid part of her skull. Across every mouth shape, keep "
-    "the SAME upper dental row: identical tooth count, incisor widths, spacing, edge "
-    "contour, colour and screen position. The upper teeth must never slide, scale, "
-    "tilt or regenerate with the lips. Only the lips and jaw change how much of that "
-    "one fixed row is revealed. Her lower teeth belong to the moving jaw: whenever "
-    "the opening naturally reveals their incisal edge, preserve that subtle lower row "
-    "instead of hiding it or replacing it with shadow. Do not force lower teeth into "
-    "closed-lip shapes and do not invent extra teeth.\n\n"
+    "Her UPPER AND LOWER dental rows are equally identity-bearing fixed anatomy. "
+    "Across every mouth shape, preserve the SAME tooth count, incisor widths, spacing, "
+    "edge contours, natural ivory colour and tiny individual irregularities in BOTH "
+    "rows. The upper row is rigidly attached to the skull and stays fixed on screen. "
+    "The lower row is rigidly attached to the moving jaw and may move only as one unit "
+    "with that jaw; individual lower teeth must never slide, scale, tilt or regenerate. "
+    "Only the lips and jaw change how much of either row is revealed. Do not hide a "
+    "naturally visible lower incisal edge in shadow, but do not force teeth into a "
+    "closed-lip shape or invent extras. Preserve the reference enamel exactly: DO NOT "
+    "whiten, brighten, bleach, recolour or make either row unnaturally uniform.\n\n"
 )
 
 ORAL_RENDERING = (
@@ -80,9 +98,11 @@ ORAL_RENDERING = (
     "into the cavity shadow.\n\n"
 )
 
-CLOSER = ("\n\nRender only that mouth change, at the small conversational scale "
-          "described above. Everything else in the frame must be identical to the "
-          "input image.")
+CLOSER = ("\n\nRender only that anatomically coupled lower-face articulation, at "
+          "the small conversational scale described above. Everything else in the "
+          "frame must be identical to the input image.")
+BLINK_CLOSER = ("\n\nRender only that relaxed blink. Everything else in the frame must "
+                "be identical to the input image.")
 
 # name -> (phoneme group, articulation, opening spec)
 # The opening is expressed against the subject's own lower lip thickness, which
@@ -243,7 +263,7 @@ OPENING_OVERRIDE = {
     "still being a conversational opening, never a yawn or a shout. The lips part by "
     "about THREE QUARTERS of the thickness of her lower lip, showing the edge of the "
     "upper front teeth and a softly lit warm oral space below. The chin drops only "
-    "slightly and the cheeks stay relaxed."),
+    "slightly; nearby lower-cheek tissue follows the jaw without strain."),
  'eh': (
     "The lips part by about HALF her lower lip's thickness - clearly less open than "
     "AH, but clearly MORE open than the narrow EE/IH shape. The edge of the upper "
@@ -267,10 +287,11 @@ BLINK_PROMPT = (
     "eyebrows, nose, ears, hair, jewellery, clothing, shoulders, skin tone, freckles, "
     "makeup, lighting, colour grade and background. Do not re-frame, re-pose, "
     "re-light or retouch. Keep photographic realism with visible skin texture."
-    + CLOSER)
+    + BLINK_CLOSER)
 
 ORDER = ["closed", "PP", "FF", "TH", "DD", "nn", "kk", "CH", "SS", "RR",
          "ah", "eh", "ih", "oh", "oo", "blink"]
+SPEECH_ORDER = [name for name in ORDER if name != "blink"]
 
 EYE_SHAPES = {"blink"}
 
@@ -294,7 +315,7 @@ def prompt_for(name, yaw=None, roll=None):
         return BLINK_PROMPT
     group, desc, opening = SHAPES[name]
     opening = OPENING_OVERRIDE.get(name, opening)
-    return (BASE + AMPLITUDE + DENTAL_CONTINUITY + ORAL_RENDERING
+    return (BASE + AMPLITUDE + FACIAL_COUPLING + DENTAL_CONTINUITY + ORAL_RENDERING
             + pose_clause(yaw, roll)
             + f"MOUTH SHAPE TO RENDER - viseme '{name}' ({group}):\n{desc}\n\n"
             + f"HOW FAR THE MOUTH OPENS:\n{opening}" + CLOSER)

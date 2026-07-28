@@ -15,8 +15,8 @@ An avatar is a self-contained folder:
 Swapping the avatar is therefore just pointing `active.json` at another slug -
 nothing else in the project is avatar-specific.
 """
-import os, re, json, time, shutil, datetime, threading, traceback, tempfile
-from . import prep, generate, compose, render, visemes, measure
+import os, re, json, time, shutil, datetime, threading, traceback, tempfile, copy, uuid
+from . import anatomy, prep, generate, compose, render, visemes, measure, rig
 
 CODE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.abspath(os.environ.get("VIVIEEN_DATA_DIR", CODE_ROOT))
@@ -162,6 +162,191 @@ def create_avatar(image_path, name=None, slug=None):
 
 # ---------------------------------------------------------------- build
 
+RIG_ARTIFACTS = ("visemes", "diag", "runtime", "preview.mp4", "sheet.jpg")
+
+
+def _articulation_failure(row):
+    if row["ratio"] > row["max_ratio"]:
+        return (f"{row['name']} aperture {row['ratio']:.3f} exceeds "
+                f"{row['max_ratio']:.2f}")
+    minimum = row["want_width"] - 0.12
+    maximum = row["want_width"] + 0.12
+    return (f"{row['name']} width {row['width_ratio']:.2f}x neutral is outside "
+            f"{minimum:.2f}-{maximum:.2f} (target {row['want_width']:.2f})")
+
+
+def raw_render_gaps(slug):
+    raw_dir = os.path.join(adir(slug), "raw")
+    return [name for name in visemes.ORDER
+            if not any(os.path.exists(os.path.join(raw_dir, f"v_{name}.{ext}"))
+                       for ext in ("png", "jpg"))]
+
+
+def _remove_artifact(path):
+    if os.path.isdir(path) and not os.path.islink(path):
+        shutil.rmtree(path)
+    elif os.path.exists(path):
+        os.remove(path)
+
+
+def _snapshot_live(slug, prefix="rollback.rig"):
+    directory = adir(slug)
+    stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime())
+    name = f"{prefix}-{stamp}"
+    destination = os.path.join(directory, name)
+    if os.path.exists(destination):
+        destination += f"-{uuid.uuid4().hex[:6]}"
+        name = os.path.basename(destination)
+    os.makedirs(destination)
+    for artifact in RIG_ARTIFACTS:
+        source = os.path.join(directory, artifact)
+        target = os.path.join(destination, artifact)
+        if os.path.isdir(source):
+            shutil.copytree(source, target)
+        elif os.path.isfile(source):
+            shutil.copy2(source, target)
+    manifest_file = os.path.join(directory, "manifest.json")
+    if os.path.isfile(manifest_file):
+        shutil.copy2(
+            manifest_file, os.path.join(destination, "manifest.json"))
+    return name
+
+
+def _publish_stage(slug, stage_dir, manifest):
+    directory = adir(slug)
+    missing = [artifact for artifact in RIG_ARTIFACTS
+               if not os.path.exists(os.path.join(stage_dir, artifact))]
+    if missing:
+        raise RuntimeError(f"staging is incomplete: {', '.join(missing)}")
+    displaced = tempfile.mkdtemp(prefix=".rig-live-", dir=directory)
+    live_manifest = os.path.join(directory, "manifest.json")
+    displaced_manifest = os.path.join(displaced, "manifest.json")
+    moved_new = []
+    try:
+        if os.path.isfile(live_manifest):
+            os.replace(live_manifest, displaced_manifest)
+        for artifact in RIG_ARTIFACTS:
+            live = os.path.join(directory, artifact)
+            if os.path.exists(live):
+                os.replace(live, os.path.join(displaced, artifact))
+        for artifact in RIG_ARTIFACTS:
+            staged = os.path.join(stage_dir, artifact)
+            os.replace(staged, os.path.join(directory, artifact))
+            moved_new.append(artifact)
+        write_manifest(slug, manifest)
+    except Exception:
+        for artifact in moved_new:
+            _remove_artifact(os.path.join(directory, artifact))
+        for artifact in RIG_ARTIFACTS:
+            previous = os.path.join(displaced, artifact)
+            if os.path.exists(previous):
+                os.replace(previous, os.path.join(directory, artifact))
+        if os.path.exists(live_manifest):
+            os.unlink(live_manifest)
+        if os.path.isfile(displaced_manifest):
+            os.replace(displaced_manifest, live_manifest)
+        raise
+    finally:
+        shutil.rmtree(displaced, ignore_errors=True)
+
+
+def recompose_avatar(slug, profile, log=print, progress=None):
+    manifest = read_manifest(slug)
+    if not manifest or manifest.get("status") != "ready":
+        raise ValueError(f"{slug} is not ready for calibration")
+    profile = rig.normalize(profile)
+    gaps = raw_render_gaps(slug)
+    if gaps:
+        raise ValueError(f"missing retained renders: {', '.join(gaps)}")
+    directory = adir(slug)
+    stage = tempfile.mkdtemp(prefix=".rig-stage-", dir=directory)
+    lines = []
+
+    def emit(message):
+        text = str(message)
+        lines.append(text)
+        log(text)
+
+    def advance(stage_name, value, message):
+        if progress:
+            progress(stage_name, value, message)
+        emit(message)
+
+    try:
+        stage_visemes = os.path.join(stage, "visemes")
+        stage_diag = os.path.join(stage, "diag")
+        stage_runtime = os.path.join(stage, "runtime")
+        stage_keyframe = os.path.join(stage, "keyframe.png")
+        shutil.copy2(
+            os.path.join(directory, "keyframe.png"), stage_keyframe)
+        advance("compose", .08, "Recomposing retained local renders")
+        report, key_metrics = compose.compose_all(
+            stage_keyframe, os.path.join(directory, "raw"),
+            stage_visemes, diag_dir=stage_diag, log=emit,
+            profile=profile)
+        expected = len(visemes.ORDER)
+        if len(report) != expected:
+            raise AssertionError(
+                f"staged bank has {len(report)} of {expected} required shapes")
+        advance("articulation", .48, "Checking mouth articulation")
+        aperture, over = measure.audit(
+            stage_keyframe, stage_visemes, log=emit,
+            names=visemes.SPEECH_ORDER)
+        if over:
+            raise AssertionError(
+                "unsafe articulation: " +
+                "; ".join(_articulation_failure(row) for row in over))
+        advance("preview", .58, "Rendering local preview")
+        render.preview(
+            stage_visemes, os.path.join(stage, "preview.mp4"))
+        render.contact_sheet(
+            stage_visemes, stage_keyframe,
+            os.path.join(stage, "sheet.jpg"))
+        advance("anatomy", .70, "Running anatomy QA")
+        qa = anatomy.validate(
+            stage_keyframe, stage_visemes, profile, diag_dir=stage_diag)
+        emit("anatomy QA passed: " + anatomy.summary(qa))
+        worst_residual = max(row["resid_px"] for row in report)
+        worst_drift = max(row["outside_delta"] for row in report)
+        next_manifest = copy.deepcopy(manifest)
+        next_manifest.update(
+            status="ready",
+            visemes=report,
+            keyframe_metrics=key_metrics,
+            aperture=aperture,
+            over_articulated=[],
+            preview="preview.mp4",
+            sheet="sheet.jpg",
+            rig_profile=profile,
+            rig_qa=qa,
+            rebuild_mode="local_recompose",
+            quality=dict(worst_resid_px=worst_residual,
+                         worst_off_region_delta=worst_drift,
+                         shapes=len(report), missing=[]),
+            progress=dict(done=len(report), total=len(report),
+                          stage="done"),
+            log=lines[-400:],
+        )
+        next_manifest.pop("error", None)
+        from . import export
+        advance("runtime", .78, "Exporting runtime sprite strips")
+        export.export(
+            slug, stage_runtime, log=emit, source_dir=stage,
+            manifest_data=next_manifest)
+        advance("snapshot", .93, "Snapshotting the published avatar for rollback")
+        rollback_name = _snapshot_live(slug)
+        next_manifest["last_rollback"] = rollback_name
+        advance("publish", .97,
+                f"Publishing calibrated runtime; rollback {rollback_name}")
+        next_manifest["log"] = lines[-400:]
+        _publish_stage(slug, stage, next_manifest)
+        if progress:
+            progress("done", 1.0, "Published")
+        return read_manifest(slug)
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+
 def build_avatar(slug, shapes=None, log=None, quality="high"):
     d = adir(slug)
     m = read_manifest(slug)
@@ -215,7 +400,9 @@ def build_avatar(slug, shapes=None, log=None, quality="high"):
         emit("pose-locking and compositing...")
         m["progress"] = dict(done=len(names), total=len(names), stage="compose")
         write_manifest(slug, m)
-        report, kmet = compose.compose_all(key, raw, out, diag_dir=diag, log=emit)
+        profile = rig.from_manifest(m)
+        report, kmet = compose.compose_all(
+            key, raw, out, diag_dir=diag, log=emit, profile=profile)
 
         emit("checking mouth amplitude...")
         aperture, over = measure.audit(key, out, log=emit)
@@ -235,6 +422,7 @@ def build_avatar(slug, shapes=None, log=None, quality="high"):
 
         m.update(status="ready", visemes=report, keyframe_metrics=kmet,
                  aperture=aperture, over_articulated=[r["name"] for r in over],
+                 rig_profile=profile,
                  preview="preview.mp4", sheet="sheet.jpg",
                  quality=dict(worst_resid_px=worst, worst_off_region_delta=drift,
                               shapes=len(report), missing=missing))

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Vivieen Appearance</title>
+  <style>
+    :root{color-scheme:light;--ink:#1b1820;--muted:#706a75;--line:rgba(42,34,47,.13);--pink:#d51466;--track:#ded8df}
+    *{box-sizing:border-box}
+    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}
+    body{padding:10px;font-family:"Avenir Next","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;color:var(--ink)}
+    main{height:100%;padding:16px 18px 15px;border:1px solid rgba(26,21,29,.16);border-radius:20px;background:rgba(255,252,253,.96);box-shadow:0 18px 45px rgba(25,18,29,.22),inset 0 1px 0 white;backdrop-filter:blur(28px) saturate(1.22)}
+    header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;-webkit-app-region:drag}
+    h1{margin:0;font-size:15px;line-height:1.2;font-weight:760;letter-spacing:-.01em}
+    .hint{color:var(--muted);font-size:10px;font-weight:650;letter-spacing:.05em;text-transform:uppercase}
+    .control{padding:10px 0 8px;border-top:1px solid var(--line)}
+    .control:first-of-type{border-top:0}
+    .label{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+    label{font-size:12px;font-weight:680}
+    output{min-width:54px;text-align:right;color:var(--pink);font-variant-numeric:tabular-nums;font-size:12px;font-weight:760}
+    input[type=range]{width:100%;height:20px;margin:0;appearance:none;background:transparent;cursor:pointer;-webkit-app-region:no-drag}
+    input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:999px;background:linear-gradient(90deg,var(--pink) 0 var(--fill,50%),var(--track) var(--fill,50%) 100%)}
+    input[type=range]::-webkit-slider-thumb{appearance:none;width:18px;height:18px;margin-top:-6.5px;border:2px solid white;border-radius:50%;background:var(--pink);box-shadow:0 2px 8px rgba(128,8,60,.32)}
+    input[type=range]:focus-visible{outline:2px solid rgba(213,20,102,.3);outline-offset:3px;border-radius:8px}
+    input[type=range]:disabled{cursor:not-allowed;filter:grayscale(.65);opacity:.48}
+    #note{height:14px;margin-top:2px;color:var(--muted);font-size:10px;line-height:14px}
+  </style>
+</head>
+<body>
+  <main>
+    <header><h1>Character Appearance</h1><span class="hint">Live</span></header>
+    <section class="control">
+      <div class="label"><label for="size">Size</label><output id="sizeValue">100%</output></div>
+      <input id="size" type="range" min="25" max="400" step="1" value="100" aria-label="Character size">
+    </section>
+    <section class="control">
+      <div class="label"><label for="opacity">Opacity</label><output id="opacityValue">50%</output></div>
+      <input id="opacity" type="range" min="0" max="100" step="1" value="50" aria-label="Character opacity">
+    </section>
+    <div id="note">Empty pixels remain click-through.</div>
+  </main>
+  <script>
+    const api=window.vivieenAppearance;
+    const size=document.getElementById('size'),opacity=document.getElementById('opacity');
+    const sizeValue=document.getElementById('sizeValue'),opacityValue=document.getElementById('opacityValue');
+    const note=document.getElementById('note');
+    const paint=input=>{const min=Number(input.min),max=Number(input.max),value=Number(input.value);input.style.setProperty('--fill',`${(value-min)/(max-min)*100}%`)};
+    function sync(state={}){
+      const pet=state.pet||{};
+      const sizePercent=Math.round((Number(pet.zoom)||1)*100);
+      const opacityPercent=Math.round(Math.max(0,Math.min(1,Number(pet.opacity)||0))*100);
+      if(document.activeElement!==size)size.value=String(sizePercent);
+      if(document.activeElement!==opacity)opacity.value=String(opacityPercent);
+      sizeValue.value=`${size.value}%`;opacityValue.value=`${opacity.value}%`;
+      size.disabled=Boolean(pet.roam);
+      note.textContent=pet.roam?'Pause Horizon Walk to resize the standing character.':'Empty pixels remain click-through.';
+      paint(size);paint(opacity);
+    }
+    let sizeFrame=0,opacityFrame=0;
+    size.addEventListener('input',()=>{sizeValue.value=`${size.value}%`;paint(size);cancelAnimationFrame(sizeFrame);sizeFrame=requestAnimationFrame(()=>api?.setSize(Number(size.value)/100))});
+    opacity.addEventListener('input',()=>{opacityValue.value=`${opacity.value}%`;paint(opacity);cancelAnimationFrame(opacityFrame);opacityFrame=requestAnimationFrame(()=>api?.setOpacity(Number(opacity.value)/100))});
+    api?.onState(sync);api?.getState().then(sync);
+    addEventListener('keydown',event=>{if(event.key==='Escape')window.close()});
+  </script>
+</body>
+</html>

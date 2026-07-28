@@ -74,13 +74,19 @@ button.btn.danger{color:#d9705f}
 .drop{border:1.5px dashed #2e2e36;border-radius:14px;padding:34px;text-align:center;
   color:var(--dim);cursor:pointer;transition:.15s}
 .drop.over{border-color:var(--accent);background:rgba(226,72,58,.05);color:var(--ink)}
-.log{background:#08080a;border:1px solid var(--line);border-radius:10px;padding:12px 14px;
-  font:11.5px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;color:#9a9aa4;
-  max-height:190px;overflow:auto;white-space:pre-wrap;margin-top:12px;display:none}
-.log.on{display:block}
-.bar{height:3px;background:#1e1e23;border-radius:2px;overflow:hidden;margin-top:10px;display:none}
-.bar.on{display:block}
-.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .4s}
+.jobbox{display:none;margin-top:12px;padding:10px 11px;border:1px solid var(--line);
+  border-radius:9px;background:#0a0a0d}
+.jobbox.on{display:block}.jobbox.ok{border-color:rgba(78,167,123,.42)}
+.jobbox.bad{border-color:rgba(226,72,58,.48)}
+.jobhead{display:flex;align-items:center;gap:10px;font-size:11px}
+.job-stage{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--ink);font-weight:600}.job-pct{margin-left:auto;color:var(--dim);
+  font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace}
+.job-line{margin-top:7px;color:var(--dim);font:10.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jobbox .bar{height:3px;background:#1e1e23;border-radius:2px;overflow:hidden;margin-top:8px}
+.jobbox .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .35s}
+.jobbox.ok .bar i{background:var(--ok)}
 .savebar{position:fixed;left:0;right:0;bottom:0;padding:14px 28px;
   background:rgba(11,11,13,.92);backdrop-filter:blur(14px);border-top:1px solid var(--line);
   display:flex;align-items:center;gap:14px;justify-content:flex-end}
@@ -97,6 +103,103 @@ button.btn.danger{color:#d9705f}
   text-transform:uppercase;margin-bottom:3px}
 .mapping span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .model-lock{color:var(--dim);font-size:12px;margin-top:8px}
+.rig-shell{display:none;position:fixed;inset:0;z-index:50;overflow:auto;
+  background:rgba(4,4,6,.88);backdrop-filter:blur(18px);padding:26px}
+.rig-shell.on{display:block}
+.rig-dialog{max-width:1220px;min-height:calc(100vh - 52px);margin:0 auto;
+  background:#101013;border:1px solid #2b2b32;border-radius:18px;overflow:hidden;
+  box-shadow:0 30px 100px rgba(0,0,0,.55)}
+.rig-head{display:flex;align-items:center;gap:16px;padding:18px 22px;
+  border-bottom:1px solid var(--line)}
+.rig-head h3{margin:0;font-size:16px}.rig-head p{margin:2px 0 0;color:var(--dim);font-size:12px}
+.rig-close{margin-left:auto;border:0;background:none;color:var(--dim);font-size:24px;
+  line-height:1;cursor:pointer;padding:5px 8px}.rig-close:hover{color:var(--ink)}
+.rig-loading{padding:80px 24px;text-align:center;color:var(--dim)}
+.rig-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,.72fr);
+  min-height:660px}
+.rig-visual{padding:20px;border-right:1px solid var(--line);min-width:0}
+.rig-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.rig-toolbar strong{font-size:11px;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--dim);margin-right:4px}
+.rig-chip{border:1px solid var(--line);background:#17171b;color:var(--dim);
+  border-radius:8px;padding:6px 10px;font:inherit;font-size:12px;cursor:pointer}
+.rig-chip.on{color:var(--ink);border-color:#4a4a56;background:#25252b}
+.rig-stage{position:relative;aspect-ratio:1;max-height:690px;margin:auto;
+  background:#050506;border:1px solid #202026;border-radius:12px;overflow:hidden}
+.rig-stage img,.rig-stage canvas{position:absolute;inset:0;width:100%;height:100%;
+  object-fit:contain}.rig-stage canvas{pointer-events:none}
+.rig-overlays{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:12px;
+  color:var(--dim);font-size:12px}
+.rig-overlays label{display:flex;align-items:center;gap:6px;margin:0;color:inherit;
+  font-size:12px;letter-spacing:0;text-transform:none;cursor:pointer}
+.rig-overlays input{width:auto;margin:0;accent-color:var(--accent)}
+.rig-legend{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap}
+.rig-legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
+.rig-panel{padding:22px;overflow:auto;max-height:calc(100vh - 158px)}
+.rig-panel h4{margin:0 0 14px;font-size:11px;text-transform:uppercase;
+  letter-spacing:.12em;color:var(--dim)}
+.rig-preset{margin-bottom:20px}
+.rig-control{padding:14px 0;border-top:1px solid var(--line)}
+.rig-control-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.rig-control-head label{margin:0;color:var(--ink);font-size:13px;letter-spacing:0;
+  text-transform:none}.rig-value{font:600 12px ui-monospace,SFMono-Regular,Menlo,monospace;
+  border-radius:6px;padding:2px 7px}.rig-value.safe{color:#83d7ad;background:rgba(78,167,123,.16)}
+.rig-value.experimental{color:#ef8175;background:rgba(226,72,58,.16)}
+.rig-control input[type=range]{appearance:none;height:5px;padding:0;border:0;border-radius:5px;
+  --safe-start:0%;--safe-end:100%;margin:13px 0 7px;accent-color:var(--ok);
+  background:linear-gradient(to right,
+    rgba(226,72,58,.82) 0 var(--safe-start),
+    rgba(78,167,123,.92) var(--safe-start) var(--safe-end),
+    rgba(226,72,58,.82) var(--safe-end) 100%)}
+.rig-control input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;
+  border-radius:50%;border:2px solid #101013}
+.rig-control input[type=range].safe::-webkit-slider-thumb{background:var(--ok);
+  box-shadow:0 0 0 3px rgba(78,167,123,.2)}
+.rig-control input[type=range].experimental::-webkit-slider-thumb{background:var(--accent);
+  box-shadow:0 0 0 3px rgba(226,72,58,.2)}
+.rig-help{color:var(--dim);font-size:11.5px}
+.rig-range{display:flex;justify-content:space-between;gap:10px;margin-top:5px;
+  font:600 10px ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase}
+.rig-range .safe{color:#70c99d}.rig-range .experimental{color:#e36f63}
+.rig-locks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}
+.rig-lock{padding:11px;border:1px solid #2a2a31;border-radius:9px;background:#151519}
+.rig-lock small{display:block;color:var(--dim);font-size:10px;text-transform:uppercase;
+  letter-spacing:.08em}.rig-lock b{display:block;margin-top:4px;font-size:12px;color:#73d0a5}
+.rig-status{padding:13px;border-radius:10px;border:1px solid #2a2a31;background:#0b0b0e;
+  color:var(--dim);font-size:12px;white-space:pre-wrap}
+.rig-status.ok{border-color:rgba(78,167,123,.45);color:#83d7ad}
+.rig-status.bad{border-color:rgba(226,72,58,.45);color:#ef8175}
+.rig-foot{display:flex;align-items:center;gap:12px;padding:15px 22px;
+  border-top:1px solid var(--line);background:#0d0d10}
+.rig-foot .note{margin:0;margin-right:auto;max-width:650px}
+.body-grid{display:grid;grid-template-columns:minmax(320px,1.15fr) minmax(300px,.85fr);min-height:580px}
+.body-visual{position:relative;display:grid;place-items:center;padding:30px;overflow:hidden;
+  border-right:1px solid var(--line);background:
+  radial-gradient(circle at 50% 35%,rgba(226,72,58,.13),transparent 38%),
+  linear-gradient(145deg,#111116,#08080b)}
+.body-visual:before{content:"";position:absolute;inset:8%;border:1px solid rgba(255,255,255,.06);
+  border-radius:50% 50% 12% 12%/22% 22% 9% 9%;filter:blur(.2px)}
+.body-preview{position:relative;z-index:1;width:100%;height:min(68vh,650px);object-fit:contain;
+  filter:drop-shadow(0 26px 38px rgba(0,0,0,.48))}
+.body-empty{position:relative;z-index:1;max-width:390px;text-align:center;color:var(--dim)}
+.body-empty-mark{width:112px;height:210px;margin:0 auto 24px;border:1px solid #3a3a44;
+  border-radius:52% 52% 22% 22%/24% 24% 12% 12%;background:linear-gradient(180deg,#25252d,#111116);
+  box-shadow:0 25px 60px rgba(0,0,0,.36),inset 0 1px rgba(255,255,255,.06)}
+.body-panel{padding:24px;overflow:auto;max-height:calc(100vh - 160px)}
+.body-panel h4{margin:20px 0 12px;font-size:11px;color:var(--dim);letter-spacing:.12em;text-transform:uppercase}
+.body-panel h4:first-child{margin-top:0}.body-provider{padding:14px;border:1px solid #2b2b33;border-radius:11px;background:#111115}
+.body-provider strong{display:block;margin-top:7px}.body-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.body-progress{margin-top:16px;padding:14px;border:1px solid #2b2b33;border-radius:11px;background:#0b0b0e}
+.body-progress .bar{height:5px;margin:10px 0}.body-actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:18px}
+.body-identity{margin-top:14px;padding:12px 13px;border:1px solid rgba(78,167,123,.28);border-radius:10px;
+  background:rgba(78,167,123,.07);color:#87d8b2;font-size:12px;line-height:1.45}
+.body-motion{padding:14px;border:1px solid #2b2b33;border-radius:11px;background:#111115}
+.body-motion input[type=file]{display:block;width:100%;margin:12px 0 8px;color:var(--dim);font-size:12px}
+.body-motion-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+@media(max-width:860px){.rig-shell{padding:0}.rig-dialog{border:0;border-radius:0;min-height:100vh}
+  .body-grid{grid-template-columns:1fr}.body-visual{border-right:0;border-bottom:1px solid var(--line)}
+  .rig-grid{grid-template-columns:1fr}.rig-visual{border-right:0;border-bottom:1px solid var(--line)}
+  .rig-panel{max-height:none}.rig-foot{position:sticky;bottom:0}.rig-legend{margin-left:0}}
 .hidden{display:none!important}
 </style>
 
@@ -141,6 +244,12 @@ button.btn.danger{color:#d9705f}
   <h2>Think · language model</h2>
   <div class="card" id="blk-llm"></div>
 
+  <h2>Create · image generation</h2>
+  <div class="card" id="blk-image"></div>
+
+  <h2>Animate · video generation</h2>
+  <div class="card" id="blk-video"></div>
+
   <h2>Speak · text to speech</h2>
   <div class="card" id="blk-tts"></div>
 
@@ -164,6 +273,138 @@ button.btn.danger{color:#d9705f}
 </section>
 </main>
 
+<div class="rig-shell" id="rig-modal" role="dialog" aria-modal="true" aria-labelledby="rig-title">
+  <div class="rig-dialog">
+    <div class="rig-head">
+      <div>
+        <h3 id="rig-title">Facial calibration</h3>
+        <p id="rig-subtitle">Inspect the mapped face before rebuilding.</p>
+      </div>
+      <span class="pill ok">local renders only</span>
+      <button class="rig-close" id="rig-close" aria-label="Close calibration">×</button>
+    </div>
+    <div class="rig-loading" id="rig-loading">Reading facial landmarks…</div>
+    <div id="rig-content" class="hidden">
+      <div class="rig-grid">
+        <div class="rig-visual">
+          <div class="rig-toolbar" id="rig-visemes"><strong>Pose</strong></div>
+          <div class="rig-stage">
+            <img id="rig-image" alt="Selected avatar pose">
+            <canvas id="rig-canvas"></canvas>
+          </div>
+          <div class="rig-overlays">
+            <label><input type="checkbox" id="rig-show-mesh" checked> 478 landmarks</label>
+            <label><input type="checkbox" id="rig-show-regions" checked> Influence regions</label>
+            <label><input type="checkbox" id="rig-show-teeth" checked> Canonical teeth</label>
+            <div class="rig-legend">
+              <span><i style="background:#55d6bc"></i>deformable</span>
+              <span><i style="background:#ef6659"></i>rigid</span>
+              <span><i style="background:#edc66a"></i>teeth</span>
+            </div>
+          </div>
+        </div>
+        <aside class="rig-panel">
+          <h4>Motion targets</h4>
+          <div class="rig-preset">
+            <label for="rig-preset">Preset</label>
+            <select id="rig-preset">
+              <option value="natural">Natural</option>
+              <option value="subtle">Subtle</option>
+              <option value="expressive">Expressive</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div id="rig-controls"></div>
+          <div class="rig-locks">
+            <div class="rig-lock"><small>Nose bridge + tip</small><b>0% · rigid</b></div>
+            <div class="rig-lock"><small>Upper / lower dental identity</small><b id="rig-donor">Locked</b></div>
+          </div>
+          <div class="rig-status" id="rig-status"></div>
+        </aside>
+      </div>
+      <div class="rig-foot">
+        <p class="note">Rebuild uses retained expression renders, runs anatomy QA in staging, and publishes only after a rollback snapshot is complete. No model credits are used.</p>
+        <button class="btn" id="rig-cancel">Cancel</button>
+        <button class="btn pri" id="rig-apply">Validate & rebuild</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="rig-shell" id="body-modal" role="dialog" aria-modal="true" aria-labelledby="body-title">
+  <div class="rig-dialog">
+    <div class="rig-head">
+      <div>
+        <h3 id="body-title">Full Body Studio</h3>
+        <p id="body-subtitle">Design the companion's body without surrendering facial identity.</p>
+      </div>
+      <span class="pill" id="body-provider-pill">EnConvo default</span>
+      <button class="rig-close" id="body-close" aria-label="Close Full Body Studio">×</button>
+    </div>
+    <div class="body-grid">
+      <div class="body-visual">
+        <img class="body-preview hidden" id="body-preview" alt="Generated full-body companion">
+        <div class="body-empty" id="body-empty">
+          <div class="body-empty-mark"></div>
+          <strong style="display:block;color:var(--ink);font-size:16px;margin-bottom:8px">One identity. A complete presence.</strong>
+          The image model creates wardrobe and silhouette. Vivieen then removes the background locally and replaces the generated face with the calibrated animated face.
+        </div>
+      </div>
+      <aside class="body-panel">
+        <h4>Image provider</h4>
+        <div class="body-provider" id="body-provider">Reading EnConvo's default…</div>
+        <h4>Art direction</h4>
+        <div class="body-fields">
+          <div class="f"><label for="body-style">Treatment</label><select id="body-style">
+            <option value="photorealistic">Photorealistic</option>
+            <option value="editorial">Editorial</option>
+            <option value="illustrated">Illustrated</option>
+            <option value="anime">Anime</option>
+            <option value="soft-3d">Soft 3D</option>
+          </select></div>
+          <div class="f"><label for="body-pose">Presence</label><select id="body-pose">
+            <option value="relaxed">Relaxed</option>
+            <option value="confident">Confident</option>
+            <option value="friendly">Friendly</option>
+            <option value="formal">Formal</option>
+            <option value="casual">Casual</option>
+          </select></div>
+        </div>
+        <div class="f" style="margin-top:13px"><label for="body-outfit">Wardrobe direction</label>
+          <textarea id="body-outfit" style="min-height:94px" placeholder="Extend the visible outfit, or describe a new look…"></textarea></div>
+        <div class="f" style="margin-top:13px"><label for="body-notes">Additional direction</label>
+          <textarea id="body-notes" style="min-height:76px" placeholder="Silhouette, palette, materials, accessories…"></textarea></div>
+        <div class="body-identity"><b>Identity Lock is always on.</b><br>The original 1024px animated face remains the runtime face at every zoom level. The provider never replaces the lip-sync rig.</div>
+        <h4>Desktop motion</h4>
+        <div class="body-motion">
+          <div class="body-provider" id="body-video-provider">Reading EnConvo's video default…</div>
+          <div class="f" style="margin-top:13px"><label for="body-motion-reference">Edge-idle pose reference</label>
+            <input id="body-motion-reference" type="file" accept="image/png,image/jpeg,image/webp">
+            <p class="note">Used only for pose geometry. Vivieen keeps her own face, hair, wardrobe, and proportions; the staged copy is deleted when the job finishes.</p>
+          </div>
+          <div class="body-motion-actions">
+            <button class="btn danger hidden" id="body-motion-remove">Remove motion</button>
+            <div class="grow"></div>
+            <button class="btn pri" id="body-motion-generate">Generate walk + edge idle</button>
+          </div>
+          <p class="note" id="body-motion-status" style="margin-top:10px">Generate a full body first.</p>
+        </div>
+        <div class="body-progress hidden" id="body-progress">
+          <div class="jobhead"><span id="body-stage">Preparing</span><span id="body-percent">0%</span></div>
+          <div class="bar"><i id="body-progress-bar" style="width:0%"></i></div>
+          <div class="note" id="body-progress-line"></div>
+        </div>
+        <div class="body-actions">
+          <button class="btn danger hidden" id="body-remove">Remove body</button>
+          <div class="grow"></div>
+          <button class="btn" id="body-cancel">Cancel</button>
+          <button class="btn pri" id="body-generate">Generate full body</button>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
 <div class="savebar">
   <div class="msg" id="msg"></div>
   <button class="btn" id="revert">Revert</button>
@@ -174,7 +415,10 @@ button.btn.danger{color:#d9705f}
 const $ = s => document.querySelector(s);
 const api = async (p, o) => (await fetch(p, o)).json();
 const SHELL = window.vivieen;
-let CFG = null, CAT = null, GLOBALS = {}, ACTIVE = null, POLL = null;
+let CFG = null, CAT = null, GLOBALS = {}, MEDIA_DEFAULTS = {}, ACTIVE = null, POLL = null;
+let RIG = null, RIG_SLUG = null, RIG_PROFILE = null, RIG_POSE = 'closed', RIG_WATCH = null;
+let BODY_SLUG = null, BODY_STATE = null, BODY_WATCH = null;
+
 if (SHELL && SHELL.isElectron) {
   $('.back').onclick = e => { e.preventDefault(); SHELL.showAvatar(); };
 }
@@ -245,6 +489,46 @@ function mappingRows(kind, mapped) {
   if (kind === 'llm' && mapped.reasoning_effort) rows.push(['Reasoning', mapped.reasoning_effort]);
   if (kind === 'tts' && mapped.speed) rows.push(['Speed', mapped.speed + '×']);
   return rows.map(([label, value]) => `<div><small>${esc(label)}</small><span title="${esc(value)}">${esc(value)}</span></div>`).join('');
+}
+
+function renderMediaDefault(kind) {
+  const element = $('#blk-' + kind), state = MEDIA_DEFAULTS[kind] || {};
+  const provider = state.provider;
+  if (!provider) {
+    element.innerHTML = `<div class="row"><div class="f" style="max-width:310px">
+      <label>Provider</label><select disabled><option>EnConvo global default</option></select></div></div>
+      <div class="res on"><span class="pill bad">unavailable</span> ${esc(state.error || 'Reading EnConvo’s selected provider…')}</div>
+      <div style="margin-top:12px"><button class="btn sm" data-refresh-media>Refresh EnConvo defaults</button></div>`;
+  } else {
+    element.innerHTML = `<div class="row"><div class="f" style="max-width:310px">
+      <label>Provider</label><select disabled><option>EnConvo global default</option></select></div></div>
+      <div class="inherit">
+        <div class="inherit-head"><div><span class="pill ok">inherited live</span>
+          <b>${esc(provider.title || provider.name)}</b></div></div>
+        <div class="mapping">${mappingRows(kind, {
+          provider_label: provider.title || provider.name,
+          model: provider.model || 'Provider default'
+        })}</div>
+        <p class="note">Managed in EnConvo Settings at <b>Global Providers → ${kind === 'image' ? 'Image Generation' : 'Video Generation'}</b>. Vivieen reads only the selected command and model metadata; credentials never enter this app.</p>
+        <div class="row"><button class="btn sm" data-refresh-media>Refresh EnConvo defaults</button></div>
+      </div>`;
+  }
+  const button = element.querySelector('[data-refresh-media]');
+  if (button) button.onclick = () => refreshMediaDefaults(button);
+}
+
+async function refreshMediaDefaults(button = null, quiet = false) {
+  if (button) button.disabled = true;
+  try {
+    MEDIA_DEFAULTS = await api('/api/media/defaults');
+  } catch (error) {
+    MEDIA_DEFAULTS = {
+      image: {available: false, error: String(error)},
+      video: {available: false, error: String(error)}
+    };
+  }
+  ['image', 'video'].forEach(renderMediaDefault);
+  if (!quiet) note('EnConvo image and video defaults refreshed.');
 }
 
 function choiceField(kind, field, label, source, state) {
@@ -454,12 +738,17 @@ async function refreshGlobals(kind, button) {
 }
 
 async function refreshVisibleGlobals() {
-  if (!CFG || !['llm', 'tts', 'stt'].some(kind => CFG[kind].provider === 'enconvo')) return;
-  const response = await api('/api/config');
-  GLOBALS = response.globals || {};
-  ['llm', 'tts', 'stt'].forEach(kind => {
-    if (CFG[kind].provider === 'enconvo') renderBlock(kind);
-  });
+  if (!CFG) return;
+  const tasks = [refreshMediaDefaults(null, true)];
+  if (['llm', 'tts', 'stt'].some(kind => CFG[kind].provider === 'enconvo')) {
+    tasks.push(api('/api/config').then(response => {
+      GLOBALS = response.globals || {};
+      ['llm', 'tts', 'stt'].forEach(kind => {
+        if (CFG[kind].provider === 'enconvo') renderBlock(kind);
+      });
+    }));
+  }
+  await Promise.all(tasks);
 }
 
 /* ---------------------------------------------------------------- avatars */
@@ -491,14 +780,29 @@ function metrics(m) {
   }).join('')}</div>`;
 }
 
+function avatarProgress(a) {
+  const job = a.job || {}, live = job.progress || {}, saved = a.progress || {};
+  const fallback = saved.total ? saved.done / saved.total : 0;
+  const value = Number.isFinite(Number(live.value)) ? Number(live.value) : fallback;
+  return {
+    value: Math.max(0, Math.min(1, value || 0)),
+    label: live.label || live.stage || job.phase || saved.stage || 'Working',
+    line: job.phase || live.label || saved.current || ''
+  };
+}
+
 function card(a) {
   const on = a.slug === ACTIVE, st = a.status || 'draft';
   const busy = st === 'building' || (a.job && !a.job.done);
   const pill = { ready: 'ok', building: 'warn', draft: '', error: 'bad' }[st] || '';
   const thumb = `/files/${a.slug}/keyframe.png`;
-  return `<div class="av ${on ? 'active' : ''}" data-slug="${esc(a.slug)}">
+  const progress = avatarProgress(a), percent = Math.round(progress.value * 100);
+  return `<div class="av ${on ? 'active' : ''}" data-slug="${esc(a.slug)}"
+    data-busy="${busy ? '1' : '0'}" data-job-kind="${esc((a.job && a.job.kind) || 'build')}">
     <div class="thumb" style="background-image:url('${thumb}'),url('/files/${a.slug}/source.png')">
-      <span class="badge pill ${on ? 'act' : pill}">${esc(on ? 'active' : st)}</span>
+      <span class="badge pill ${on ? 'act' : busy ? 'warn' : pill}">${esc(busy
+        ? ((a.job && a.job.kind) === 'calibration' ? 'calibrating' : 'building')
+        : on ? 'active' : st)}</span>
     </div>
     <div class="body">
       <h3>${esc(a.name || a.slug)}</h3>
@@ -507,14 +811,38 @@ function card(a) {
       <div class="acts">
         ${st === 'ready'
       ? `<button class="btn sm pri" data-act="activate" ${on ? 'disabled' : ''}>${on ? 'In use' : 'Use this face'}</button>
-             <button class="btn sm" data-act="build">Rebuild</button>`
+             <button class="btn sm" data-act="calibrate" ${busy ? 'disabled' : ''}>${busy ? 'Calibrating…' : 'Rebuild'}</button>
+             <button class="btn sm" data-act="body" ${busy ? 'disabled' : ''}>${a.body ? 'Edit full body' : 'Create full body'}</button>`
       : `<button class="btn sm pri" data-act="build" ${busy ? 'disabled' : ''}>${busy ? 'Building…' : 'Build avatar'}</button>`}
         ${a.preview ? `<a class="btn sm" href="/files/${a.slug}/preview.mp4">Preview</a>` : ''}
         <button class="btn sm danger" data-act="delete" ${on ? 'disabled' : ''}>Delete</button>
       </div>
-      <div class="bar ${busy ? 'on' : ''}"><i style="width:${Math.round((a.progress || 0) * 100)}%"></i></div>
-      <div class="log ${busy ? 'on' : ''}"></div>
+      <div class="jobbox ${busy ? 'on' : ''}">
+        <div class="jobhead"><span class="job-stage">${esc(progress.label)}</span><span class="job-pct">${percent}%</span></div>
+        <div class="bar"><i style="width:${percent}%"></i></div>
+        <div class="job-line">${esc(progress.line)}</div>
+      </div>
     </div></div>`;
+}
+
+function bindAvatarActions(root) {
+  root.querySelectorAll('[data-act]').forEach(button => button.onclick = () => {
+    const slug = button.closest('.av').dataset.slug;
+    act(button.dataset.act, slug, button);
+  });
+}
+
+function stopAvatarPoll() {
+  if (POLL) clearTimeout(POLL);
+  POLL = null;
+}
+
+function scheduleAvatarPoll() {
+  if (POLL) return;
+  POLL = setTimeout(() => {
+    POLL = null;
+    pollBusyAvatars();
+  }, 900);
 }
 
 async function loadAvatars() {
@@ -522,30 +850,106 @@ async function loadAvatars() {
   ACTIVE = r.active;
   $('#avatars').innerHTML = r.avatars.map(card).join('') ||
     '<p class="note">No avatars yet. Drop a portrait above.</p>';
-  $('#avatars').querySelectorAll('[data-act]').forEach(b => b.onclick = () => {
-    const slug = b.closest('.av').dataset.slug;
-    act(b.dataset.act, slug, b);
-  });
-  const busy = r.avatars.some(a => a.status === 'building' || (a.job && !a.job.done));
-  if (busy) { r.avatars.forEach(a => tail(a.slug)); if (!POLL) POLL = setInterval(loadAvatars, 2500); }
-  else if (POLL) { clearInterval(POLL); POLL = null; }
+  bindAvatarActions($('#avatars'));
+  const busy = r.avatars.filter(a => a.status === 'building' || (a.job && !a.job.done));
+  busy.forEach(a => tail(a.slug));
+  if (busy.length) scheduleAvatarPoll(); else stopAvatarPoll();
 }
 
-async function tail(slug) {
-  const el = document.querySelector(`.av[data-slug="${slug}"] .log`);
-  if (!el) return;
-  const r = await api('/api/avatar/progress?slug=' + encodeURIComponent(slug));
-  const lines = (r.job && r.job.log) || [];
-  if (!lines.length) return;
-  el.classList.add('on');
-  el.textContent = lines.slice(-40).join('\n');
-  el.scrollTop = el.scrollHeight;
-  const p = (r.manifest && r.manifest.progress) || 0;
-  const bar = el.previousElementSibling;
-  if (bar) { bar.classList.add('on'); bar.firstElementChild.style.width = Math.round(p * 100) + '%'; }
+async function refreshAvatarCard(slug) {
+  const listing = await api('/api/avatars');
+  ACTIVE = listing.active;
+  const avatar = listing.avatars.find(item => item.slug === slug);
+  const current = document.querySelector(`.av[data-slug="${slug}"]`);
+  if (!avatar || !current) return;
+  const holder = document.createElement('div');
+  holder.innerHTML = card(avatar);
+  const replacement = holder.firstElementChild;
+  current.replaceWith(replacement);
+  bindAvatarActions(replacement);
+}
+
+async function tail(slug, response = null) {
+  const cardElement = document.querySelector(`.av[data-slug="${slug}"]`);
+  if (!cardElement) return false;
+  const r = response || await api('/api/avatar/progress?slug=' + encodeURIComponent(slug));
+  const job = r.job || {}, manifest = r.manifest || {};
+  const running = !job.done || manifest.status === 'building';
+  const live = job.progress || {}, saved = manifest.progress || {};
+  const fallback = saved.total ? saved.done / saved.total : 0;
+  const value = Number.isFinite(Number(live.value)) ? Number(live.value) : fallback;
+  const percent = Math.round(Math.max(0, Math.min(1, value || 0)) * 100);
+  const lines = job.log || [];
+  const label = live.label || live.stage || job.phase || saved.stage || 'Working';
+  const detail = lines.length ? lines[lines.length - 1] : job.phase || label;
+  const box = cardElement.querySelector('.jobbox');
+  const badge = cardElement.querySelector('.badge');
+  const actionButton = cardElement.querySelector('[data-act="calibrate"], [data-act="build"]');
+  cardElement.dataset.busy = running ? '1' : '0';
+  cardElement.dataset.jobKind = job.kind || cardElement.dataset.jobKind || 'build';
+
+  if (box) {
+    box.className = 'jobbox on' + (job.error ? ' bad' : !running ? ' ok' : '');
+    box.querySelector('.job-stage').textContent = job.error ? 'Failed' : !running ?
+      (job.kind === 'calibration' ? 'Published' : 'Ready') : label;
+    box.querySelector('.job-pct').textContent = (job.error ? percent : !running ? 100 : percent) + '%';
+    box.querySelector('.bar i').style.width = (job.error ? percent : !running ? 100 : percent) + '%';
+    box.querySelector('.job-line').textContent = job.error || detail;
+  }
+  if (badge) {
+    badge.textContent = running ? (job.kind === 'calibration' ? 'calibrating' : 'building') :
+      (cardElement.classList.contains('active') ? 'active' : manifest.status || 'ready');
+    badge.className = 'badge pill ' + (cardElement.classList.contains('active') ? 'act' :
+      job.error ? 'bad' : running ? 'warn' : 'ok');
+  }
+  if (actionButton) {
+    actionButton.disabled = running;
+    actionButton.textContent = running ? (job.kind === 'calibration' ? 'Calibrating…' : 'Building…') :
+      (actionButton.dataset.act === 'calibrate' ? 'Rebuild' : 'Build avatar');
+  }
+  if (!running && job.kind !== 'calibration') await refreshAvatarCard(slug);
+  return running;
+}
+
+async function pollBusyAvatars() {
+  const slugs = [...document.querySelectorAll('.av[data-busy="1"]')]
+    .map(element => element.dataset.slug);
+  if (!slugs.length) return;
+  const states = await Promise.all(slugs.map(slug => tail(slug)));
+  if (states.some(Boolean)) scheduleAvatarPoll();
+}
+
+function markAvatarBusy(slug, kind) {
+  const cardElement = document.querySelector(`.av[data-slug="${slug}"]`);
+  if (!cardElement) return;
+  cardElement.dataset.busy = '1';
+  cardElement.dataset.jobKind = kind;
+  const badge = cardElement.querySelector('.badge');
+  if (badge) {
+    badge.textContent = kind === 'calibration' ? 'calibrating' : 'building';
+    badge.className = 'badge pill warn';
+  }
+  const button = cardElement.querySelector(kind === 'calibration'
+    ? '[data-act="calibrate"]' : '[data-act="build"]');
+  if (button) {
+    button.disabled = true;
+    button.textContent = kind === 'calibration' ? 'Calibrating…' : 'Building…';
+  }
+  const box = cardElement.querySelector('.jobbox');
+  if (box) {
+    box.className = 'jobbox on';
+    box.querySelector('.job-stage').textContent = kind === 'calibration' ? 'Queued' : 'Starting';
+    box.querySelector('.job-pct').textContent = '0%';
+    box.querySelector('.bar i').style.width = '0%';
+    box.querySelector('.job-line').textContent = kind === 'calibration' ?
+      'Preparing isolated staging bundle' : 'Starting avatar build';
+  }
+  scheduleAvatarPoll();
 }
 
 async function act(what, slug, btn) {
+  if (what === 'calibrate') { openRig(slug); return; }
+  if (what === 'body') { openBody(slug); return; }
   if (what === 'delete' && !confirm('Delete ' + slug + ' and everything built from it?')) return;
   btn.disabled = true;
   const r = await api('/api/avatar/' + what, {
@@ -558,9 +962,472 @@ async function act(what, slug, btn) {
     if (SHELL && SHELL.isElectron) await SHELL.avatarChanged();
     note(slug + ' is now the active face.');
   }
+  if (what === 'build') {
+    markAvatarBusy(slug, 'build');
+    return;
+  }
   loadAvatars();
-  if (what === 'build' && !POLL) POLL = setInterval(loadAvatars, 2500);
 }
+
+function closeBody() {
+  $('#body-modal').classList.remove('on');
+  document.body.style.overflow = '';
+  if (BODY_WATCH) clearTimeout(BODY_WATCH);
+  BODY_WATCH = null;
+}
+
+function renderBodyStudio() {
+  if (!BODY_STATE) return;
+  const provider = BODY_STATE.provider;
+  $('#body-provider-pill').textContent = provider ? provider.title : 'provider unavailable';
+  $('#body-provider-pill').className = 'pill ' + (provider ? 'ok' : 'bad');
+  $('#body-provider').innerHTML = provider
+    ? `<span class="pill ok">inherited</span><strong>${esc(provider.title)}</strong><p class="note">${esc(provider.model || 'Provider default model')} · Uses EnConvo's configured default and credentials.</p>`
+    : `<span class="pill bad">unavailable</span><strong>${esc(BODY_STATE.provider_error || 'No compatible image provider')}</strong>`;
+  const videoProvider = BODY_STATE.video_provider;
+  $('#body-video-provider').innerHTML = videoProvider
+    ? `<span class="pill ok">inherited</span><strong>${esc(videoProvider.title)}</strong><p class="note">${esc(videoProvider.model || 'Provider default model')} · Image-to-video through EnConvo.</p>`
+    : `<span class="pill bad">unavailable</span><strong>${esc(BODY_STATE.video_provider_error || 'No compatible video provider')}</strong>`;
+  const metadata = BODY_STATE.body || {}, options = metadata.options || {};
+  $('#body-style').value = options.style || 'photorealistic';
+  $('#body-pose').value = options.pose || 'relaxed';
+  $('#body-outfit').value = options.outfit || '';
+  $('#body-notes').value = options.notes || '';
+  const hasBody = Boolean(BODY_STATE.has_body);
+  const hasMotion = Boolean(BODY_STATE.has_motion);
+  $('#body-preview').classList.toggle('hidden', !hasBody);
+  $('#body-empty').classList.toggle('hidden', hasBody);
+  $('#body-remove').classList.toggle('hidden', !hasBody);
+  $('#body-motion-remove').classList.toggle('hidden', !hasMotion);
+  $('#body-generate').textContent = hasBody ? 'Regenerate full body' : 'Generate full body';
+  $('#body-motion-generate').textContent = hasMotion ? 'Regenerate walk + edge idle' : 'Generate walk + edge idle';
+  $('#body-motion-generate').disabled = !hasBody || !videoProvider;
+  $('#body-motion-status').textContent = hasMotion
+    ? 'Ready · side-profile walk, edge-lean idle, and standing interaction.'
+    : hasBody ? 'Choose the pose reference, then generate both motion loops.' : 'Generate a full body first.';
+  if (hasBody) $('#body-preview').src = `/files/${encodeURIComponent(BODY_SLUG)}/body/body.png?t=${Date.now()}`;
+}
+
+async function openBody(slug) {
+  BODY_SLUG = slug;
+  $('#body-modal').classList.add('on');
+  document.body.style.overflow = 'hidden';
+  $('#body-progress').classList.add('hidden');
+  $('#body-motion-reference').value = '';
+  BODY_STATE = await api('/api/avatar/body?slug=' + encodeURIComponent(slug));
+  renderBodyStudio();
+}
+
+function bodyProfile() {
+  return {
+    style: $('#body-style').value,
+    pose: $('#body-pose').value,
+    outfit: $('#body-outfit').value.trim(),
+    notes: $('#body-notes').value.trim(),
+  };
+}
+
+async function generateBody() {
+  const button = $('#body-generate');
+  button.disabled = true;
+  const response = await api('/api/avatar/body/generate', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug: BODY_SLUG, profile: bodyProfile() })
+  });
+  if (response.detail || !response.started) {
+    alert(response.detail || response.reason || 'Unable to start full-body generation.');
+    button.disabled = false;
+    return;
+  }
+  $('#body-progress').classList.remove('hidden');
+  pollBody();
+}
+
+async function generateMotion() {
+  const reference = $('#body-motion-reference').files[0];
+  if (!reference) {
+    alert('Choose the edge-idle pose reference image first.');
+    return;
+  }
+  const button = $('#body-motion-generate');
+  button.disabled = true;
+  $('#body-generate').disabled = true;
+  const form = new FormData();
+  form.append('slug', BODY_SLUG);
+  form.append('reference', reference, reference.name);
+  const response = await api('/api/avatar/motion/generate', {
+    method: 'POST', body: form
+  });
+  if (response.detail || !response.started) {
+    alert(response.detail || response.reason || 'Unable to start desktop motion generation.');
+    button.disabled = false;
+    $('#body-generate').disabled = false;
+    return;
+  }
+  $('#body-progress').classList.remove('hidden');
+  pollBody();
+}
+
+async function pollBody() {
+  if (!BODY_SLUG) return;
+  const response = await api('/api/avatar/progress?slug=' + encodeURIComponent(BODY_SLUG));
+  const job = response.job || {}, progress = job.progress || {};
+  const value = Math.max(0, Math.min(1, Number(progress.value) || 0));
+  const percent = Math.round(value * 100);
+  $('#body-stage').textContent = job.error ? 'Generation failed' : progress.label || job.phase || 'Working';
+  $('#body-percent').textContent = percent + '%';
+  $('#body-progress-bar').style.width = percent + '%';
+  $('#body-progress-line').textContent = job.error || (job.log || []).slice(-1)[0] || '';
+  if (!job.done) {
+    BODY_WATCH = setTimeout(pollBody, 1100);
+    return;
+  }
+  $('#body-generate').disabled = false;
+  $('#body-motion-generate').disabled = false;
+  if (job.error) return;
+  BODY_STATE = await api('/api/avatar/body?slug=' + encodeURIComponent(BODY_SLUG));
+  renderBodyStudio();
+  if (SHELL && SHELL.isElectron && BODY_SLUG === ACTIVE) await SHELL.avatarChanged();
+  loadAvatars();
+}
+
+async function removeMotion() {
+  if (!confirm('Remove the generated walk and edge-idle motion?')) return;
+  $('#body-motion-remove').disabled = true;
+  const response = await api('/api/avatar/motion/remove', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug: BODY_SLUG })
+  });
+  $('#body-motion-remove').disabled = false;
+  if (response.detail) { alert(response.detail); return; }
+  BODY_STATE = await api('/api/avatar/body?slug=' + encodeURIComponent(BODY_SLUG));
+  renderBodyStudio();
+  if (SHELL && SHELL.isElectron && BODY_SLUG === ACTIVE) await SHELL.avatarChanged();
+}
+
+async function removeBody() {
+  if (!confirm('Remove the generated body and return this avatar to portrait mode?')) return;
+  $('#body-remove').disabled = true;
+  const response = await api('/api/avatar/body/remove', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug: BODY_SLUG })
+  });
+  $('#body-remove').disabled = false;
+  if (response.detail) { alert(response.detail); return; }
+  BODY_STATE = await api('/api/avatar/body?slug=' + encodeURIComponent(BODY_SLUG));
+  renderBodyStudio();
+  if (SHELL && SHELL.isElectron && BODY_SLUG === ACTIVE) await SHELL.avatarChanged();
+  loadAvatars();
+}
+
+$('#body-close').onclick = closeBody;
+$('#body-cancel').onclick = closeBody;
+$('#body-generate').onclick = generateBody;
+$('#body-remove').onclick = removeBody;
+$('#body-motion-generate').onclick = generateMotion;
+$('#body-motion-remove').onclick = removeMotion;
+$('#body-modal').addEventListener('click', event => { if (event.target === $('#body-modal')) closeBody(); });
+
+const RIG_COLORS = {
+  lips: [84, 214, 188], jaw: [92, 149, 222], cheeks: [137, 110, 219],
+  nasolabial: [217, 126, 184], nose: [235, 152, 82], locked: [239, 102, 89]
+};
+
+function rigImage(pose = RIG_POSE) {
+  return `/files/${encodeURIComponent(RIG_SLUG)}/visemes/v_${encodeURIComponent(pose)}.jpg?t=${Date.now()}`;
+}
+
+function closeRig() {
+  $('#rig-modal').classList.remove('on');
+  document.body.style.overflow = '';
+}
+
+function rigPolygon(ctx, polygon, width, height) {
+  if (!polygon.length) return;
+  ctx.beginPath();
+  polygon.forEach((point, index) => {
+    const x = point[0] * width, y = point[1] * height;
+    if (index) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+  });
+  ctx.closePath();
+}
+
+function drawRig() {
+  if (!RIG) return;
+  const canvas = $('#rig-canvas'), ctx = canvas.getContext('2d');
+  canvas.width = RIG.width; canvas.height = RIG.height;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if ($('#rig-show-regions').checked) {
+    ['cheeks', 'jaw', 'nasolabial', 'lips', 'nose', 'locked'].forEach(name => {
+      const color = RIG_COLORS[name];
+      const strength = name === 'locked' ? 1 :
+        (name === 'lips' ? RIG_PROFILE.lips : RIG_PROFILE[name]) / 100;
+      (RIG.regions[name] || []).forEach(polygon => {
+        rigPolygon(ctx, polygon, canvas.width, canvas.height);
+        ctx.fillStyle = `rgba(${color.join(',')},${.045 + strength * .22})`;
+        ctx.fill();
+        ctx.strokeStyle = `rgba(${color.join(',')},${.32 + strength * .45})`;
+        ctx.lineWidth = name === 'locked' ? 1.8 : 1.1;
+        ctx.stroke();
+      });
+    });
+  }
+
+  if ($('#rig-show-teeth').checked && RIG.dental) {
+    const rows = RIG.dental.rows || {};
+    const rowColours = {
+      upper: ['rgba(237,198,106,.22)', 'rgba(255,222,142,.92)'],
+      lower: ['rgba(240,140,165,.18)', 'rgba(255,168,190,.90)'],
+    };
+    const entries = Object.keys(rows).length
+      ? Object.entries(rows)
+      : [['upper', {contours: RIG.dental.contours || []}]];
+    entries.forEach(([row, value]) => {
+      const colours = rowColours[row] || rowColours.upper;
+      (value.contours || []).forEach(polygon => {
+        rigPolygon(ctx, polygon, canvas.width, canvas.height);
+        ctx.fillStyle = colours[0];
+        ctx.fill();
+        ctx.strokeStyle = colours[1];
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      });
+    });
+  }
+
+  if ($('#rig-show-mesh').checked) {
+    ctx.beginPath();
+    (RIG.edges || []).forEach(([left, right]) => {
+      const a = RIG.points[left], b = RIG.points[right];
+      ctx.moveTo(a[0] * canvas.width, a[1] * canvas.height);
+      ctx.lineTo(b[0] * canvas.width, b[1] * canvas.height);
+    });
+    ctx.strokeStyle = 'rgba(85,214,188,.31)';
+    ctx.lineWidth = .65;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(177,255,238,.78)';
+    RIG.points.forEach(point => {
+      ctx.beginPath();
+      ctx.arc(point[0] * canvas.width, point[1] * canvas.height, 1.15, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+}
+
+function rigSafeBounds(spec) {
+  const safeMinimum = Number.isFinite(Number(spec.safe_minimum))
+    ? Number(spec.safe_minimum) : Number(spec.minimum);
+  const safeMaximum = Number.isFinite(Number(spec.safe_maximum))
+    ? Number(spec.safe_maximum) : Number(spec.maximum);
+  return [safeMinimum, safeMaximum];
+}
+
+function rigExperimentalKeys() {
+  if (!RIG || !RIG_PROFILE) return [];
+  return Object.entries(RIG.schema.controls).filter(([key, spec]) => {
+    const [safeMinimum, safeMaximum] = rigSafeBounds(spec);
+    return RIG_PROFILE[key] < safeMinimum || RIG_PROFILE[key] > safeMaximum;
+  }).map(([key]) => key);
+}
+
+function paintRigControl(key) {
+  const spec = RIG.schema.controls[key], value = RIG_PROFILE[key];
+  const [safeMinimum, safeMaximum] = rigSafeBounds(spec);
+  const safe = value >= safeMinimum && value <= safeMaximum;
+  const input = $('#rig-' + key), badge = $('#rig-value-' + key);
+  if (input) {
+    input.value = value;
+    input.classList.toggle('safe', safe);
+    input.classList.toggle('experimental', !safe);
+    input.setAttribute('aria-valuetext', `${value}% · ${safe ? 'safe' : 'experimental'}`);
+  }
+  if (badge) {
+    badge.textContent = value + '%';
+    badge.className = 'rig-value ' + (safe ? 'safe' : 'experimental');
+  }
+}
+
+function formatRigError(detail) {
+  if (typeof detail === 'string' && detail) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail.map(issue => {
+      const location = Array.isArray(issue.loc) ? issue.loc : [];
+      const field = [...location].reverse().find(part =>
+        !['body', 'profile'].includes(String(part)));
+      const message = issue.msg || issue.message || 'invalid value';
+      return field ? `${field}: ${message}` : message;
+    }).filter(Boolean);
+    if (messages.length) return messages.join('\n');
+  }
+  return 'The server rejected this profile.';
+}
+
+function rigStatus(message = '', state = '') {
+  const status = $('#rig-status');
+  const targets = `Targets · lip ${RIG_PROFILE.lips}% · jaw ${RIG_PROFILE.jaw}% · cheeks ${RIG_PROFILE.cheeks}% · folds ${RIG_PROFILE.nasolabial}% · nose ${RIG_PROFILE.nose}%`;
+  const experimental = rigExperimentalKeys();
+  const legacyBackend = Number(RIG.schema.version || 0) < 2;
+  const guidance = experimental.length
+    ? legacyBackend
+      ? `Red experimental targets · ${experimental.join(', ')}. Restart after the active avatar build finishes to submit them.`
+      : `Red experimental targets · ${experimental.join(', ')}. They may run, but anatomy QA must pass before publication.`
+    : 'All targets are inside the green validated bands.';
+  status.textContent = message || `${targets}\n${guidance}`;
+  status.className = 'rig-status' + (state ? ' ' + state : '');
+}
+
+function renderRigControls() {
+  const controls = RIG.schema.controls;
+  $('#rig-controls').innerHTML = Object.entries(controls).map(([key, spec]) => {
+    const [safeMinimum, safeMaximum] = rigSafeBounds(spec);
+    return `<div class="rig-control">
+      <div class="rig-control-head">
+        <label for="rig-${key}">${esc(spec.label)}</label>
+        <span class="rig-value" id="rig-value-${key}">${RIG_PROFILE[key]}%</span>
+      </div>
+      <input type="range" id="rig-${key}" data-rig-control="${key}"
+        min="0" max="100" step="${spec.step}" value="${RIG_PROFILE[key]}"
+        style="--safe-start:${safeMinimum}%;--safe-end:${safeMaximum}%">
+      <div class="rig-help">${esc(spec.help)} · full control 0–100%</div>
+      <div class="rig-range"><span class="safe">green safe ${safeMinimum}–${safeMaximum}%</span><span class="experimental">red experimental</span></div>
+    </div>`;
+  }).join('');
+  Object.keys(controls).forEach(paintRigControl);
+  $('#rig-controls').querySelectorAll('[data-rig-control]').forEach(input => {
+    input.oninput = event => {
+      const key = event.target.dataset.rigControl;
+      RIG_PROFILE[key] = Number(event.target.value);
+      RIG_PROFILE.preset = 'custom';
+      $('#rig-preset').value = 'custom';
+      paintRigControl(key);
+      drawRig();
+      rigStatus();
+    };
+  });
+}
+
+function renderRigPoses() {
+  $('#rig-visemes').innerHTML = '<strong>Pose</strong>' +
+    RIG.preview_visemes.map(pose => `<button class="rig-chip ${pose === RIG_POSE ? 'on' : ''}" data-rig-pose="${pose}">${pose}</button>`).join('');
+  $('#rig-visemes').querySelectorAll('[data-rig-pose]').forEach(button => {
+    button.onclick = () => {
+      RIG_POSE = button.dataset.rigPose;
+      renderRigPoses();
+      $('#rig-image').src = rigImage();
+    };
+  });
+}
+
+async function openRig(slug) {
+  RIG_SLUG = slug;
+  RIG_POSE = 'closed';
+  $('#rig-modal').classList.add('on');
+  document.body.style.overflow = 'hidden';
+  $('#rig-loading').classList.remove('hidden');
+  $('#rig-loading').textContent = 'Reading 478 facial landmarks…';
+  $('#rig-content').classList.add('hidden');
+  const response = await api('/api/avatar/rig?slug=' + encodeURIComponent(slug));
+  if (response.detail) {
+    $('#rig-loading').textContent = typeof response.detail === 'string' ? response.detail : 'Could not load facial calibration.';
+    return;
+  }
+  RIG = response;
+  RIG_PROFILE = {...response.profile};
+  $('#rig-title').textContent = 'Facial calibration · ' + slug;
+  $('#rig-subtitle').textContent = `${response.points.length} landmarks · ${response.edges.length} mesh edges · retained renders only`;
+  const dentalDonors = response.dental.donors || {};
+  const donorLabel = ['upper', 'lower']
+    .filter(row => dentalDonors[row])
+    .map(row => `${row} ${dentalDonors[row]}`)
+    .join(' · ');
+  $('#rig-donor').textContent = donorLabel ? `Locked · ${donorLabel}` : 'No donors detected';
+  $('#rig-preset').value = RIG_PROFILE.preset || 'custom';
+  $('#rig-apply').disabled = !response.can_recompose;
+  renderRigControls();
+  renderRigPoses();
+  rigStatus(response.can_recompose ? '' :
+    'Cannot recompose: missing retained renders ' + response.raw_gaps.join(', '),
+    response.can_recompose ? '' : 'bad');
+  const image = $('#rig-image');
+  image.onload = drawRig;
+  image.src = rigImage();
+  $('#rig-loading').classList.add('hidden');
+  $('#rig-content').classList.remove('hidden');
+}
+
+async function watchRig(slug) {
+  clearTimeout(RIG_WATCH);
+  const progress = await api('/api/avatar/progress?slug=' + encodeURIComponent(slug));
+  await tail(slug, progress);
+  const job = progress.job;
+  if (!job || !job.done) {
+    const line = job && job.log && job.log.length ? job.log[job.log.length - 1] : 'Starting local recomposition…';
+    if (RIG_SLUG === slug) rigStatus(line + '\nThe published avatar remains untouched until every gate passes.');
+    RIG_WATCH = setTimeout(() => watchRig(slug), 900);
+    return;
+  }
+  $('#rig-apply').disabled = false;
+  if (job.error) {
+    if (RIG_SLUG === slug) rigStatus('Rebuild rejected: ' + job.error + '\nThe previous avatar is still published.', 'bad');
+    note('Calibration failed; the live avatar was not changed.');
+  } else {
+    if (RIG_SLUG === slug) {
+      rigStatus('Anatomy QA passed. The calibrated runtime is published and the prior bundle is saved for rollback.', 'ok');
+      $('#rig-image').src = rigImage();
+    }
+    if (ACTIVE === slug && SHELL && SHELL.isElectron) await SHELL.avatarChanged();
+    note('Calibration passed and the new runtime is active.');
+  }
+}
+
+async function applyRig() {
+  if (!RIG || !RIG_PROFILE) return;
+  const button = $('#rig-apply');
+  button.disabled = true;
+  const experimental = rigExperimentalKeys();
+  if (experimental.length && Number(RIG.schema.version || 0) < 2) {
+    rigStatus('Red experimental targets require the updated calibration backend. Let the active avatar build finish, restart Vivieen, then rebuild.', 'bad');
+    button.disabled = false;
+    return;
+  }
+  rigStatus((experimental.length
+    ? 'Validating red experimental targets'
+    : 'Validating green-band targets') + ' and creating an isolated staging bundle…');
+  const profile = {...RIG_PROFILE, teeth_lock: true,
+    preset: $('#rig-preset').value || 'custom'};
+  const response = await api('/api/avatar/recompose', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({slug: RIG_SLUG, profile})
+  });
+  if (response.detail || !response.started) {
+    const detail = response.detail || response.reason || 'Rebuild could not start.';
+    rigStatus(formatRigError(detail), 'bad');
+    button.disabled = false;
+    return;
+  }
+  note('Recomposing ' + RIG_SLUG + ' from retained renders.');
+  markAvatarBusy(RIG_SLUG, 'calibration');
+  watchRig(RIG_SLUG);
+}
+
+$('#rig-preset').onchange = event => {
+  const name = event.target.value;
+  if (!RIG || name === 'custom') return;
+  RIG_PROFILE = {...RIG.schema.presets[name]};
+  renderRigControls();
+  drawRig();
+  rigStatus();
+};
+['rig-show-mesh', 'rig-show-regions', 'rig-show-teeth'].forEach(id => {
+  $('#' + id).onchange = drawRig;
+});
+$('#rig-close').onclick = $('#rig-cancel').onclick = closeRig;
+$('#rig-apply').onclick = applyRig;
+$('#rig-modal').onclick = event => { if (event.target === $('#rig-modal')) closeRig(); };
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && $('#rig-modal').classList.contains('on')) closeRig();
+});
 
 /* upload */
 const drop = $('#drop'), file = $('#file');
@@ -616,15 +1483,22 @@ async function boot() {
   ['llm', 'tts', 'stt'].forEach(resetModelState);
   DIRTY = false;
   ['llm', 'tts', 'stt'].forEach(renderBlock);
+  ['image', 'video'].forEach(renderMediaDefault);
   $('#pname').value = CFG.persona.name || '';
   $('#psys').value = CFG.persona.system || '';
   $('#pname').oninput = $('#psys').oninput = dirty;
-  await loadAvatars();
+  await Promise.all([loadAvatars(), refreshMediaDefaults(null, true)]);
   note('');
 }
 boot();
-addEventListener('focus',()=>{if(CFG){loadAvatars();refreshVisibleGlobals();}});
+addEventListener('focus',()=>{if(CFG){
+  if (document.querySelector('.av[data-busy="1"]')) scheduleAvatarPoll(); else loadAvatars();
+  refreshVisibleGlobals();
+}});
 document.addEventListener('visibilitychange',()=>{
-  if(!document.hidden&&CFG){loadAvatars();refreshVisibleGlobals();}
+  if(!document.hidden&&CFG){
+    if (document.querySelector('.av[data-busy="1"]')) scheduleAvatarPoll(); else loadAvatars();
+    refreshVisibleGlobals();
+  }
 });
 </script>

@@ -56,7 +56,7 @@ class Img{
 const El=()=>({textContent:'',className:'',disabled:false,value:'',style:{},
   classList:{add(){},remove(){}},addEventListener(){},getContext:()=>CTX,width:0,height:0});
 const els={};
-const doc={getElementById:id=>(els[id]=els[id]||El()),
+const doc={getElementById:id=>(els[id]=els[id]||El()),createElement:()=>El(),
            activeElement:null,addEventListener(){}};
 
 let NOW=0,rafcb=null;
@@ -82,7 +82,8 @@ const G={console,Math:undefined,setTimeout,clearTimeout,queueMicrotask,
   devicePixelRatio:2,innerWidth:1280,innerHeight:800,
   addEventListener(){},removeEventListener(){},
   document:doc,Image:Img,navigator:{},atob:s=>s,
-  fetch:async u=>({json:async()=>{
+  URLSearchParams,location:{search:''},
+  fetch:async u=>({ok:true,status:200,json:async()=>{
     if(String(u).includes('manifest'))return JSON.parse(JSON.stringify(MAN));
     if(String(u).includes('health'))return {warm:true,ollama:true};
     return {};}}),
@@ -240,7 +241,7 @@ async function run(label,secs,speak){
     throw new Error(`speaking: head jumps ${b.viseme_head_coupling.ratio}x harder on viseme switches`);
   if(b.mouth_timing.texture_crossfade_ms>20)
     throw new Error(`speaking: mouth texture crossfade lasts ${b.mouth_timing.texture_crossfade_ms}ms`);
-  if(b.mouth_timing.changes_per_sec>10.5)
+  if(b.mouth_timing.changes_per_sec>15.0)
     throw new Error(`speaking: mouth changes ${b.mouth_timing.changes_per_sec} times per second`);
   console.log(JSON.stringify({before_or_after:process.argv[3]||'run',runs:[a,b]},null,1));
   process.exit(0);

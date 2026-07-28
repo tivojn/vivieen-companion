@@ -315,6 +315,14 @@ class PublicReleaseSecurityTests(unittest.TestCase):
                 "POST", "/api/avatar/delete", json={"slug": "../../outside"})
         self.assertEqual(response.status_code, 422)
 
+    def test_rig_request_accepts_red_experimental_percentages(self):
+        profile = self.app_module.RigProfileInput(
+            lips=0, jaw=100, cheeks=100, nasolabial=99, nose=100)
+        self.assertEqual(profile.nasolabial, 99)
+        self.assertEqual(profile.nose, 100)
+        with self.assertRaises(ValueError):
+            self.app_module.RigProfileInput(nasolabial=101)
+
     def test_audio_upload_limit_is_enforced(self):
         with patch.object(self.app_module, "AUTH_TOKEN", ""), \
              patch.object(self.app_module, "MAX_AUDIO_BYTES", 8):
@@ -358,6 +366,34 @@ class PublicReleaseSecurityTests(unittest.TestCase):
             source = handle.read()
         self.assertIn("${esc(a.name || a.slug)}", source)
         self.assertIn("${esc(a.error)}", source)
+
+    def test_avatar_caption_folds_to_one_line_and_expands_safely(self):
+        with open(os.path.join(ROOT, "web", "index.html"), encoding="utf-8") as handle:
+            source = handle.read()
+        self.assertIn("--caption-lines:1", source)
+        self.assertIn("#her.is-expanded", source)
+        self.assertIn("CAPTION_FOLD_DELAY=2000", source)
+        self.assertIn("CAPTION_ROW_HOT_ZONE=18", source)
+        self.assertIn("elHer.addEventListener('pointerenter'", source)
+        self.assertIn("overflow-y:auto", source)
+        self.assertIn('role="log"', source)
+        self.assertIn("renderMarkdown", source)
+        self.assertIn("document.createElement('strong')", source)
+        self.assertIn("elHer.replaceChildren()", source)
+        self.assertNotIn("elHer.innerHTML", source)
+        self.assertIn("elHer.scrollTop=0", source)
+
+    def test_avatar_progress_updates_without_rerendering_the_grid(self):
+        with open(os.path.join(ROOT, "web", "settings.html"), encoding="utf-8") as handle:
+            source = handle.read()
+        self.assertNotIn("setInterval(loadAvatars", source)
+        self.assertIn("pollBusyAvatars", source)
+        self.assertIn("data-busy=", source)
+        self.assertIn("class=\"jobbox", source)
+        self.assertIn("full control 0–100%", source)
+        self.assertIn("--safe-start:", source)
+        self.assertIn("red experimental", source)
+        self.assertIn("formatRigError", source)
 
     def test_runtime_source_uses_no_predictable_tempfile_api(self):
         for relative in ("server/app.py", "server/providers.py"):

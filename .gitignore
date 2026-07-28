@@ -12,6 +12,7 @@ qa/proof/
 models/
 .electron-models/
 .electron-ffmpeg/
+.electron-native/
 
 # Local analysis records
 .learnings/

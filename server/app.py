@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 
 import providers as P
 import align
+from studio import rig
 
 WEB = os.path.join(ROOT, "web")
 
@@ -77,7 +78,7 @@ async def security_headers(request, call_next):
 
 
 _state = {"warm": False, "warming": ""}
-_jobs = {}                      # slug -> {"log": [...], "phase": str, "done": bool}
+_jobs = {}                      # slug -> live build/calibration state
 _jlock = threading.Lock()
 
 
@@ -129,6 +130,19 @@ def jlog(slug, phase=None):
     return w
 
 
+def _job_progress(slug, stage, value, label):
+    payload = {
+        "stage": str(stage),
+        "value": max(0.0, min(1.0, float(value))),
+        "label": str(label),
+    }
+    with _jlock:
+        job = _jobs.setdefault(
+            slug, {"log": [], "phase": "", "done": False, "error": ""})
+        job["progress"] = payload
+        job["phase"] = payload["label"]
+
+
 def _run_avatar_worker(args, log):
     process = subprocess.Popen(
         [sys.executable, "-W", "ignore", *args],
@@ -169,6 +183,123 @@ def _build_thread(slug, shapes=None):
             _jobs[slug]["done"] = True
 
 
+def _recompose_thread(slug, profile):
+    w = jlog(slug, "calibrating")
+    with _jlock:
+        _jobs[slug].update(
+            done=False, error="", log=[], kind="calibration",
+            progress={"stage": "starting", "value": .02,
+                      "label": "Starting calibration"})
+    try:
+        reg().recompose_avatar(
+            slug, profile, log=w,
+            progress=lambda stage, value, label:
+                _job_progress(slug, stage, value, label))
+        w("ready")
+    except Exception as e:
+        with _jlock:
+            _jobs[slug]["error"] = str(e)
+        w(f"FAILED: {e}")
+    finally:
+        with _jlock:
+            _jobs[slug]["done"] = True
+
+
+def _publish_runtime_atomic(slug, log=print):
+    from studio import export
+    directory = reg().adir(slug)
+    staged = tempfile.mkdtemp(prefix=".runtime-stage-", dir=directory)
+    live = runtime_dir(slug)
+    previous = live + ".previous"
+    try:
+        blink_source = os.path.join(directory, "visemes", "v_blink.jpg")
+        if os.path.isfile(blink_source):
+            export.export(slug, staged, log=log)
+        elif os.path.isfile(os.path.join(live, "manifest.json")):
+            shutil.copytree(live, staged, dirs_exist_ok=True)
+            export.publish_pet_assets(slug, staged, log=log)
+        else:
+            raise ValueError("avatar has neither source visemes nor a published runtime")
+        shutil.rmtree(previous, ignore_errors=True)
+        if os.path.exists(live):
+            os.replace(live, previous)
+        os.replace(staged, live)
+        staged = None
+        shutil.rmtree(previous, ignore_errors=True)
+    except Exception:
+        if not os.path.exists(live) and os.path.exists(previous):
+            os.replace(previous, live)
+        raise
+    finally:
+        if staged and os.path.exists(staged):
+            shutil.rmtree(staged, ignore_errors=True)
+
+
+def _body_thread(slug, options):
+    w = jlog(slug, "starting full-body generation")
+    with _jlock:
+        _jobs[slug].update(
+            done=False, error="", log=[], kind="body",
+            progress={"stage": "provider", "value": .03,
+                      "label": "Reading EnConvo image provider"})
+    try:
+        from studio import body, motion
+        _job_progress(slug, "generation", .12, "Generating full-body character")
+        metadata = body.build(reg().adir(slug), options, log=w)
+        motion.remove(reg().adir(slug))
+        manifest = reg().read_manifest(slug) or {}
+        manifest["body"] = metadata
+        manifest.pop("motion", None)
+        reg().write_manifest(slug, manifest)
+        _job_progress(slug, "runtime", .86, "Publishing transparent companion")
+        _publish_runtime_atomic(slug, log=w)
+        _job_progress(slug, "done", 1.0, "Full body ready")
+        w("full-body companion ready")
+    except Exception as error:
+        with _jlock:
+            _jobs[slug]["error"] = str(error)
+        w(f"FAILED: {error}")
+    finally:
+        with _jlock:
+            _jobs[slug]["done"] = True
+
+
+def _motion_thread(slug, reference_path):
+    writer = jlog(slug, "starting desktop motion generation")
+    with _jlock:
+        _jobs[slug].update(
+            done=False, error="", log=[], kind="motion",
+            progress={"stage": "provider", "value": .03,
+                      "label": "Reading EnConvo media providers"})
+    try:
+        from studio import motion
+        metadata = motion.build(
+            reg().adir(slug),
+            pose_reference=reference_path,
+            log=writer,
+            progress=lambda stage, value, label: _job_progress(
+                slug, stage, value, label),
+        )
+        manifest = reg().read_manifest(slug) or {}
+        manifest["motion"] = metadata
+        reg().write_manifest(slug, manifest)
+        _job_progress(slug, "runtime", .94, "Publishing alpha motion")
+        _publish_runtime_atomic(slug, log=writer)
+        _job_progress(slug, "done", 1.0, "Desktop motion ready")
+        writer("walk, edge idle, and standing interaction are ready")
+    except Exception as error:
+        with _jlock:
+            _jobs[slug]["error"] = str(error)
+        writer(f"FAILED: {error}")
+    finally:
+        try:
+            os.remove(reference_path)
+        except FileNotFoundError:
+            pass
+        with _jlock:
+            _jobs[slug]["done"] = True
+
+
 @app.get("/api/avatars")
 async def api_avatars():
     r = reg()
@@ -178,7 +309,11 @@ async def api_avatars():
         a["has_runtime"] = os.path.exists(os.path.join(runtime_dir(s), "manifest.json"))
         with _jlock:
             j = _jobs.get(s)
-        a["job"] = {"phase": j["phase"], "done": j["done"], "error": j["error"]} if j else None
+        a["job"] = {
+            "phase": j["phase"], "done": j["done"],
+            "error": j["error"], "kind": j.get("kind", "build"),
+            "progress": j.get("progress")
+        } if j else None
         out.append(a)
     return {"avatars": out, "active": r.get_active()}
 
@@ -209,6 +344,134 @@ class Slug(BaseModel):
     shapes: list[str] | None = None
 
 
+def _rig_control_field(name):
+    spec = rig.CONTROLS[name]
+    return Field(default=spec["default"], ge=spec["minimum"], le=spec["maximum"])
+
+
+class RigProfileInput(BaseModel):
+    lips: float = _rig_control_field("lips")
+    jaw: float = _rig_control_field("jaw")
+    cheeks: float = _rig_control_field("cheeks")
+    nasolabial: float = _rig_control_field("nasolabial")
+    nose: float = _rig_control_field("nose")
+    teeth_lock: bool = True
+    upper_teeth_lock: bool = True
+    lower_teeth_lock: bool = True
+    preset: str = Field(default="custom", pattern=r"^(natural|subtle|expressive|custom)$")
+
+
+class RigRequest(BaseModel):
+    slug: str = Field(pattern=SLUG_PATTERN)
+    profile: RigProfileInput
+
+
+class BodyProfileInput(BaseModel):
+    style: str = Field(default="photorealistic", pattern=r"^(photorealistic|editorial|illustrated|anime|soft-3d)$")
+    pose: str = Field(default="relaxed", pattern=r"^(relaxed|confident|friendly|formal|casual)$")
+    outfit: str = Field(default="", max_length=500)
+    notes: str = Field(default="", max_length=600)
+
+
+class BodyRequest(BaseModel):
+    slug: str = Field(pattern=SLUG_PATTERN)
+    profile: BodyProfileInput
+
+
+@app.get("/api/avatar/rig")
+async def api_rig(slug: str = Query(pattern=SLUG_PATTERN)):
+    registry = reg()
+    manifest = registry.read_manifest(slug)
+    if not manifest:
+        raise HTTPException(404, "avatar not found")
+    if manifest.get("status") != "ready":
+        raise HTTPException(400, "build this avatar before calibrating it")
+    from studio import compose, face, rig
+    import cv2
+    directory = registry.adir(slug)
+    keyframe = cv2.imread(os.path.join(directory, "keyframe.png"))
+    if keyframe is None:
+        raise HTTPException(400, "avatar keyframe is missing")
+    landmarks, _ = face.detect(keyframe)
+    if landmarks is None:
+        raise HTTPException(400, "no face detected in avatar keyframe")
+    profile = rig.from_manifest(manifest)
+    masks, face_mask = compose._masks(keyframe, landmarks, profile)
+    alpha, _ = compose._alpha_ring(
+        masks["mouth"], face_mask,
+        max(keyframe.shape[:2]) / 1024.0, profile)
+    payload = rig.inspector_payload(landmarks, keyframe.shape)
+    payload["weights"] = rig.sampled_weights(alpha, landmarks)
+    payload["profile"] = profile
+    payload["schema"] = rig.public_schema()
+    gaps = registry.raw_render_gaps(slug)
+    payload["raw_gaps"] = gaps
+    payload["can_recompose"] = not gaps
+    payload["uses_generation"] = False
+    payload["preview_visemes"] = [
+        name for name in ("closed", "ah", "eh", "oo")
+        if os.path.isfile(os.path.join(
+            directory, "visemes", f"v_{name}.jpg"))
+    ]
+    selected = compose._select_dental_donors(
+        os.path.join(directory, "visemes"))
+    dental = dict(donor=None, donors={}, rows={}, contours=[])
+    for row in compose.DENTAL_ROWS:
+        if row not in selected:
+            continue
+        donor_name, _, _, master = selected[row]
+        height, width = master.shape
+        contours, _ = cv2.findContours(
+            master, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        normalized = [[
+            [round(float(point[0][0] / width), 6),
+             round(float(point[0][1] / height), 6)]
+            for point in contour]
+            for contour in contours if len(contour) >= 3]
+        dental["donors"][row] = donor_name
+        dental["rows"][row] = dict(donor=donor_name, contours=normalized)
+        dental["contours"].extend(normalized)
+    dental["donor"] = dental["donors"].get("upper")
+    payload["dental"] = dental
+    return payload
+
+
+@app.post("/api/avatar/recompose")
+async def api_recompose(request: RigRequest):
+    registry = reg()
+    manifest = registry.read_manifest(request.slug)
+    if not manifest:
+        raise HTTPException(404, "avatar not found")
+    if manifest.get("status") != "ready":
+        raise HTTPException(400, "avatar is not ready for calibration")
+    profile_data = (request.profile.model_dump()
+                    if hasattr(request.profile, "model_dump")
+                    else request.profile.dict())
+    from studio import rig
+    try:
+        profile = rig.normalize(profile_data)
+    except ValueError as error:
+        raise HTTPException(422, str(error))
+    gaps = registry.raw_render_gaps(request.slug)
+    if gaps:
+        raise HTTPException(
+            400, "retained expression renders are incomplete: " +
+            ", ".join(gaps))
+    with _jlock:
+        job = _jobs.get(request.slug)
+        if job and not job["done"]:
+            return {"started": False, "reason": "already building"}
+        _jobs[request.slug] = dict(
+            phase="Queued", done=False, error="", log=[], kind="calibration",
+            progress={"stage": "queued", "value": 0.0,
+                      "label": "Queued"})
+    threading.Thread(
+        target=_recompose_thread,
+        args=(request.slug, profile), daemon=True).start()
+    return {"started": True, "slug": request.slug,
+            "kind": "calibration", "uses_generation": False}
+
+
 @app.post("/api/avatar/build")
 async def api_build(b: Slug):
     if b.shapes:
@@ -221,6 +484,147 @@ async def api_build(b: Slug):
             return {"started": False, "reason": "already building"}
     threading.Thread(target=_build_thread, args=(b.slug, b.shapes), daemon=True).start()
     return {"started": True, "slug": b.slug}
+
+
+@app.get("/api/avatar/body")
+async def api_body(slug: str = Query(pattern=SLUG_PATTERN)):
+    manifest = reg().read_manifest(slug)
+    if not manifest:
+        raise HTTPException(404, "avatar not found")
+    try:
+        from studio import body
+        provider = body.default_provider()
+        provider_error = None
+    except Exception as error:
+        provider = None
+        provider_error = str(error)
+    try:
+        from studio import body
+        video_provider = body.default_video_provider()
+        video_provider_error = None
+    except Exception as error:
+        video_provider = None
+        video_provider_error = str(error)
+    directory = reg().adir(slug)
+    with _jlock:
+        job = _jobs.get(slug)
+        job = dict(job) if job and job.get("kind") in {"body", "motion"} else None
+    return {
+        "body": manifest.get("body"),
+        "motion": manifest.get("motion"),
+        "has_body": os.path.isfile(os.path.join(directory, "body", "body.json")),
+        "has_motion": os.path.isfile(os.path.join(directory, "motion", "motion.json")),
+        "provider": provider,
+        "provider_error": provider_error,
+        "video_provider": video_provider,
+        "video_provider_error": video_provider_error,
+        "job": job,
+    }
+
+
+@app.get("/api/media/defaults")
+async def api_media_defaults():
+    from studio import body
+
+    result = {}
+    for kind, resolver in (
+        ("image", body.default_provider),
+        ("video", body.default_video_provider),
+    ):
+        try:
+            result[kind] = {"available": True, "provider": resolver(), "error": ""}
+        except Exception as error:
+            result[kind] = {"available": False, "provider": None, "error": str(error)}
+    return result
+
+
+@app.post("/api/avatar/body/generate")
+async def api_body_generate(request: BodyRequest):
+    manifest = reg().read_manifest(request.slug)
+    if not manifest:
+        raise HTTPException(404, "avatar not found")
+    if manifest.get("status") != "ready":
+        raise HTTPException(400, "build this avatar before generating a body")
+    with _jlock:
+        job = _jobs.get(request.slug)
+        if job and not job["done"]:
+            return {"started": False, "reason": "already building"}
+        _jobs[request.slug] = dict(
+            phase="Queued", done=False, error="", log=[], kind="body",
+            progress={"stage": "queued", "value": 0.0, "label": "Queued"})
+    profile = (request.profile.model_dump()
+               if hasattr(request.profile, "model_dump")
+               else request.profile.dict())
+    threading.Thread(
+        target=_body_thread,
+        args=(request.slug, profile), daemon=True).start()
+    return {"started": True, "slug": request.slug, "kind": "body"}
+
+
+@app.post("/api/avatar/motion/generate")
+async def api_motion_generate(
+        slug: str = Form(pattern=SLUG_PATTERN),
+        reference: UploadFile = File(...)):
+    manifest = reg().read_manifest(slug)
+    if not manifest:
+        raise HTTPException(404, "avatar not found")
+    directory = reg().adir(slug)
+    if not os.path.isfile(os.path.join(directory, "body", "body.json")):
+        raise HTTPException(400, "generate a full body before creating motion")
+    with _jlock:
+        job = _jobs.get(slug)
+        if job and not job["done"]:
+            return {"started": False, "reason": "already building"}
+    payload = await reference.read(15 * 1024 * 1024 + 1)
+    if len(payload) > 15 * 1024 * 1024:
+        raise HTTPException(413, "pose reference is larger than 15 MB")
+    import cv2
+    image = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if image is None or min(image.shape[:2]) < 160:
+        raise HTTPException(400, "pose reference is not a readable image")
+    with tempfile.NamedTemporaryFile(
+            prefix=".motion-reference-", suffix=".png", dir=directory,
+            delete=False) as handle:
+        reference_path = handle.name
+    if not cv2.imwrite(reference_path, image):
+        os.remove(reference_path)
+        raise HTTPException(500, "could not stage pose reference")
+    with _jlock:
+        _jobs[slug] = dict(
+            phase="Queued", done=False, error="", log=[], kind="motion",
+            progress={"stage": "queued", "value": 0.0, "label": "Queued"})
+    threading.Thread(
+        target=_motion_thread,
+        args=(slug, reference_path), daemon=True).start()
+    return {"started": True, "slug": slug, "kind": "motion"}
+
+
+@app.post("/api/avatar/motion/remove")
+async def api_motion_remove(request: Slug):
+    manifest = reg().read_manifest(request.slug)
+    if not manifest:
+        raise HTTPException(404, "avatar not found")
+    from studio import motion
+    motion.remove(reg().adir(request.slug))
+    manifest.pop("motion", None)
+    reg().write_manifest(request.slug, manifest)
+    _publish_runtime_atomic(request.slug, log=jlog(request.slug, "removing desktop motion"))
+    return {"removed": True, "slug": request.slug}
+
+
+@app.post("/api/avatar/body/remove")
+async def api_body_remove(request: Slug):
+    manifest = reg().read_manifest(request.slug)
+    if not manifest:
+        raise HTTPException(404, "avatar not found")
+    from studio import body, motion
+    body.remove(reg().adir(request.slug))
+    motion.remove(reg().adir(request.slug))
+    manifest.pop("body", None)
+    manifest.pop("motion", None)
+    reg().write_manifest(request.slug, manifest)
+    _publish_runtime_atomic(request.slug, log=jlog(request.slug, "publishing portrait mode"))
+    return {"removed": True, "slug": request.slug}
 
 
 @app.get("/api/avatar/progress")
@@ -494,6 +898,18 @@ async def _say(text, cfg):
 @app.get("/")
 async def index():
     return HTMLResponse(open(os.path.join(WEB, "index.html")).read(),
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.get("/bubble")
+async def bubble():
+    return HTMLResponse(open(os.path.join(WEB, "bubble.html")).read(),
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.get("/appearance")
+async def appearance():
+    return HTMLResponse(open(os.path.join(WEB, "appearance.html")).read(),
                         headers={"Cache-Control": "no-store"})
 
 

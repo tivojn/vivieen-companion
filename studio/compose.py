@@ -1,27 +1,31 @@
-"""Pose-lock + region-only composite.
+"""Pose-lock generated frames and composite only speech-coupled regions.
 
-The generator always re-renders the WHOLE frame and always re-poses the head a
-little.  Swapping whole frames therefore produces global flicker plus a head
-that jitters between shapes.  (Global phase correlation will report zero drift
-and fool you - the unchanged background dominates.  Measure the HEAD with
-landmarks.)
-
-So: fit an affine from RIGID (non-mouth) landmarks only, warp the render onto
-the keyframe's face frame, then cut out ONLY the mouth (or the eyes for a
-blink), tone-match it to the surrounding untouched skin and feather it onto the
-pristine keyframe.  The viseme's mouth SHAPE survives; its head-pose error does
-not.  Every output frame is then pixel-identical to the keyframe outside the
-mask, which is what makes temporal cross-blending possible later.
+Full-frame swaps create global flicker and head jitter. The lip and jaw core is
+therefore transferred at full strength, while a softly weighted lower-face
+envelope carries subtle mouth-corner, chin, nasolabial-fold and cheek motion.
+Eyes and the upper face remain literal keyframe pixels.
 """
 import os, json
 import numpy as np, cv2
-from . import face, visemes
+from . import face, rig, visemes
 
 FEATHER = 9
+LOWER_FACE_ALPHA = 0.62
+NOSE_LOCK_STRENGTH = 1.0
+NOSE_LOCK_FEATHER = 2.5
 INNER_MOUTH = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324,
                308, 415, 310, 311, 312, 13, 82, 81, 80, 191]
-TEETH_DONOR = "SS"
+UPPER_TEETH_DONORS = ("SS", "eh", "ih", "ah", "kk", "TH", "DD", "nn", "CH", "FF", "RR")
+LOWER_TEETH_DONORS = ("ih", "SS", "eh", "TH", "FF", "ah", "DD", "kk", "CH", "nn", "RR")
+TEETH_DONORS = UPPER_TEETH_DONORS
+DENTAL_ROWS = ("upper", "lower")
+DENTAL_DONORS = {
+    "upper": UPPER_TEETH_DONORS,
+    "lower": LOWER_TEETH_DONORS,
+}
+LOWER_MOUTH_ANCHORS = [14, 17, 84, 181, 91, 146, 314, 405, 321, 375]
 TEETH_SHAPES = {"FF", "TH", "DD", "nn", "kk", "CH", "SS", "ah", "eh", "ih"}
+MIN_TEETH_PIXELS = {"upper": 20, "lower": 20}
 
 
 def _mouth_cavity(shape, lm):
@@ -30,15 +34,30 @@ def _mouth_cavity(shape, lm):
     return mask
 
 
-def _tooth_mask(img, cavity, lm=None, upper_only=False):
-    """Segment photographic teeth only inside the inner-lip opening."""
+def _row_zone(cavity, lm, row):
+    if row not in DENTAL_ROWS:
+        raise ValueError(f"unknown dental row: {row}")
+    rows = np.indices(cavity.shape)[0]
+    split = int(round(float((lm[13, 1] + lm[14, 1]) * 0.5)))
+    if row == "upper":
+        selected = (cavity > 0) & (rows <= split)
+    else:
+        selected = (cavity > 0) & (rows > split)
+    return selected.astype(np.uint8) * 255
+
+
+def _tooth_mask(img, cavity, lm=None, upper_only=False, row=None):
+    """Segment photographic teeth only inside the requested inner-mouth row."""
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     selected = ((cavity > 0) & (hsv[..., 2] > 108) &
                 (hsv[..., 1] < 105) & (lab[..., 0] > 112))
-    if upper_only and lm is not None:
-        rows = np.indices(cavity.shape)[0]
-        selected &= rows < float((lm[13, 1] + lm[14, 1]) * 0.5) + 3.0
+    if upper_only:
+        row = "upper"
+    if row is not None:
+        if lm is None:
+            raise ValueError("landmarks are required for dental row segmentation")
+        selected &= _row_zone(cavity, lm, row) > 0
     mask = selected.astype(np.uint8) * 255
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
     count, labels, stats, _ = cv2.connectedComponentsWithStats(mask)
@@ -49,28 +68,103 @@ def _tooth_mask(img, cavity, lm=None, upper_only=False):
     return clean
 
 
-def canonicalize_teeth(viseme_dir, diag_dir=None, log=print):
-    """Lock the upper row while preserving jaw-attached lower teeth."""
-    donor_path = os.path.join(viseme_dir, f"v_{TEETH_DONOR}.jpg")
-    donor = cv2.imread(donor_path)
-    if donor is None:
-        log("  dental lock skipped: SS donor missing")
+def _select_tooth_donor(viseme_dir, row="upper"):
+    if row not in DENTAL_ROWS:
+        raise ValueError(f"unknown dental row: {row}")
+    for name in DENTAL_DONORS[row]:
+        path = os.path.join(viseme_dir, f"v_{name}.jpg")
+        donor = cv2.imread(path)
+        if donor is None:
+            continue
+        donor_lm, _ = face.detect(donor)
+        if donor_lm is None:
+            continue
+        cavity = _mouth_cavity(donor.shape, donor_lm)
+        master = _tooth_mask(donor, cavity, donor_lm, row=row)
+        if int(np.count_nonzero(master)) >= MIN_TEETH_PIXELS[row]:
+            return name, donor, donor_lm, master
+    return None
+
+
+def _select_dental_donors(viseme_dir):
+    return {
+        row: selected
+        for row in DENTAL_ROWS
+        if (selected := _select_tooth_donor(viseme_dir, row)) is not None
+    }
+
+
+def _tooth_plate(master):
+    return cv2.dilate(
+        master, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 3)))
+
+
+def _lower_row_transform(donor_lm, target_lm):
+    source = np.asarray(donor_lm[LOWER_MOUTH_ANCHORS], np.float32)
+    target = np.asarray(target_lm[LOWER_MOUTH_ANCHORS], np.float32)
+
+    def translation():
+        delta = (target - source).mean(axis=0)
+        return np.array([[1.0, 0.0, delta[0]],
+                         [0.0, 1.0, delta[1]]], np.float32)
+
+    if (not np.isfinite(source).all() or not np.isfinite(target).all() or
+            float(np.linalg.norm(source - source.mean(axis=0), axis=1).max()) < 1.0):
+        return translation()
+    transform, _ = cv2.estimateAffinePartial2D(
+        source, target, method=cv2.LMEDS)
+    if transform is None or not np.isfinite(transform).all():
+        return translation()
+    scale = float(np.hypot(transform[0, 0], transform[1, 0]))
+    if not 0.78 <= scale <= 1.28:
+        return translation()
+    return transform.astype(np.float32)
+
+
+def _row_assets(donor, donor_lm, master, target_lm, row):
+    if row == "upper":
+        return donor, master, _tooth_plate(master)
+    transform = _lower_row_transform(donor_lm, target_lm)
+    height, width = master.shape
+    donor_frame = cv2.warpAffine(
+        donor, transform, (width, height), flags=cv2.INTER_LANCZOS4,
+        borderMode=cv2.BORDER_REPLICATE)
+    transformed = cv2.warpAffine(
+        master, transform, (width, height), flags=cv2.INTER_NEAREST,
+        borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    return donor_frame, transformed, _tooth_plate(transformed)
+
+
+def canonicalize_teeth(viseme_dir, diag_dir=None, log=print, selected=None):
+    """Lock skull-attached upper teeth and jaw-attached lower teeth."""
+    if selected is None:
+        selected = _select_dental_donors(viseme_dir)
+    if not selected:
+        log("  dental lock skipped: no canonical dental rows found")
         return []
-    donor_lm, _ = face.detect(donor)
-    if donor_lm is None:
-        log("  dental lock skipped: no face in SS donor")
-        return []
-    donor_cavity = _mouth_cavity(donor.shape, donor_lm)
-    master = _tooth_mask(donor, donor_cavity, donor_lm, upper_only=True)
-    if int(np.count_nonzero(master)) < 20:
-        log("  dental lock skipped: SS tooth edge not found")
-        return []
+    missing = [row for row in DENTAL_ROWS if row not in selected]
+    if missing:
+        log(f"  dental lock warning: no canonical {', '.join(missing)} row found")
+    donor_summary = ", ".join(
+        f"{row} {values[0]} ({np.count_nonzero(values[3])}px)"
+        for row, values in selected.items())
+    log(f"  dental lock donors: {donor_summary}")
+    dental_diag_dir = None
     if diag_dir:
-        cv2.imwrite(os.path.join(diag_dir, "04_teeth_master.png"), master)
+        dental_diag_dir = os.path.join(diag_dir, "dental")
+        os.makedirs(dental_diag_dir, exist_ok=True)
+        for index, (row, values) in enumerate(selected.items()):
+            master = values[3]
+            cv2.imwrite(
+                os.path.join(diag_dir, f"{4 + index * 2:02d}_teeth_{row}_master.png"),
+                master)
+            cv2.imwrite(
+                os.path.join(diag_dir, f"{5 + index * 2:02d}_teeth_{row}_plate.png"),
+                _tooth_plate(master))
 
     report = []
     for name in visemes.ORDER:
-        if name not in TEETH_SHAPES or name == TEETH_DONOR:
+        if name not in TEETH_SHAPES:
             continue
         path = os.path.join(viseme_dir, f"v_{name}.jpg")
         img = cv2.imread(path)
@@ -80,27 +174,67 @@ def canonicalize_teeth(viseme_dir, diag_dir=None, log=print):
         if lm is None:
             continue
         cavity = _mouth_cavity(img.shape, lm)
-        generated = _tooth_mask(img, cavity, lm, upper_only=True)
+        rows = {}
+        remove = np.zeros(cavity.shape, np.uint8)
+        for row, values in selected.items():
+            donor_name, donor, donor_lm, master = values
+            donor_frame, canonical, plate = _row_assets(
+                donor, donor_lm, master, lm, row)
+            zone = _row_zone(cavity, lm, row)
+            generated = _tooth_mask(img, cavity, lm, row=row)
+            replace = name != donor_name
+            if replace:
+                row_remove = cv2.bitwise_and(
+                    cv2.dilate(generated, np.ones((3, 3), np.uint8)), zone)
+                remove = cv2.bitwise_or(remove, row_remove)
+            rows[row] = dict(
+                donor=donor_name, donor_frame=donor_frame,
+                canonical=canonical, plate=plate, zone=zone,
+                generated=generated, replace=replace)
 
-        rows = np.indices(cavity.shape)[0]
-        upper_zone = ((cavity > 0) &
-                      (rows < float((lm[13, 1] + lm[14, 1]) * 0.5) + 3.0))
-        remove = cv2.dilate(generated, np.ones((3, 3), np.uint8))
-        remove = np.where(upper_zone, remove, 0).astype(np.uint8)
-        work = cv2.inpaint(img, remove, 2.0, cv2.INPAINT_TELEA).astype(np.float32)
-
-        reveal = cv2.bitwise_and(master,
-                                 cv2.erode(cavity, np.ones((2, 2), np.uint8)))
-        reveal_alpha = cv2.GaussianBlur(reveal, (0, 0), .55).astype(np.float32) / 255.0
-        work = (work * (1 - reveal_alpha[..., None]) +
-                donor.astype(np.float32) * reveal_alpha[..., None])
+        if np.any(remove):
+            work = cv2.inpaint(img, remove, 2.0, cv2.INPAINT_TELEA).astype(np.float32)
+        else:
+            work = img.astype(np.float32)
+        cavity_inner = cv2.erode(cavity, np.ones((2, 2), np.uint8))
+        details = {}
+        for row, values in rows.items():
+            reveal = cv2.bitwise_and(values["plate"], cavity_inner)
+            reveal = cv2.bitwise_and(reveal, values["zone"])
+            enamel = cv2.bitwise_and(values["canonical"], cavity_inner)
+            enamel = cv2.bitwise_and(enamel, values["zone"])
+            if dental_diag_dir:
+                reference = np.zeros_like(img)
+                reference[enamel > 0] = values["donor_frame"][enamel > 0]
+                cv2.imwrite(os.path.join(
+                    dental_diag_dir, f"{row}_{name}_mask.png"), enamel)
+                cv2.imwrite(os.path.join(
+                    dental_diag_dir, f"{row}_{name}_zone.png"), values["zone"])
+                cv2.imwrite(os.path.join(
+                    dental_diag_dir, f"{row}_{name}_reference.png"), reference)
+            if values["replace"]:
+                reveal_alpha = cv2.GaussianBlur(
+                    reveal, (0, 0), .55).astype(np.float32) / 255.0
+                soft_zone = cv2.GaussianBlur(
+                    values["zone"], (0, 0), .45).astype(np.float32) / 255.0
+                reveal_alpha *= soft_zone
+                reveal_alpha[enamel > 0] = 1.0
+                work = (work * (1 - reveal_alpha[..., None]) +
+                        values["donor_frame"].astype(np.float32) *
+                        reveal_alpha[..., None])
+            details[row] = dict(
+                donor=values["donor"],
+                removed=(int(np.count_nonzero(values["generated"]))
+                         if values["replace"] else 0),
+                revealed=int(np.count_nonzero(enamel)),
+            )
         cv2.imwrite(path, np.clip(work, 0, 255).astype(np.uint8),
                     [cv2.IMWRITE_JPEG_QUALITY, 95])
-        row = dict(name=name, removed_upper=int(np.count_nonzero(generated)),
-                   revealed=int(np.count_nonzero(reveal)))
-        report.append(row)
-        log(f"  {name:7s} upper lock removed {row['removed_upper']:4d}px   "
-            f"revealed {row['revealed']:4d}px")
+        report.append(dict(name=name, rows=details))
+        detail = "   ".join(
+            f"{row} removed {values['removed']:4d}px / revealed {values['revealed']:4d}px"
+            for row, values in details.items())
+        log(f"  {name:7s} {detail}")
     return report
 
 
@@ -121,6 +255,7 @@ def soften_oral_shadows(viseme_dir, log=print):
         if lm is None:
             continue
         cavity = _mouth_cavity(img.shape, lm)
+        dental = _tooth_mask(img, cavity)
         value = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)[..., 2].astype(np.float32)
         darkness = np.clip((105.0 - value) / 105.0, 0.0, 1.0)
         region = cv2.GaussianBlur(cavity, (0, 0), .65).astype(np.float32) / 255.0
@@ -138,6 +273,7 @@ def soften_oral_shadows(viseme_dir, log=print):
         work = (work * (1.0 - contour_alpha[..., None]) +
                 contour_target[None, None, :] * contour_alpha[..., None])
         work = np.clip(work, 0, 255).astype(np.uint8)
+        work[dental > 0] = img[dental > 0]
 
         before = int(np.percentile(value[cavity > 0], 5))
         after_value = cv2.cvtColor(work, cv2.COLOR_BGR2HSV)[..., 2]
@@ -149,35 +285,115 @@ def soften_oral_shadows(viseme_dir, log=print):
     return report
 
 
-def _masks(key, klm):
-    H, W = key.shape[:2]
-    s = max(H, W) / 1024.0
-    face_m = face.hull_mask(key.shape, klm, face.FACE_OVAL)
-    face_m = cv2.erode(face_m, cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (int(23 * s) | 1, int(23 * s) | 1)))
-
-    mouth = face.hull_mask(key.shape, klm, face.OUTER_LIP + face.CHIN,
-                           dilate=int(41 * s) | 1)
-    mouth = cv2.bitwise_and(mouth, face_m)
-
-    eyes = np.zeros((H, W), np.uint8)
-    for idx in (face.EYE_L + face.BROW_L, face.EYE_R + face.BROW_R):
-        eyes = cv2.bitwise_or(eyes, face.hull_mask(key.shape, klm, idx,
-                                                   dilate=int(21 * s) | 1))
-    eyes = cv2.bitwise_and(eyes, face_m)
-    return dict(mouth=mouth, eyes=eyes), face_m
+def _regional_mask(key, landmarks, groups, dilate, face_mask, eye_guard):
+    mask = np.zeros(key.shape[:2], np.uint8)
+    for group in groups:
+        mask = cv2.bitwise_or(
+            mask, face.hull_mask(key.shape, landmarks, group, dilate=dilate))
+    mask = cv2.bitwise_and(mask, face_mask)
+    return cv2.bitwise_and(mask, cv2.bitwise_not(eye_guard))
 
 
-def _alpha_ring(mask, face_m, scale):
-    alpha = cv2.GaussianBlur(mask, (0, 0), FEATHER * scale).astype(np.float32) / 255.0
+def _masks(key, klm, profile=None):
+    profile = rig.normalize(profile)
+    height, width = key.shape[:2]
+    scale = max(height, width) / 1024.0
+    face_mask = face.hull_mask(key.shape, klm, face.FACE_OVAL)
+    face_mask = cv2.erode(face_mask, cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (int(23 * scale) | 1, int(23 * scale) | 1)))
+    eye_guard = face.hull_mask(
+        key.shape, klm, face.EYE_L + face.EYE_R,
+        dilate=int(41 * scale) | 1)
+
+    lip_core = _regional_mask(
+        key, klm, [face.OUTER_LIP], int(31 * scale) | 1,
+        face_mask, eye_guard)
+    regions = {
+        "jaw": _regional_mask(
+            key, klm, [face.JAW_REGION], int(17 * scale) | 1,
+            face_mask, eye_guard),
+        "cheeks": _regional_mask(
+            key, klm, [face.CHEEK_L, face.CHEEK_R],
+            int(19 * scale) | 1, face_mask, eye_guard),
+        "nasolabial": _regional_mask(
+            key, klm, [face.NASOLABIAL_L, face.NASOLABIAL_R],
+            int(13 * scale) | 1, face_mask, eye_guard),
+    }
+    support = np.zeros((height, width), np.uint8)
+    for region in regions.values():
+        support = cv2.bitwise_or(support, region)
+    nose_core = face.hull_mask(
+        key.shape, klm, face.NOSE_CORE, dilate=int(5 * scale) | 1)
+    nose_base = face.hull_mask(
+        key.shape, klm, face.NOSE_BASE, dilate=int(7 * scale) | 1)
+    mouth = dict(kind="mouth", core=lip_core, regions=regions,
+                 support=support, nose_core=nose_core,
+                 nose_base=nose_base, profile=profile)
+
+    eyes = np.zeros((height, width), np.uint8)
+    for indices in (face.EYE_L + face.BROW_L,
+                    face.EYE_R + face.BROW_R):
+        eyes = cv2.bitwise_or(
+            eyes, face.hull_mask(key.shape, klm, indices,
+                                 dilate=int(21 * scale) | 1))
+    eyes = cv2.bitwise_and(eyes, face_mask)
+    return dict(mouth=mouth, eyes=eyes), face_mask
+
+
+def _alpha_ring(mask, face_m, scale, profile=None):
+    sigma = FEATHER * scale
+    if isinstance(mask, dict) and mask.get("kind") == "mouth":
+        profile = rig.normalize(profile or mask.get("profile"))
+        core_alpha = cv2.GaussianBlur(
+            mask["core"], (0, 0), sigma).astype(np.float32) / 255.0
+        alpha = core_alpha * (profile["lips"] / 100.0)
+        for name, region in mask["regions"].items():
+            region_alpha = cv2.GaussianBlur(
+                region, (0, 0), sigma * 1.35).astype(np.float32) / 255.0
+            alpha = np.maximum(
+                alpha, region_alpha * (profile[name] / 100.0))
+        nose_base = cv2.GaussianBlur(
+            mask["nose_base"], (0, 0), NOSE_LOCK_FEATHER * scale
+        ).astype(np.float32) / 255.0
+        nose_cap = profile["nose"] / 100.0
+        alpha = (alpha * (1.0 - nose_base) +
+                 np.minimum(alpha, nose_cap) * nose_base)
+        alpha[mask["nose_base"] > 0] = np.minimum(
+            alpha[mask["nose_base"] > 0], nose_cap)
+        nose_core = cv2.GaussianBlur(
+            mask["nose_core"], (0, 0), NOSE_LOCK_FEATHER * scale
+        ).astype(np.float32) / 255.0
+        alpha *= 1.0 - nose_core
+        alpha[mask["nose_core"] > 0] = 0.0
+        ring_base = mask["support"]
+    elif isinstance(mask, tuple):
+        core, support, nose_guard = mask
+        core_alpha = cv2.GaussianBlur(
+            core, (0, 0), sigma).astype(np.float32) / 255.0
+        support_alpha = cv2.GaussianBlur(
+            support, (0, 0), sigma * 1.35).astype(np.float32) / 255.0
+        alpha = np.maximum(core_alpha, support_alpha * LOWER_FACE_ALPHA)
+        nose_lock = cv2.GaussianBlur(
+            nose_guard, (0, 0), NOSE_LOCK_FEATHER * scale
+        ).astype(np.float32) / 255.0
+        alpha *= 1.0 - NOSE_LOCK_STRENGTH * nose_lock
+        ring_base = support
+    else:
+        alpha = cv2.GaussianBlur(
+            mask, (0, 0), sigma).astype(np.float32) / 255.0
+        ring_base = mask
+    alpha = np.clip(alpha, 0.0, 1.0)
     k1 = np.ones((int(35 * scale) | 1,) * 2, np.uint8)
     k2 = np.ones((int(9 * scale) | 1,) * 2, np.uint8)
-    ring = cv2.bitwise_and(cv2.dilate(mask, k1), cv2.bitwise_not(cv2.dilate(mask, k2))) > 0
+    ring = cv2.bitwise_and(
+        cv2.dilate(ring_base, k1),
+        cv2.bitwise_not(cv2.dilate(ring_base, k2))) > 0
     ring = np.logical_and(ring, face_m > 0)
     return alpha, ring
 
 
-def compose_all(keyframe_path, raw_dir, out_dir, diag_dir=None, log=print):
+def compose_all(keyframe_path, raw_dir, out_dir, diag_dir=None, log=print,
+                profile=None):
     key = cv2.imread(keyframe_path)
     H, W = key.shape[:2]
     scale = max(H, W) / 1024.0
@@ -186,8 +402,12 @@ def compose_all(keyframe_path, raw_dir, out_dir, diag_dir=None, log=print):
         raise ValueError("no face in keyframe")
     kmet = face.metrics(klm, kM)
 
-    masks, face_m = _masks(key, klm)
-    prepared = {k: _alpha_ring(m, face_m, scale) for k, m in masks.items()}
+    profile = rig.normalize(profile)
+    masks, face_m = _masks(key, klm, profile)
+    prepared = {
+        name: _alpha_ring(mask, face_m, scale, profile)
+        for name, mask in masks.items()
+    }
     os.makedirs(out_dir, exist_ok=True)
     if diag_dir:
         os.makedirs(diag_dir, exist_ok=True)
@@ -195,6 +415,8 @@ def compose_all(keyframe_path, raw_dir, out_dir, diag_dir=None, log=print):
                     (prepared["mouth"][0] * 255).astype(np.uint8))
         cv2.imwrite(os.path.join(diag_dir, "03_mask_eyes.png"),
                     (prepared["eyes"][0] * 255).astype(np.uint8))
+        for name, region in masks["mouth"]["regions"].items():
+            cv2.imwrite(os.path.join(diag_dir, f"02_mask_{name}.png"), region)
 
     kl = key.astype(np.float32)
     report = []
@@ -241,10 +463,12 @@ def compose_all(keyframe_path, raw_dir, out_dir, diag_dir=None, log=print):
         log(f"  {name:7s} rigid residual {resid:5.2f}px   off-region delta {outside:.4f}"
             + (f"   foreshortening {fs:.2f}" if fs else ""))
 
-    teeth = canonicalize_teeth(out_dir, diag_dir, log)
+    dental_donors = _select_dental_donors(out_dir)
     oral_shadows = soften_oral_shadows(out_dir, log)
+    teeth = canonicalize_teeth(
+        out_dir, diag_dir, log, selected=dental_donors)
     if diag_dir:
         json.dump(dict(keyframe=kmet, visemes=report, teeth=teeth,
-                       oral_shadows=oral_shadows),
+                       oral_shadows=oral_shadows, rig_profile=profile),
                   open(os.path.join(diag_dir, "compose.json"), "w"), indent=1)
     return report, kmet

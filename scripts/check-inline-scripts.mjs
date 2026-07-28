@@ -3,7 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 const root = path.resolve(import.meta.dirname, '..');
-const pages = ['web/index.html', 'web/settings.html'];
+const pages = ['web/index.html', 'web/settings.html', 'web/bubble.html'];
 let checked = 0;
 
 for (const relative of pages) {

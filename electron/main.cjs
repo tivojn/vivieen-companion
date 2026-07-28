@@ -6,19 +6,21 @@ const {
   Menu,
   Tray,
   dialog,
+  globalShortcut,
   ipcMain,
   nativeImage,
   screen,
   session,
   shell,
 } = require('electron');
-const { spawn, execFileSync } = require('node:child_process');
+const { spawn, execFile, execFileSync } = require('node:child_process');
 const { randomBytes } = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
+const { EnconvoAudioMonitor } = require('./enconvo-audio-monitor.cjs');
 
 app.setName('Vivieen');
 
@@ -34,21 +36,56 @@ let ownsBackend = false;
 let quitting = false;
 let mainWindow = null;
 let settingsWindow = null;
+let bubbleWindow = null;
+let appearanceWindow = null;
+let bubbleTimer = null;
+let pendingBubble = '';
 let tray = null;
 let state = null;
 let saveTimer = null;
 let backendLog = null;
+let enconvoMonitor = null;
+let enconvoSampleSequence = 0;
+let petDrag = null;
+let petPointerTimer = null;
+let petPointerInteractive = null;
+let petPointerDebugAt = 0;
+let petRoamTimer = null;
+let petRoamRuntime = null;
+let petMotionReady = false;
+let petMotionProfile = {
+  walkSpeed: 64,
+  cycleSeconds: 1.1,
+  cycleDistance: 70.4,
+  travelOffsets: [],
+};
+const enconvoSampleBuffer = [];
+const MAX_ENCONVO_SAMPLE_BACKLOG = 160;
+const PET_VIEWS = new Set(['full', 'three-quarter', 'half', 'bust', 'head', 'face']);
+const PET_BASE_SIZE = Object.freeze({ width: 560, height: 760 });
+const PET_NORMAL_MINIMUM = Object.freeze({ width: 140, height: 190 });
+const PET_ZOOM_RANGE = Object.freeze({ min: 0.25, max: 4 });
+const PET_ROAM_SIZE = Object.freeze({ width: 250, height: 340 });
+const PET_ROAM_MIN_SPEED = 42;
+const PET_ROAM_MAX_SPEED = 150;
+const PET_LEDGE_HOLD_MS = 9000;
+const PET_INTERACTION_COOLDOWN_MS = 1400;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const baseUrl = () => `http://${HOST}:${port}`;
 const codeRoot = () => app.isPackaged
   ? path.join(process.resourcesPath, 'backend')
   : path.resolve(__dirname, '..');
-const dataRoot = () => app.isPackaged
+const dataRoot = () => process.env.VIVIEEN_DATA_DIR || (app.isPackaged
   ? path.join(app.getPath('userData'), 'backend-data')
-  : codeRoot();
+  : codeRoot());
 const statePath = () => path.join(app.getPath('userData'), 'window-state.json');
 const logPath = () => path.join(app.getPath('userData'), 'backend.log');
+const audioTapExecutable = () => path.join(
+  app.isPackaged ? process.resourcesPath : codeRoot(),
+  app.isPackaged ? 'native' : '.electron-native',
+  'enconvo-audio-tap',
+);
 
 function ensureDataRoot() {
   fs.mkdirSync(dataRoot(), { recursive: true, mode: 0o700 });
@@ -162,6 +199,11 @@ function backendEnvironment() {
     VIVIEEN_DATA_DIR: data,
     VIVIEEN_CONFIG: path.join(data, 'config.json'),
     VIVIEEN_FACE_MODEL: path.join(app.isPackaged ? data : root, 'models', 'face_landmarker.task'),
+    VIVIEEN_CUTOUT_HELPER: path.join(
+      app.isPackaged ? process.resourcesPath : root,
+      app.isPackaged ? 'native' : '.electron-native',
+      'person-cutout',
+    ),
     VIVIEEN_AUTH_TOKEN: backendToken,
     PATH: [
       path.join(root, 'bin'),
@@ -180,6 +222,51 @@ function writeBackendLog(chunk) {
     try { fs.chmodSync(logPath(), 0o600); } catch {}
   }
   backendLog.write(chunk);
+}
+
+function monitorState() {
+  return enconvoMonitor ? enconvoMonitor.snapshot() : {
+    enabled: Boolean(state && state.followEnconvo),
+    status: 'off',
+    message: 'Follow EnConvo is off.',
+    processCount: 0,
+    target: 'EnConvo',
+  };
+}
+
+function broadcastMonitorState(value = monitorState()) {
+  for (const window of [mainWindow, settingsWindow]) {
+    if (window && !window.isDestroyed()) window.webContents.send('vivieen:monitor-state', value);
+  }
+  buildTrayMenu();
+}
+
+function createEnconvoMonitor() {
+  enconvoMonitor = new EnconvoAudioMonitor({
+    helperPath: audioTapExecutable(),
+    simulate: process.env.VIVIEEN_AUDIO_TAP_SIMULATE === '1',
+    logger: writeBackendLog,
+  });
+  enconvoMonitor.on('state', broadcastMonitorState);
+  enconvoMonitor.on('sample', (sample) => {
+    const value = { ...sample, sequence: ++enconvoSampleSequence };
+    enconvoSampleBuffer.push(value);
+    if (enconvoSampleBuffer.length > MAX_ENCONVO_SAMPLE_BACKLOG) {
+      enconvoSampleBuffer.splice(0, enconvoSampleBuffer.length - MAX_ENCONVO_SAMPLE_BACKLOG);
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('vivieen:monitor-sample', value);
+    }
+  });
+}
+
+function setEnconvoMonitoring(value) {
+  state.followEnconvo = Boolean(value);
+  saveStateSoon();
+  enconvoMonitor.setEnabled(state.followEnconvo);
+  if (!state.followEnconvo) enconvoSampleBuffer.length = 0;
+  broadcastState();
+  return shellState();
 }
 
 function stopBackend() {
@@ -230,13 +317,37 @@ async function startBackend() {
 function defaultState() {
   return {
     alwaysOnTop: true,
+    followEnconvo: true,
+    enconvoFollowDefaultVersion: 1,
+    petMode: true,
+    petOpacity: 0.5,
+    petView: 'half',
+    petZoom: 1,
+    petClickThrough: true,
+    petLocked: false,
+    petRoam: false,
+    petHomeBounds: null,
     bounds: { width: 560, height: 760 },
   };
 }
 
 function loadState() {
   try {
-    return { ...defaultState(), ...JSON.parse(fs.readFileSync(statePath(), 'utf8')) };
+    const defaults = defaultState();
+    const saved = JSON.parse(fs.readFileSync(statePath(), 'utf8'));
+    const next = { ...defaults, ...saved, bounds: { ...defaults.bounds, ...(saved.bounds || {}) } };
+    next.petOpacity = Math.max(0, Math.min(1, Number(next.petOpacity) || 0));
+    next.petZoom = Math.max(PET_ZOOM_RANGE.min,
+      Math.min(PET_ZOOM_RANGE.max, Number(next.petZoom) || 1));
+    next.petView = PET_VIEWS.has(next.petView) ? next.petView : defaults.petView;
+    next.petRoam = Boolean(next.petRoam);
+    if (Number(saved.enconvoFollowDefaultVersion || 0) < 1) {
+      next.followEnconvo = true;
+      next.enconvoFollowDefaultVersion = 1;
+    }
+    next.petHomeBounds = next.petHomeBounds && typeof next.petHomeBounds === 'object'
+      ? next.petHomeBounds : null;
+    return next;
   } catch {
     return defaultState();
   }
@@ -246,7 +357,7 @@ function saveStateSoon() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
-    state.bounds = mainWindow.getBounds();
+    if (!state.petRoam) state.bounds = mainWindow.getBounds();
     fs.mkdirSync(path.dirname(statePath()), { recursive: true });
     fs.writeFileSync(statePath(), JSON.stringify(state, null, 2), { mode: 0o600 });
   }, 180);
@@ -268,13 +379,25 @@ function shellState() {
     alwaysOnTop: Boolean(state && state.alwaysOnTop),
     backendOwned: ownsBackend,
     backendUrl: baseUrl(),
+    enconvoMonitor: monitorState(),
     packaged: app.isPackaged,
+    pet: {
+      enabled: Boolean(state && state.petMode),
+      opacity: Number(state && state.petOpacity),
+      view: (state && state.petView) || 'half',
+      zoom: Number(state && state.petZoom) || 1,
+      clickThrough: Boolean(state && state.petClickThrough),
+      locked: Boolean(state && state.petLocked),
+      roam: Boolean(state && state.petRoam),
+      motionReady: petMotionReady,
+      motionProfile: { ...petMotionProfile },
+    },
   };
 }
 
 function broadcastState() {
   const value = shellState();
-  for (const window of [mainWindow, settingsWindow]) {
+  for (const window of [mainWindow, settingsWindow, appearanceWindow]) {
     if (window && !window.isDestroyed()) window.webContents.send('vivieen:state', value);
   }
   buildTrayMenu();
@@ -286,6 +409,408 @@ function applyAlwaysOnTop(value) {
     mainWindow.setAlwaysOnTop(state.alwaysOnTop, 'floating');
     mainWindow.setVisibleOnAllWorkspaces(state.alwaysOnTop, { visibleOnFullScreen: true });
   }
+  saveStateSoon();
+  broadcastState();
+  return shellState();
+}
+
+function setPetHit(interactive, reason = 'renderer') {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const value = Boolean(interactive);
+  if (petPointerInteractive === value) return;
+  petPointerInteractive = value;
+  if (process.env.VIVIEEN_DEBUG_HIT) console.error(`[pet-hit] interactive=${value} reason=${reason}`);
+  const ignore = state.petClickThrough && !value;
+  mainWindow.setIgnoreMouseEvents(ignore, { forward: true });
+}
+
+function stopPetPointerTracking() {
+  if (petPointerTimer) clearInterval(petPointerTimer);
+  petPointerTimer = null;
+  petPointerInteractive = null;
+}
+
+function startPetPointerTracking() {
+  stopPetPointerTracking();
+  petPointerTimer = setInterval(() => {
+    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
+    if (!state.petClickThrough) {
+      setPetHit(true, 'click-through-off');
+      return;
+    }
+    const point = screen.getCursorScreenPoint();
+    const bounds = mainWindow.getBounds();
+    const inside = point.x >= bounds.x && point.x < bounds.x + bounds.width
+      && point.y >= bounds.y && point.y < bounds.y + bounds.height;
+    if (!inside) {
+      if (process.env.VIVIEEN_DEBUG_HIT && petPointerInteractive) {
+        console.error(`[pet-pointer] point=${point.x},${point.y} bounds=${bounds.x},${bounds.y},${bounds.width},${bounds.height}`);
+      }
+      mainWindow.webContents.send('vivieen:pet-pointer', { x: -1, y: -1 });
+      setPetHit(false, 'outside-window');
+      return;
+    }
+    const localPoint = {x: point.x - bounds.x, y: point.y - bounds.y};
+    if (process.env.VIVIEEN_DEBUG_HIT && Date.now() - petPointerDebugAt > 1000) {
+      petPointerDebugAt = Date.now();
+      console.error(`[pet-pointer] local=${localPoint.x},${localPoint.y}`);
+    }
+    mainWindow.webContents.send('vivieen:pet-pointer', localPoint);
+  }, 32);
+  petPointerTimer.unref?.();
+}
+
+function applyPetOpacity(value, reveal = true) {
+  const opacity = Math.max(0, Math.min(1, Number(value) || 0));
+  state.petOpacity = opacity;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (opacity <= 0.001) mainWindow.hide();
+    else {
+      mainWindow.setOpacity(opacity);
+      if (reveal) mainWindow.showInactive();
+    }
+  }
+  saveStateSoon();
+  broadcastState();
+  return shellState();
+}
+
+function applyPetView(value) {
+  if (!PET_VIEWS.has(value)) return shellState();
+  state.petView = value;
+  saveStateSoon();
+  broadcastState();
+  return shellState();
+}
+
+function petBoundsForZoom(value) {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  const zoom = Math.max(PET_ZOOM_RANGE.min,
+    Math.min(PET_ZOOM_RANGE.max, Number(value) || 1));
+  const current = mainWindow.getBounds();
+  const area = screen.getDisplayMatching(current).workArea;
+  const width = Math.min(area.width, Math.max(PET_NORMAL_MINIMUM.width,
+    Math.round(PET_BASE_SIZE.width * zoom)));
+  const height = Math.min(area.height, Math.max(PET_NORMAL_MINIMUM.height,
+    Math.round(PET_BASE_SIZE.height * zoom)));
+  const centerX = current.x + current.width / 2;
+  const centerY = current.y + current.height / 2;
+  const x = Math.max(area.x, Math.min(area.x + area.width - width,
+    Math.round(centerX - width / 2)));
+  const y = Math.max(area.y, Math.min(area.y + area.height - height,
+    Math.round(centerY - height / 2)));
+  return { x, y, width, height };
+}
+
+function applyPetZoom(value) {
+  state.petZoom = Math.max(PET_ZOOM_RANGE.min,
+    Math.min(PET_ZOOM_RANGE.max, Number(value) || 1));
+  if (!state.petRoam) {
+    const bounds = petBoundsForZoom(state.petZoom);
+    if (bounds) {
+      mainWindow.setBounds(bounds, false);
+      state.bounds = { ...bounds };
+    }
+  }
+  saveStateSoon();
+  broadcastState();
+  return shellState();
+}
+
+function applyPetClickThrough(value) {
+  state.petClickThrough = Boolean(value);
+  setPetHit(!state.petClickThrough);
+  saveStateSoon();
+  broadcastState();
+  return shellState();
+}
+
+function applyPetLock(value) {
+  state.petLocked = Boolean(value);
+  petDrag = null;
+  saveStateSoon();
+  broadcastState();
+  return shellState();
+}
+
+function petRoamDisplay() {
+  if (petRoamRuntime) {
+    const active = screen.getAllDisplays().find(
+      (display) => display.id === petRoamRuntime.displayId);
+    if (active) return active;
+  }
+  const home = state.petHomeBounds || state.bounds;
+  if (home && Number.isFinite(home.x) && Number.isFinite(home.y)) {
+    return screen.getDisplayMatching(home);
+  }
+  return screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+}
+
+function sendPetRoamMotion(payload = null) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const value = payload || (petRoamRuntime ? {
+    enabled: true,
+    mode: petRoamRuntime.mode,
+    direction: petRoamRuntime.direction,
+    phase: petRoamRuntime.stride % 1,
+    edge: petRoamRuntime.mode.startsWith('ledge-')
+      ? petRoamRuntime.mode.slice('ledge-'.length) : null,
+  } : { enabled: false, mode: 'idle', direction: 1, phase: 0, edge: null });
+  mainWindow.webContents.send('vivieen:pet-roam-motion', value);
+}
+
+function motionTravelAt(profile, phase) {
+  const cycleDistance = Number(profile.cycleDistance)
+    || Number(profile.walkSpeed) * Number(profile.cycleSeconds);
+  const offsets = Array.isArray(profile.travelOffsets) ? profile.travelOffsets : [];
+  const wrapped = ((Number(phase) || 0) % 1 + 1) % 1;
+  if (offsets.length < 2) return wrapped * cycleDistance;
+  const position = wrapped * offsets.length;
+  const index = Math.min(offsets.length - 1, Math.floor(position));
+  const fraction = position - index;
+  const current = offsets[index];
+  const next = index + 1 < offsets.length ? offsets[index + 1] : cycleDistance;
+  return current + (next - current) * fraction;
+}
+
+function motionTravelDelta(profile, previousPhase, nextPhase) {
+  const cycleDistance = Number(profile.cycleDistance)
+    || Number(profile.walkSpeed) * Number(profile.cycleSeconds);
+  const previous = motionTravelAt(profile, previousPhase);
+  const next = motionTravelAt(profile, nextPhase);
+  return nextPhase >= previousPhase ? next - previous : cycleDistance - previous + next;
+}
+
+function tickPetRoam() {
+  if (!state.petRoam || !petRoamRuntime || !mainWindow || mainWindow.isDestroyed()) {
+    if (petRoamTimer) clearInterval(petRoamTimer);
+    petRoamTimer = null;
+    return;
+  }
+  const now = Date.now();
+  const elapsed = Math.max(0, Math.min(0.1, (now - petRoamRuntime.lastAt) / 1000));
+  petRoamRuntime.lastAt = now;
+  const display = petRoamDisplay();
+  const area = display.workArea;
+  const bounds = mainWindow.getBounds();
+  const minimumX = area.x;
+  const maximumX = area.x + area.width - bounds.width;
+  const dockLineY = Math.round(area.y + area.height - bounds.height + 2);
+  let x = Number.isFinite(petRoamRuntime.x) ? petRoamRuntime.x : bounds.x;
+
+  if (petRoamRuntime.mode === 'stand') {
+    x = Math.max(minimumX, Math.min(maximumX, x));
+    if (!petRoamRuntime.engaged && now >= petRoamRuntime.resumeAt) {
+      petRoamRuntime.mode = petRoamRuntime.resumeMode || 'walk';
+      if (petRoamRuntime.mode.startsWith('ledge-')) {
+        petRoamRuntime.holdUntil = now + PET_LEDGE_HOLD_MS;
+      }
+      petRoamRuntime.resumeMode = 'walk';
+    } else {
+      petRoamRuntime.x = x;
+      mainWindow.setPosition(Math.round(x), dockLineY, false);
+      sendPetRoamMotion();
+      return;
+    }
+  }
+  if (petRoamRuntime.mode === 'walk') {
+    const previousStride = petRoamRuntime.stride;
+    petRoamRuntime.stride = (petRoamRuntime.stride
+      + elapsed / Math.max(0.1, petRoamRuntime.cycleSeconds)) % 1;
+    const travelled = motionTravelDelta(
+      petRoamRuntime, previousStride, petRoamRuntime.stride);
+    x += petRoamRuntime.direction * travelled;
+    if (x >= maximumX) {
+      x = maximumX;
+      petRoamRuntime.mode = 'ledge-right';
+      petRoamRuntime.holdUntil = now + PET_LEDGE_HOLD_MS;
+    } else if (x <= minimumX) {
+      x = minimumX;
+      petRoamRuntime.mode = 'ledge-left';
+      petRoamRuntime.holdUntil = now + PET_LEDGE_HOLD_MS;
+    }
+  } else if (petRoamRuntime.mode.startsWith('ledge-')) {
+    const right = petRoamRuntime.mode === 'ledge-right';
+    x = right ? maximumX : minimumX;
+    if (now >= petRoamRuntime.holdUntil) {
+      petRoamRuntime.direction = right ? -1 : 1;
+      petRoamRuntime.mode = 'walk';
+    }
+  }
+
+  petRoamRuntime.x = x;
+  mainWindow.setPosition(Math.round(x), dockLineY, false);
+  sendPetRoamMotion();
+}
+
+function startPetRoamMotion() {
+  if (!state.petRoam || !petMotionReady || !mainWindow || mainWindow.isDestroyed()) return;
+  if (petRoamTimer) clearInterval(petRoamTimer);
+  const display = petRoamDisplay();
+  const area = display.workArea;
+  const home = state.petHomeBounds || state.bounds || {};
+  const maximumX = area.x + area.width - PET_ROAM_SIZE.width;
+  const homeCenter = Number.isFinite(home.x) && Number.isFinite(home.width)
+    ? home.x + home.width / 2 : area.x + area.width / 2;
+  const startX = Math.round(Math.max(area.x, Math.min(
+    maximumX, homeCenter - PET_ROAM_SIZE.width / 2)));
+  const startY = Math.round(area.y + area.height - PET_ROAM_SIZE.height + 2);
+  const direction = startX > area.x + area.width / 2 ? -1 : 1;
+
+  mainWindow.setResizable(false);
+  mainWindow.setMinimumSize(PET_ROAM_SIZE.width, PET_ROAM_SIZE.height);
+  mainWindow.setBounds({
+    x: startX,
+    y: startY,
+    width: PET_ROAM_SIZE.width,
+    height: PET_ROAM_SIZE.height,
+  }, false);
+  mainWindow.setAlwaysOnTop(true, 'floating');
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  if (state.petOpacity > 0.001) mainWindow.showInactive();
+
+  petRoamRuntime = {
+    displayId: display.id,
+    x: startX,
+    direction,
+    mode: 'walk',
+    stride: 0,
+    holdUntil: 0,
+    engaged: false,
+    resumeAt: 0,
+    resumeMode: 'walk',
+    walkSpeed: petMotionProfile.walkSpeed,
+    cycleSeconds: petMotionProfile.cycleSeconds,
+    cycleDistance: petMotionProfile.cycleDistance,
+    travelOffsets: [...petMotionProfile.travelOffsets],
+    lastAt: Date.now(),
+  };
+  sendPetRoamMotion();
+  petRoamTimer = setInterval(tickPetRoam, 32);
+  petRoamTimer.unref?.();
+}
+
+function stopPetRoamMotion(restore = true) {
+  if (petRoamTimer) clearInterval(petRoamTimer);
+  petRoamTimer = null;
+  petRoamRuntime = null;
+  sendPetRoamMotion({ enabled: false, mode: 'idle', direction: 1, phase: 0, edge: null });
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  mainWindow.setResizable(true);
+  mainWindow.setMinimumSize(PET_NORMAL_MINIMUM.width, PET_NORMAL_MINIMUM.height);
+  if (restore) {
+    const remembered = visibleBounds(state.petHomeBounds || state.bounds) || {};
+    const width = Math.max(PET_NORMAL_MINIMUM.width, Number(remembered.width) || 560);
+    const height = Math.max(PET_NORMAL_MINIMUM.height, Number(remembered.height) || 760);
+    let x = Number(remembered.x);
+    let y = Number(remembered.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+      x = area.x + area.width - width - 28;
+      y = area.y + area.height - height - 28;
+    }
+    mainWindow.setBounds({ x: Math.round(x), y: Math.round(y), width, height }, false);
+    state.bounds = mainWindow.getBounds();
+  }
+  mainWindow.setAlwaysOnTop(state.alwaysOnTop, 'floating');
+  mainWindow.setVisibleOnAllWorkspaces(state.alwaysOnTop, { visibleOnFullScreen: true });
+  if (restore) applyPetZoom(state.petZoom);
+}
+
+function setPetMotionReady(value) {
+  const payload = value && typeof value === 'object' ? value : { ready: Boolean(value) };
+  const ready = Boolean(payload.ready);
+  const requestedSpeed = Number(payload.walkSpeed);
+  const requestedCycle = Number(payload.cycleSeconds);
+  const walkSpeed = Number.isFinite(requestedSpeed)
+    ? Math.max(PET_ROAM_MIN_SPEED, Math.min(PET_ROAM_MAX_SPEED, requestedSpeed))
+    : petMotionProfile.walkSpeed;
+  const cycleSeconds = Number.isFinite(requestedCycle)
+    ? Math.max(0.5, Math.min(2.5, requestedCycle))
+    : petMotionProfile.cycleSeconds;
+  const requestedDistance = Number(payload.cycleDistance);
+  const cycleDistance = Number.isFinite(requestedDistance)
+    ? Math.max(10, Math.min(PET_ROAM_MAX_SPEED * 2.5, requestedDistance))
+    : walkSpeed * cycleSeconds;
+  const requestedOffsets = Array.isArray(payload.travelOffsets)
+    ? payload.travelOffsets.map(Number).filter(Number.isFinite).slice(0, 96) : [];
+  const travelOffsets = requestedOffsets.length >= 2
+    ? requestedOffsets.reduce((values, value) => {
+      values.push(Math.max(values.at(-1) || 0, Math.min(cycleDistance, value)));
+      return values;
+    }, []) : [];
+  const nextProfile = { walkSpeed, cycleSeconds, cycleDistance, travelOffsets };
+  const profileChanged = Math.abs(nextProfile.walkSpeed - petMotionProfile.walkSpeed) > 0.01
+    || Math.abs(nextProfile.cycleSeconds - petMotionProfile.cycleSeconds) > 0.001
+    || Math.abs(nextProfile.cycleDistance - petMotionProfile.cycleDistance) > 0.01
+    || JSON.stringify(nextProfile.travelOffsets) !== JSON.stringify(petMotionProfile.travelOffsets);
+  petMotionProfile = nextProfile;
+  if (petRoamRuntime) {
+    petRoamRuntime.walkSpeed = nextProfile.walkSpeed;
+    petRoamRuntime.cycleSeconds = nextProfile.cycleSeconds;
+    petRoamRuntime.cycleDistance = nextProfile.cycleDistance;
+    petRoamRuntime.travelOffsets = [...nextProfile.travelOffsets];
+  }
+  if (petMotionReady === ready && !profileChanged) return shellState();
+  petMotionReady = ready;
+  if (!ready && state.petRoam) {
+    state.petRoam = false;
+    stopPetRoamMotion(true);
+    state.petHomeBounds = null;
+    saveStateSoon();
+  } else if (ready && state.petRoam) {
+    startPetRoamMotion();
+  }
+  broadcastState();
+  return shellState();
+}
+
+function setPetEngaged(value) {
+  if (!state.petRoam || !petRoamRuntime || !mainWindow || mainWindow.isDestroyed()) return;
+  const engaged = Boolean(value);
+  if (petRoamRuntime.engaged === engaged) return;
+  petRoamRuntime.engaged = engaged;
+  if (engaged) {
+    if (petRoamRuntime.mode !== 'stand') {
+      petRoamRuntime.resumeMode = petRoamRuntime.mode.startsWith('ledge-')
+        ? petRoamRuntime.mode : 'walk';
+      if (petRoamRuntime.mode === 'ledge-right') petRoamRuntime.direction = -1;
+      if (petRoamRuntime.mode === 'ledge-left') petRoamRuntime.direction = 1;
+    }
+    petRoamRuntime.mode = 'stand';
+    petRoamRuntime.resumeAt = Number.POSITIVE_INFINITY;
+    const area = petRoamDisplay().workArea;
+    const bounds = mainWindow.getBounds();
+    const x = Math.max(area.x, Math.min(area.x + area.width - bounds.width, bounds.x));
+    petRoamRuntime.x = x;
+    mainWindow.setPosition(Math.round(x),
+      Math.round(area.y + area.height - bounds.height + 2), false);
+  } else {
+    petRoamRuntime.resumeAt = Date.now() + PET_INTERACTION_COOLDOWN_MS;
+  }
+  sendPetRoamMotion();
+}
+
+function applyPetRoam(value) {
+  const enabled = Boolean(value);
+  if (enabled && !petMotionReady) return shellState();
+  if (enabled) {
+    const home = mainWindow && !mainWindow.isDestroyed()
+      ? mainWindow.getBounds() : state.bounds;
+    if (!state.petRoam || !state.petHomeBounds) {
+      state.bounds = { ...home };
+      state.petHomeBounds = { ...home };
+    }
+    state.petRoam = true;
+    if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
+    startPetRoamMotion();
+  } else {
+    state.petRoam = false;
+    stopPetRoamMotion(true);
+    state.petHomeBounds = null;
+  }
+  petDrag = null;
   saveStateSoon();
   broadcastState();
   return shellState();
@@ -319,20 +844,184 @@ function guardNavigation(window, kind) {
   });
 }
 
-function createMainWindow() {
-  const bounds = visibleBounds(state.bounds);
-  mainWindow = new BrowserWindow({
-    ...bounds,
-    minWidth: 420,
-    minHeight: 590,
+function speechBubbleDisplay() {
+  if (petRoamRuntime) return petRoamDisplay();
+  if (mainWindow && !mainWindow.isDestroyed()) return screen.getDisplayMatching(mainWindow.getBounds());
+  return screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+}
+
+function positionSpeechBubble() {
+  if (!bubbleWindow || bubbleWindow.isDestroyed()) return;
+  const area = speechBubbleDisplay().workArea;
+  const width = Math.min(820, Math.max(440, area.width - 96));
+  const height = Math.min(300, Math.max(220, Math.round(area.height * 0.28)));
+  bubbleWindow.setBounds({
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + (area.height - height) * 0.42),
+    width,
+    height,
+  }, false);
+}
+
+function sendPendingBubble() {
+  if (!pendingBubble || !bubbleWindow || bubbleWindow.isDestroyed()) return;
+  positionSpeechBubble();
+  bubbleWindow.webContents.send('vivieen:bubble-text', { text: pendingBubble });
+  bubbleWindow.showInactive();
+}
+
+function createSpeechBubbleWindow() {
+  if (bubbleWindow && !bubbleWindow.isDestroyed()) return bubbleWindow;
+  bubbleWindow = new BrowserWindow({
+    width: 760,
+    height: 260,
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    roundedCorners: false,
+    hasShadow: false,
+    resizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    focusable: false,
+    alwaysOnTop: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'bubble-preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      webviewTag: false,
+      allowRunningInsecureContent: false,
+      spellcheck: false,
+    },
+  });
+  bubbleWindow.setAlwaysOnTop(true, 'floating');
+  bubbleWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  bubbleWindow.setIgnoreMouseEvents(true);
+  guardNavigation(bubbleWindow, 'bubble');
+  bubbleWindow.loadURL(`${baseUrl()}/bubble?electron=1`);
+  bubbleWindow.webContents.once('did-finish-load', sendPendingBubble);
+  bubbleWindow.on('closed', () => { bubbleWindow = null; });
+  return bubbleWindow;
+}
+
+function showSpeechBubble(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim().slice(0, 1200);
+  clearTimeout(bubbleTimer);
+  bubbleTimer = null;
+  pendingBubble = text;
+  if (!text) {
+    if (bubbleWindow && !bubbleWindow.isDestroyed()) bubbleWindow.hide();
+    return;
+  }
+  const window = createSpeechBubbleWindow();
+  if (!window.webContents.isLoadingMainFrame()) sendPendingBubble();
+  const visibleMs = Math.max(5000, Math.min(18_000, 3500 + text.length * 48));
+  bubbleTimer = setTimeout(() => {
+    pendingBubble = '';
+    if (bubbleWindow && !bubbleWindow.isDestroyed()) bubbleWindow.hide();
+  }, visibleMs);
+  bubbleTimer.unref?.();
+}
+
+function positionAppearanceWindow() {
+  if (!appearanceWindow || appearanceWindow.isDestroyed()) return;
+  const point = screen.getCursorScreenPoint();
+  const area = screen.getDisplayNearestPoint(point).workArea;
+  const [width, height] = appearanceWindow.getSize();
+  let x = Math.round(point.x - width / 2);
+  let y = Math.round(point.y + 18);
+  if (y + height > area.y + area.height) y = Math.round(point.y - height - 18);
+  x = Math.max(area.x + 8, Math.min(area.x + area.width - width - 8, x));
+  y = Math.max(area.y + 8, Math.min(area.y + area.height - height - 8, y));
+  appearanceWindow.setPosition(x, y, false);
+}
+
+function createAppearanceWindow() {
+  if (appearanceWindow && !appearanceWindow.isDestroyed()) return appearanceWindow;
+  appearanceWindow = new BrowserWindow({
+    width: 390,
+    height: 226,
     show: false,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
     roundedCorners: true,
     hasShadow: true,
+    resizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    title: 'Vivieen Appearance',
+    webPreferences: {
+      preload: path.join(__dirname, 'appearance-preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      webviewTag: false,
+      allowRunningInsecureContent: false,
+      spellcheck: false,
+    },
+  });
+  appearanceWindow.setAlwaysOnTop(true, 'floating');
+  appearanceWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  guardNavigation(appearanceWindow, 'appearance');
+  appearanceWindow.loadURL(`${baseUrl()}/appearance?electron=1`);
+  appearanceWindow.on('blur', () => appearanceWindow?.hide());
+  appearanceWindow.on('closed', () => { appearanceWindow = null; });
+  return appearanceWindow;
+}
+
+function showAppearanceWindow() {
+  const window = createAppearanceWindow();
+  positionAppearanceWindow();
+  window.show();
+  window.focus();
+  window.webContents.send('vivieen:state', shellState());
+}
+
+function triggerEnconvoVoiceCommand() {
+  return new Promise((resolve) => {
+    execFile(audioTapExecutable(), ['--trigger-right-option'],
+      { timeout: 4000 }, (error, stdout, stderr) => {
+        let payload = null;
+        try {
+          const lines = String(stdout || '').trim().split('\n').filter(Boolean);
+          payload = JSON.parse(lines.at(-1) || '{}');
+        } catch {}
+        if (error || !payload || payload.ok !== true) {
+          const message = payload?.message
+            || 'Allow Vivieen in Privacy & Security → Accessibility, then double-click me again.';
+          const detail = payload?.code || stderr || error?.message || 'native event failed';
+          writeBackendLog(`[EnConvo voice trigger failed] ${String(detail).trim()}\n`);
+          showSpeechBubble(message);
+          resolve({ ok: false, error: String(detail).trim() });
+          return;
+        }
+        resolve({ ok: true });
+      });
+  });
+}
+
+function createMainWindow() {
+  const bounds = visibleBounds(state.bounds);
+  mainWindow = new BrowserWindow({
+    ...bounds,
+    minWidth: PET_NORMAL_MINIMUM.width,
+    minHeight: PET_NORMAL_MINIMUM.height,
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    roundedCorners: false,
+    hasShadow: false,
     resizable: true,
     fullscreenable: false,
+    skipTaskbar: true,
+    acceptFirstMouse: true,
     title: 'Vivieen',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -345,26 +1034,78 @@ function createMainWindow() {
       spellcheck: false,
     },
   });
+  mainWindow.setOpacity(state.petOpacity > 0 ? state.petOpacity : 0.5);
+  petPointerInteractive = null;
+  setPetHit(false);
+  startPetPointerTracking();
   applyAlwaysOnTop(state.alwaysOnTop);
   guardNavigation(mainWindow, 'main');
   mainWindow.loadURL(`${baseUrl()}/?electron=1&app=${encodeURIComponent(app.getVersion())}`);
-  mainWindow.once('ready-to-show', () => mainWindow.show());
-  mainWindow.on('move', saveStateSoon);
-  mainWindow.on('resize', saveStateSoon);
+  mainWindow.once('ready-to-show', () => {
+    if (state.petRoam && petMotionReady) startPetRoamMotion();
+    else applyPetZoom(state.petZoom);
+    if (state.petOpacity > 0.001) mainWindow.show();
+  });
+  mainWindow.on('move', () => { if (!state.petRoam) saveStateSoon(); });
+  mainWindow.on('resize', () => { if (!state.petRoam) saveStateSoon(); });
   mainWindow.on('close', (event) => {
     if (!quitting) {
       event.preventDefault();
       mainWindow.hide();
     }
   });
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('closed', () => {
+    stopPetPointerTracking();
+    stopPetRoamMotion(false);
+    mainWindow = null;
+  });
 }
 
 function showMain() {
   if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
+  if (state.petOpacity <= 0.001) {
+    state.petOpacity = 0.5;
+    saveStateSoon();
+  }
+  mainWindow.setOpacity(state.petOpacity);
   mainWindow.show();
   mainWindow.focus();
+  broadcastState();
   if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.hide();
+}
+
+function recoverCompanion() {
+  if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
+  if (state.petRoam) {
+    state.petRoam = false;
+    stopPetRoamMotion(true);
+    state.petHomeBounds = null;
+  }
+  state.petOpacity = 0.5;
+  state.petClickThrough = false;
+  state.petLocked = false;
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const area = display.workArea;
+  const bounds = mainWindow.getBounds();
+  mainWindow.setBounds({
+    x: Math.round(area.x + area.width - bounds.width - 28),
+    y: Math.round(area.y + area.height - bounds.height - 28),
+    width: bounds.width,
+    height: bounds.height,
+  });
+  mainWindow.setOpacity(0.5);
+  mainWindow.setIgnoreMouseEvents(false);
+  mainWindow.show();
+  mainWindow.focus();
+  saveStateSoon();
+  broadcastState();
+}
+
+function installRecoveryShortcut() {
+  const accelerator = 'CommandOrControl+Shift+0';
+  if (!globalShortcut.register(accelerator, recoverCompanion)) {
+    writeBackendLog(`[shortcut unavailable] ${accelerator}\n`);
+  }
 }
 
 function openSettings() {
@@ -420,13 +1161,87 @@ function buildTrayMenu() {
       if (mainWindow && mainWindow.isVisible()) mainWindow.hide(); else showMain();
     } },
     { label: 'Settings…', accelerator: 'CommandOrControl+,', click: openSettings },
+    { label: 'Size & Opacity…', click: showAppearanceWindow },
     { type: 'separator' },
+    { label: 'Follow EnConvo Audio', type: 'checkbox', checked: monitorState().enabled,
+      click: (item) => setEnconvoMonitoring(item.checked) },
     { label: 'Always on Top', type: 'checkbox', checked: state.alwaysOnTop,
       click: (item) => applyAlwaysOnTop(item.checked) },
+    { label: petMotionReady ? 'Horizon Walk Along Dock' : 'Horizon Walk · Generate Motion First',
+      type: 'checkbox', checked: state.petRoam, enabled: petMotionReady,
+      click: (item) => applyPetRoam(item.checked) },
+    { label: 'Click Through Empty Space', type: 'checkbox', checked: state.petClickThrough,
+      click: (item) => applyPetClickThrough(item.checked) },
+    { label: 'Lock Position', type: 'checkbox', checked: state.petLocked,
+      enabled: !state.petRoam, click: (item) => applyPetLock(item.checked) },
+    { label: 'Recover Companion', accelerator: 'CommandOrControl+Shift+0', click: recoverCompanion },
     { label: 'Restart Voice Engine', enabled: ownsBackend, click: restartBackend },
     { type: 'separator' },
     { label: 'Quit Vivieen', accelerator: 'CommandOrControl+Q', click: () => app.quit() },
   ]));
+}
+
+function petViewItems() {
+  const views = [
+    ['Full Body', 'full'],
+    ['Three-Quarter', 'three-quarter'],
+    ['Half Body', 'half'],
+    ['Bust', 'bust'],
+    ['Head & Shoulders', 'head'],
+    ['Face', 'face'],
+  ];
+  return views.map(([label, value]) => ({
+    label,
+    type: 'radio',
+    checked: state.petView === value,
+    click: () => applyPetView(value),
+  }));
+}
+
+function showPetMenu() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const followingEnconvo = monitorState().enabled;
+  const menu = Menu.buildFromTemplate([
+    { label: followingEnconvo ? 'Talk via EnConvo…' : 'Talk to Vivieen…', click: () => {
+      if (followingEnconvo) {
+        void triggerEnconvoVoiceCommand();
+        return;
+      }
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.webContents.send('vivieen:pet-chat');
+    } },
+    { label: monitorState().enabled ? 'Stop Following EnConvo' : 'Follow EnConvo Audio',
+      click: () => setEnconvoMonitoring(!monitorState().enabled) },
+    { type: 'separator' },
+    { label: 'View', enabled: !state.petRoam, submenu: petViewItems() },
+    { label: 'Size & Opacity…', click: showAppearanceWindow },
+    { label: petMotionReady ? 'Horizon Walk Along Dock' : 'Horizon Walk · Generate Motion First',
+      type: 'checkbox', checked: state.petRoam, enabled: petMotionReady,
+      click: (item) => applyPetRoam(item.checked) },
+    { type: 'separator' },
+    { label: 'Click Through Empty Space', type: 'checkbox', checked: state.petClickThrough,
+      click: (item) => applyPetClickThrough(item.checked) },
+    { label: 'Lock Position', type: 'checkbox', checked: state.petLocked,
+      enabled: !state.petRoam, click: (item) => applyPetLock(item.checked) },
+    { label: 'Always on Top', type: 'checkbox', checked: state.alwaysOnTop,
+      click: (item) => applyAlwaysOnTop(item.checked) },
+    { type: 'separator' },
+    { label: 'Character Studio…', click: openSettings },
+    { label: 'Hide Companion', click: () => mainWindow.hide() },
+    { label: 'Quit Vivieen', click: () => app.quit() },
+  ]);
+  menu.popup({
+    window: mainWindow,
+    callback: () => {
+      const point = screen.getCursorScreenPoint();
+      const bounds = mainWindow.getBounds();
+      mainWindow.webContents.send('vivieen:pet-pointer', {
+        x: point.x - bounds.x,
+        y: point.y - bounds.y,
+      });
+    },
+  });
 }
 
 function createTray() {
@@ -467,12 +1282,65 @@ async function restartBackend() {
 
 function installIpc() {
   ipcMain.handle('vivieen:get-state', () => shellState());
+  ipcMain.handle('vivieen:get-enconvo-samples', (_event, afterSequence = 0) => {
+    const requested = Number(afterSequence);
+    const after = Number.isFinite(requested) && requested > 0
+      ? requested : Math.max(0, enconvoSampleSequence - 1);
+    return {
+      sequence: enconvoSampleSequence,
+      samples: enconvoSampleBuffer.filter((sample) => sample.sequence > after),
+    };
+  });
   ipcMain.handle('vivieen:open-settings', () => { openSettings(); return shellState(); });
+  ipcMain.handle('vivieen:open-appearance', () => { showAppearanceWindow(); return shellState(); });
   ipcMain.handle('vivieen:show-main', () => { showMain(); return shellState(); });
   ipcMain.handle('vivieen:hide-main', () => { if (mainWindow) mainWindow.hide(); });
   ipcMain.handle('vivieen:minimize', () => { if (mainWindow) mainWindow.minimize(); });
   ipcMain.handle('vivieen:toggle-top', () => applyAlwaysOnTop(!state.alwaysOnTop));
+  ipcMain.handle('vivieen:pet-menu', () => { showPetMenu(); return shellState(); });
+  ipcMain.handle('vivieen:set-pet-view', (_event, value) => applyPetView(value));
+  ipcMain.handle('vivieen:set-pet-opacity', (_event, value) => applyPetOpacity(value));
+  ipcMain.handle('vivieen:set-pet-zoom', (_event, value) => applyPetZoom(value));
+  ipcMain.handle('vivieen:set-pet-click-through', (_event, value) => applyPetClickThrough(value));
+  ipcMain.handle('vivieen:set-pet-lock', (_event, value) => applyPetLock(value));
+  ipcMain.handle('vivieen:set-pet-roam', (_event, value) => applyPetRoam(value));
+  ipcMain.handle('vivieen:trigger-enconvo-voice', (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return { ok: false };
+    return triggerEnconvoVoiceCommand();
+  });
+  ipcMain.on('vivieen:show-speech-bubble', (event, value) => {
+    if (mainWindow && event.sender === mainWindow.webContents) showSpeechBubble(value);
+  });
+  ipcMain.on('vivieen:pet-motion-ready', (event, value) => {
+    if (mainWindow && event.sender === mainWindow.webContents) setPetMotionReady(value);
+  });
+  ipcMain.on('vivieen:pet-engaged', (event, value) => {
+    if (mainWindow && event.sender === mainWindow.webContents) setPetEngaged(value);
+  });
+  ipcMain.on('vivieen:pet-hit', (event, value) => {
+    if (mainWindow && event.sender === mainWindow.webContents) setPetHit(Boolean(value), 'renderer-alpha');
+  });
+  ipcMain.on('vivieen:drag-start', (event, point) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents
+        || state.petLocked || state.petRoam) return;
+    petDrag = {
+      x: Number(point && point.screenX) || 0,
+      y: Number(point && point.screenY) || 0,
+      bounds: mainWindow.getBounds(),
+    };
+  });
+  ipcMain.on('vivieen:drag-move', (event, point) => {
+    if (!petDrag || !mainWindow || event.sender !== mainWindow.webContents
+        || state.petLocked || state.petRoam) return;
+    const x = Math.round(petDrag.bounds.x + (Number(point && point.screenX) - petDrag.x));
+    const y = Math.round(petDrag.bounds.y + (Number(point && point.screenY) - petDrag.y));
+    if (Number.isFinite(x) && Number.isFinite(y)) mainWindow.setPosition(x, y, false);
+  });
+  ipcMain.on('vivieen:drag-end', () => { petDrag = null; saveStateSoon(); });
+  ipcMain.handle('vivieen:set-enconvo-monitor', (_event, value) => setEnconvoMonitoring(value));
   ipcMain.handle('vivieen:avatar-changed', () => {
+    if (state.petRoam) applyPetRoam(false);
+    petMotionReady = false;
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reloadIgnoringCache();
     return true;
   });
@@ -518,6 +1386,7 @@ function installPermissions() {
 
 async function boot() {
   state = loadState();
+  createEnconvoMonitor();
   installIpc();
   try {
     await startBackend();
@@ -534,6 +1403,8 @@ async function boot() {
   installPermissions();
   createMainWindow();
   createTray();
+  installRecoveryShortcut();
+  if (state.followEnconvo) enconvoMonitor.setEnabled(true);
   const metadata = await vivieenMetadata(3000);
   if (!metadata || !metadata.active) openSettings();
 }
@@ -549,6 +1420,12 @@ if (!lock) {
 app.on('activate', showMain);
 app.on('before-quit', () => {
   quitting = true;
+  globalShortcut.unregisterAll();
+  stopPetPointerTracking();
+  clearTimeout(bubbleTimer);
+  if (bubbleWindow && !bubbleWindow.isDestroyed()) bubbleWindow.destroy();
+  if (appearanceWindow && !appearanceWindow.isDestroyed()) appearanceWindow.destroy();
+  if (enconvoMonitor) enconvoMonitor.dispose();
   stopBackend();
   if (backendLog) backendLog.end();
 });
