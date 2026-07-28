@@ -4,8 +4,11 @@ import AVFAudio
 import CoreGraphics
 import Foundation
 
-extension String: @retroactive LocalizedError {
-    public var errorDescription: String? { self }
+struct TapFailure: Error, LocalizedError {
+    let code: String
+    let message: String
+
+    var errorDescription: String? { message }
 }
 
 extension AudioObjectID {
@@ -28,14 +31,20 @@ extension AudioObjectID {
         var dataSize: UInt32 = 0
         var status = AudioObjectGetPropertyDataSize(self, &address, 0, nil, &dataSize)
         guard status == noErr else {
-            throw "Unable to read Core Audio property size \(selector): \(status)"
+            throw TapFailure(
+                code: "property_size_failed",
+                message: "Unable to read Core Audio property size \(selector): \(status)"
+            )
         }
         var value = defaultValue
         status = withUnsafeMutablePointer(to: &value) { pointer in
             AudioObjectGetPropertyData(self, &address, 0, nil, &dataSize, pointer)
         }
         guard status == noErr else {
-            throw "Unable to read Core Audio property \(selector): \(status)"
+            throw TapFailure(
+                code: "property_read_failed",
+                message: "Unable to read Core Audio property \(selector): \(status)"
+            )
         }
         return value
     }
@@ -44,13 +53,6 @@ extension AudioObjectID {
         let value: CFString = try readValue(selector, defaultValue: "" as CFString)
         return value as String
     }
-}
-
-struct TapFailure: Error, LocalizedError {
-    let code: String
-    let message: String
-
-    var errorDescription: String? { message }
 }
 
 final class JsonEmitter: @unchecked Sendable {
