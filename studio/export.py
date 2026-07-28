@@ -21,6 +21,14 @@ NAME_MAP = {"sil": "closed", "PP": "PP", "FF": "FF", "TH": "TH", "DD": "DD",
             "aa": "ah", "E": "eh", "ih": "ih", "oh": "oh", "ou": "oo"}
 
 
+def _runtime_body_metadata(source):
+    runtime = dict(source)
+    runtime.pop("views", None)
+    runtime.pop("turnaround", None)
+    runtime.pop("motion_reference", None)
+    return runtime
+
+
 def _publish_motion(directory, destination, log):
     for name in os.listdir(destination):
         if name.startswith("motion-") and name.endswith(".png"):
@@ -32,8 +40,11 @@ def _publish_motion(directory, destination, log):
     with open(manifest_path) as handle:
         source = json.load(handle)
     runtime = {"v": source.get("v", 1)}
+    published = False
     for kind in ("walk", "idle"):
         clip = dict(source.get(kind) or {})
+        if not clip.get("sheets"):
+            continue
         sheets = []
         for index, sheet in enumerate(clip.get("sheets") or []):
             name = f"motion-{kind}-{index}.png"
@@ -48,6 +59,9 @@ def _publish_motion(directory, destination, log):
         clip.pop("alpha_video", None)
         clip.pop("source_loop", None)
         runtime[kind] = clip
+        published = True
+    if not published:
+        return None
     log("  alpha Pet motion published")
     return runtime
 
@@ -72,7 +86,7 @@ def publish_pet_assets(slug, runtime_dir=None, log=print):
     body_manifest = os.path.join(body_dir, "body.json")
     if os.path.isfile(body_manifest):
         with open(body_manifest) as handle:
-            body_meta = json.load(handle)
+            body_meta = _runtime_body_metadata(json.load(handle))
         shutil.copy2(os.path.join(body_dir, "body.png"), os.path.join(destination, "body.png"))
         shutil.copy2(os.path.join(body_dir, "head-mask.png"), os.path.join(destination, "head-mask.png"))
         body_meta["image"] = "assets/body.png"
@@ -147,7 +161,7 @@ def export(slug, dest, quality=92, states=blink.N_STATES, log=print,
     body_manifest = os.path.join(body_dir, "body.json")
     if os.path.isfile(body_manifest):
         with open(body_manifest) as handle:
-            body_meta = json.load(handle)
+            body_meta = _runtime_body_metadata(json.load(handle))
         shutil.copy2(os.path.join(body_dir, "body.png"), os.path.join(dest, "body.png"))
         shutil.copy2(os.path.join(body_dir, "head-mask.png"), os.path.join(dest, "head-mask.png"))
         body_meta["image"] = "assets/body.png"

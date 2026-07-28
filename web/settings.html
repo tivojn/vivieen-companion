@@ -173,7 +173,7 @@ button.btn.danger{color:#d9705f}
   border-top:1px solid var(--line);background:#0d0d10}
 .rig-foot .note{margin:0;margin-right:auto;max-width:650px}
 .body-grid{display:grid;grid-template-columns:minmax(320px,1.15fr) minmax(300px,.85fr);min-height:580px}
-.body-visual{position:relative;display:grid;place-items:center;padding:30px;overflow:hidden;
+.body-visual{position:relative;display:grid;place-items:center;padding:30px;overflow:hidden;min-height:660px;
   border-right:1px solid var(--line);background:
   radial-gradient(circle at 50% 35%,rgba(226,72,58,.13),transparent 38%),
   linear-gradient(145deg,#111116,#08080b)}
@@ -181,6 +181,57 @@ button.btn.danger{color:#d9705f}
   border-radius:50% 50% 12% 12%/22% 22% 9% 9%;filter:blur(.2px)}
 .body-preview{position:relative;z-index:1;width:100%;height:min(68vh,650px);object-fit:contain;
   filter:drop-shadow(0 26px 38px rgba(0,0,0,.48))}
+.body-view-tabs{position:absolute;z-index:3;top:64px;left:50%;transform:translateX(-50%);
+  display:flex;gap:6px;padding:5px;border:1px solid var(--line);border-radius:11px;
+  background:rgba(10,10,13,.82);backdrop-filter:blur(12px)}
+.body-view-caption{position:absolute;z-index:3;left:24px;right:24px;bottom:16px;
+  color:var(--dim);font-size:11.5px;text-align:center;text-shadow:0 1px 8px #000}
+.body-mode-tabs{position:absolute;z-index:5;top:18px;left:50%;transform:translateX(-50%);
+  display:flex;gap:6px;padding:5px;border:1px solid var(--line);border-radius:11px;
+  background:rgba(10,10,13,.9);backdrop-filter:blur(14px);box-shadow:0 14px 32px rgba(0,0,0,.28)}
+.body-mode-tabs .rig-chip{white-space:nowrap}.body-mode-tabs .mode-count{display:inline-grid;
+  place-items:center;min-width:17px;height:17px;margin-left:4px;padding:0 4px;border-radius:999px;
+  background:rgba(255,255,255,.08);color:var(--dim);font-size:9px}
+.body-mode-tabs .rig-chip.on .mode-count{background:rgba(255,255,255,.15);color:var(--ink)}
+.motion-library{position:absolute;z-index:2;inset:70px 12px 12px;overflow:auto;text-align:left;
+  padding:4px 7px 24px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+.motion-library-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 2px 14px}
+.motion-library-kicker{display:block;margin-bottom:4px;color:#ef6b5d;font-size:9px;font-weight:800;
+  letter-spacing:.13em;text-transform:uppercase}.motion-library-head h3{margin:0 0 4px;font-size:19px}
+.motion-library-head p{margin:0;max-width:430px;color:var(--dim);font-size:11.5px;line-height:1.5}
+.motion-file-count{flex:none;padding:6px 9px;border:1px solid var(--line);border-radius:999px;
+  background:rgba(255,255,255,.045);color:var(--dim);font-size:10px}
+.motion-cycle-card{display:grid;grid-template-columns:minmax(170px,42%) 1fr;gap:15px;margin-bottom:17px;
+  padding:13px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.024)}
+.motion-cycle-stage,.motion-asset-preview.checker{background-color:#19191d;
+  background-image:linear-gradient(45deg,#27272d 25%,transparent 25%),linear-gradient(-45deg,#27272d 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#27272d 75%),linear-gradient(-45deg,transparent 75%,#27272d 75%);
+  background-size:18px 18px;background-position:0 0,0 9px,9px -9px,-9px 0}
+.motion-cycle-stage{display:grid;place-items:center;min-height:252px;border:1px solid rgba(255,255,255,.07);
+  border-radius:13px;overflow:hidden}.motion-cycle-stage canvas{display:block;max-width:100%;height:252px;object-fit:contain}
+.motion-cycle-copy{display:flex;flex-direction:column;min-width:0;padding:4px 2px}.motion-cycle-copy h4{margin:0 0 7px;font-size:14px}
+.motion-cycle-copy p{margin:0;color:var(--dim);font-size:11.5px;line-height:1.55}
+.motion-cycle-controls{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;margin-top:auto;padding-top:15px}
+.motion-cycle-controls input{width:100%;accent-color:var(--accent)}.motion-play{border:1px solid var(--line);
+  background:#1b1b20;color:var(--ink);border-radius:8px;padding:7px 10px;font:inherit;font-size:11px;cursor:pointer}
+.motion-frame-label{min-width:72px;text-align:right;color:var(--dim);font:10px ui-monospace,SFMono-Regular,Menlo,monospace}
+.motion-assets-title{display:flex;justify-content:space-between;gap:10px;margin:0 2px 9px;color:var(--ink);
+  font-size:11px;font-weight:700}.motion-assets-title span:last-child{color:var(--dim);font-weight:500}
+.motion-asset-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+.motion-asset-card{min-width:0;padding:10px;border:1px solid var(--line);border-radius:15px;background:rgba(255,255,255,.02)}
+.motion-asset-stage{margin:0 2px 7px;color:#ef6b5d;font-size:8.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}
+.motion-asset-preview{display:grid;place-items:center;height:164px;margin-bottom:10px;border:1px solid rgba(255,255,255,.06);
+  border-radius:11px;overflow:hidden;background:rgba(0,0,0,.28)}.motion-asset-preview img,.motion-asset-preview video{
+  display:block;width:100%;height:100%;object-fit:contain}.motion-asset-preview.receipt{background:linear-gradient(145deg,
+  rgba(226,72,58,.14),rgba(255,255,255,.025));color:rgba(255,255,255,.75);font-size:32px;font-weight:800}
+.motion-asset-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.motion-asset-file{display:block;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--dim);font:9.5px ui-monospace,SFMono-Regular,Menlo,monospace}.motion-asset-foot{display:flex;
+  align-items:center;justify-content:space-between;gap:8px;margin-top:9px}.motion-asset-meta{min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;color:var(--dim);font-size:9.5px}.motion-save{flex:none;border:1px solid rgba(226,72,58,.34);
+  background:rgba(226,72,58,.1);color:#f48175;border-radius:8px;padding:6px 9px;font:inherit;font-size:10px;font-weight:700;cursor:pointer}
+.motion-save:hover{background:rgba(226,72,58,.17)}.motion-save:disabled{opacity:.5;cursor:wait}.motion-save-status{
+  min-height:17px;margin:9px 2px 0;color:var(--dim);font-size:10.5px}.motion-library-empty{display:grid;grid-column:1/-1;place-items:center;
+  min-height:300px;padding:26px;border:1px dashed var(--line);border-radius:17px;color:var(--dim);text-align:center;line-height:1.6}
 .body-empty{position:relative;z-index:1;max-width:390px;text-align:center;color:var(--dim)}
 .body-empty-mark{width:112px;height:210px;margin:0 auto 24px;border:1px solid #3a3a44;
   border-radius:52% 52% 22% 22%/24% 24% 12% 12%;background:linear-gradient(180deg,#25252d,#111116);
@@ -194,10 +245,49 @@ button.btn.danger{color:#d9705f}
 .body-identity{margin-top:14px;padding:12px 13px;border:1px solid rgba(78,167,123,.28);border-radius:10px;
   background:rgba(78,167,123,.07);color:#87d8b2;font-size:12px;line-height:1.45}
 .body-motion{padding:14px;border:1px solid #2b2b33;border-radius:11px;background:#111115}
-.body-motion input[type=file]{display:block;width:100%;margin:12px 0 8px;color:var(--dim);font-size:12px}
+.motion-section{display:block;margin-top:12px;padding:14px;border:1px solid #2b2b33;border-radius:11px;background:#0c0c0f}
+.motion-section-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
+.motion-section-head>div{min-width:0;flex:1}.motion-section-title{display:block;color:var(--ink);font-size:13px}
+.motion-section-copy{margin:2px 0 0;color:var(--dim);font-size:11.5px;line-height:1.4}
+.motion-section .pill{flex:none}.motion-symbols{position:absolute;width:0;height:0;overflow:hidden}
+.walk-style-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.walk-style-card{display:grid;grid-template-columns:42px minmax(0,1fr);align-items:center;gap:9px;
+  min-width:0;min-height:76px;padding:9px;border:1px solid #2b2b33;border-radius:10px;
+  background:#111115;color:#8b8b93;text-align:left;font:inherit;cursor:pointer;transition:.15s}
+.walk-style-card:hover{border-color:#44444e;background:#17171b;color:#c3c3ca}
+.walk-style-card.on{border-color:var(--accent);background:rgba(226,72,58,.09);color:#f06b5e;
+  box-shadow:inset 0 0 0 1px rgba(226,72,58,.16)}
+.walk-style-card:focus-visible,.idle-pose-card:focus-visible{outline:2px solid rgba(226,72,58,.62);outline-offset:2px}
+.walk-style-card:disabled,.idle-pose-card:disabled{opacity:.42;cursor:default}
+.walk-style-card svg{width:42px;height:56px;fill:none;stroke:currentColor;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
+.walk-style-card>span{display:block;min-width:0}.walk-style-card b{display:block;color:var(--ink);
+  font-size:11px;line-height:1.25}.walk-style-card small{display:block;margin-top:3px;color:var(--dim);
+  font-size:9.5px;line-height:1.25}.walk-style-card.on b{color:#ff8a7e}
+.walk-style-card[data-walk-style=cartwheel] small:after{content:" · experimental";color:#dda94f}
+.idle-pose-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px}
+.idle-pose-card{position:relative;display:flex;min-width:0;min-height:132px;padding:7px 5px 9px;
+  flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;border:1px solid #2b2b33;
+  border-radius:10px;background:#111115;color:#8b8b93;font:inherit;cursor:pointer;transition:.15s}
+.idle-pose-card:hover{border-color:#44444e;background:#17171b;color:#b9b9c0}
+.idle-pose-card.on{border-color:var(--accent);background:rgba(226,72,58,.09);color:#f06b5e;
+  box-shadow:inset 0 0 0 1px rgba(226,72,58,.16)}
+.idle-pose-card svg{display:block;width:54px;height:88px;overflow:visible;fill:none;stroke:currentColor;
+  stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.idle-pose-card span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:inherit;font-size:10.5px;font-weight:600}.idle-pose-card>small{max-width:100%;color:var(--dim);
+  font-size:8.8px;line-height:1.15;text-align:center}
+.idle-pose-card[data-idle-pose=custom]{grid-column:1/-1;min-height:58px;padding:9px 12px;
+  display:grid;grid-template-columns:34px minmax(0,1fr);grid-template-rows:auto auto;
+  justify-items:start;justify-content:stretch;text-align:left}
+.idle-pose-card[data-idle-pose=custom] svg{grid-row:1/3;width:28px;height:28px;align-self:center}
+.idle-pose-card[data-idle-pose=custom] span{font-size:12px;color:var(--ink)}
+.idle-pose-card[data-idle-pose=custom] small{color:var(--dim);font-size:10.5px;line-height:1.25;text-align:left}
+.idle-pose-prompt{min-height:78px;margin-top:8px;resize:vertical}
 .body-motion-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
 @media(max-width:860px){.rig-shell{padding:0}.rig-dialog{border:0;border-radius:0;min-height:100vh}
   .body-grid{grid-template-columns:1fr}.body-visual{border-right:0;border-bottom:1px solid var(--line)}
+  .motion-cycle-card{grid-template-columns:1fr}.motion-asset-grid{grid-template-columns:1fr}
   .rig-grid{grid-template-columns:1fr}.rig-visual{border-right:0;border-bottom:1px solid var(--line)}
   .rig-panel{max-height:none}.rig-foot{position:sticky;bottom:0}.rig-legend{margin-left:0}}
 .hidden{display:none!important}
@@ -343,11 +433,43 @@ button.btn.danger{color:#d9705f}
     </div>
     <div class="body-grid">
       <div class="body-visual">
+        <div class="body-mode-tabs hidden" id="body-mode-tabs" role="tablist" aria-label="Full Body Studio output">
+          <button class="rig-chip on" type="button" data-body-mode="body" role="tab">Body</button>
+          <button class="rig-chip" type="button" data-body-mode="walk" role="tab">Walk <span class="mode-count" id="body-walk-file-count">0</span></button>
+          <button class="rig-chip" type="button" data-body-mode="idle" role="tab">Edge Idle <span class="mode-count" id="body-idle-file-count">0</span></button>
+        </div>
+        <div class="body-view-tabs hidden" id="body-view-tabs" role="tablist" aria-label="Full-body view">
+          <button class="rig-chip on" data-body-view="front" role="tab">Front</button>
+          <button class="rig-chip" data-body-view="side" role="tab">Side</button>
+          <button class="rig-chip" data-body-view="back" role="tab">Back</button>
+        </div>
         <img class="body-preview hidden" id="body-preview" alt="Generated full-body companion">
+        <div class="body-view-caption hidden" id="body-view-caption"></div>
         <div class="body-empty" id="body-empty">
           <div class="body-empty-mark"></div>
           <strong style="display:block;color:var(--ink);font-size:16px;margin-bottom:8px">One identity. A complete presence.</strong>
-          The image model creates wardrobe and silhouette. Vivieen then removes the background locally and replaces the generated face with the calibrated animated face.
+          The image model creates matched front, right-side, and back full-body plates. Vivieen removes every background locally and uses the calibrated animated face for the standing front view.
+        </div>
+        <div class="motion-library hidden" id="body-motion-library">
+          <div class="motion-library-head">
+            <div><span class="motion-library-kicker">Production cycle</span><h3 id="body-motion-library-title">Horizon Walk</h3><p id="body-motion-library-copy"></p></div>
+            <span class="motion-file-count" id="body-motion-file-count">0 files</span>
+          </div>
+          <div class="motion-cycle-card" id="body-motion-cycle">
+            <div class="motion-cycle-stage"><canvas id="body-motion-canvas" aria-label="Transparent animation cycle preview"></canvas></div>
+            <div class="motion-cycle-copy">
+              <h4>Live alpha cycle</h4>
+              <p id="body-motion-cycle-copy">Every packed RGBA frame, played at runtime speed over a transparency grid.</p>
+              <div class="motion-cycle-controls">
+                <button class="motion-play" id="body-motion-play" type="button">Pause</button>
+                <input id="body-motion-scrubber" type="range" min="0" max="0" value="0" aria-label="Animation frame">
+                <span class="motion-frame-label" id="body-motion-frame-label">Frame 1 / 1</span>
+              </div>
+            </div>
+          </div>
+          <div class="motion-assets-title"><span>Retained production files</span><span>Raw → alpha → runtime</span></div>
+          <div class="motion-asset-grid" id="body-motion-assets"></div>
+          <p class="motion-save-status" id="body-motion-save-status" aria-live="polite"></p>
         </div>
       </div>
       <aside class="body-panel">
@@ -370,24 +492,84 @@ button.btn.danger{color:#d9705f}
             <option value="casual">Casual</option>
           </select></div>
         </div>
-        <div class="f" style="margin-top:13px"><label for="body-outfit">Wardrobe direction</label>
-          <textarea id="body-outfit" style="min-height:94px" placeholder="Extend the visible outfit, or describe a new look…"></textarea></div>
-        <div class="f" style="margin-top:13px"><label for="body-notes">Additional direction</label>
-          <textarea id="body-notes" style="min-height:76px" placeholder="Silhouette, palette, materials, accessories…"></textarea></div>
+        <div class="f" style="margin-top:13px"><label for="body-prompt">Editable full-body prompt</label>
+          <textarea id="body-prompt" maxlength="2400" style="min-height:190px" placeholder="Describe wardrobe, silhouette, palette, materials, accessories, and styling…"></textarea>
+          <div class="body-actions" style="margin-top:8px">
+            <p class="note" style="margin:0">The tasteful fashion preset is loaded as editable text for every generation and regeneration.</p>
+            <div class="grow"></div>
+            <button class="btn sm" id="body-prompt-reset" type="button">Reset preset</button>
+          </div>
+        </div>
         <div class="body-identity"><b>Identity Lock is always on.</b><br>The original 1024px animated face remains the runtime face at every zoom level. The provider never replaces the lip-sync rig.</div>
         <h4>Desktop motion</h4>
         <div class="body-motion">
           <div class="body-provider" id="body-video-provider">Reading EnConvo's video default…</div>
-          <div class="f" style="margin-top:13px"><label for="body-motion-reference">Edge-idle pose reference</label>
-            <input id="body-motion-reference" type="file" accept="image/png,image/jpeg,image/webp">
-            <p class="note">Used only for pose geometry. Vivieen keeps her own face, hair, wardrobe, and proportions; the staged copy is deleted when the job finishes.</p>
-          </div>
-          <div class="body-motion-actions">
-            <button class="btn danger hidden" id="body-motion-remove">Remove motion</button>
-            <div class="grow"></div>
-            <button class="btn pri" id="body-motion-generate">Generate walk + edge idle</button>
-          </div>
-          <p class="note" id="body-motion-status" style="margin-top:10px">Generate a full body first.</p>
+          <svg class="motion-symbols" aria-hidden="true">
+            <symbol id="walk-style-office" viewBox="0 0 52 68"><circle cx="27" cy="8" r="5"/><path d="M26 13l-2 21 4 13M24 21l-9 15M25 21l10 14M28 47l-9 16M28 47l14 13M14 64h10M39 61h9"/><path d="M7 64h40" opacity=".35"/></symbol>
+            <symbol id="walk-style-runway" viewBox="0 0 52 68"><circle cx="26" cy="8" r="5"/><path d="M26 13v28M26 20l-8 15M26 20l10 8-7 8M26 41l10 20M26 41l-7 20M30 62h10M14 62h10"/><path d="M7 64h40M18 43l18 9" opacity=".35"/></symbol>
+            <symbol id="walk-style-stroll" viewBox="0 0 52 68"><circle cx="25" cy="9" r="5"/><path d="M25 14l2 27M25 22l-8 14M26 22l8 12M27 41l-7 20M27 41l10 18M15 62h10M34 60h9"/><path d="M7 64h40" opacity=".35"/></symbol>
+            <symbol id="walk-style-power" viewBox="0 0 52 68"><circle cx="29" cy="9" r="5"/><path d="M27 14l-6 27M24 22L12 32M24 22l12 12M21 41L9 59M21 41l21 15M5 61h11M38 58h10"/><path d="M7 64h40M5 25h8M3 31h7" opacity=".35"/></symbol>
+            <symbol id="walk-style-promenade" viewBox="0 0 52 68"><circle cx="26" cy="8" r="5"/><path d="M26 13v30M26 21l-7 14M26 21l7 14M26 43l-9 19M26 43l11 17M12 63h10M34 61h9"/><path d="M7 64h40M17 17c2-4 5-6 9-6" opacity=".35"/></symbol>
+            <symbol id="walk-style-cartwheel" viewBox="0 0 52 68"><path d="M5 59h42" opacity=".35"/><path d="M9 48c7-24 23-34 38-31" stroke-dasharray="2.5 3.5" opacity=".45"/><circle cx="30" cy="26" r="4"/><path d="M27 29L18 39M21 35L9 53M21 35l6 19M27 29l12-14M27 29l18 2M9 53h8M25 54h8"/></symbol>
+            <symbol id="idle-pose-back-heel" viewBox="0 0 72 118">
+              <path d="M9 4v109M6 113h61" stroke-dasharray="2.5 3.5" opacity=".42"/>
+              <circle cx="31" cy="14" r="7"/><path d="M27 21c-5 10-7 23-2 37l9 20 10-3-2-27-5-26"/>
+              <path d="M24 32l18 12M39 31L23 45"/><path d="M34 78l8 32h11M34 78l20-8-17 18L11 82M11 82l8-5"/>
+              <circle cx="10" cy="34" r="2.4" fill="currentColor" stroke="none"/><circle cx="10" cy="82" r="2.4" fill="currentColor" stroke="none"/>
+            </symbol>
+            <symbol id="idle-pose-tailored-cross" viewBox="0 0 72 118">
+              <path d="M9 4v110" stroke-dasharray="2.5 3.5" opacity=".45"/><circle cx="29" cy="14" r="7"/><path d="M24 21l-7 31 7 29h17l5-31-9-29z"/><path d="M20 29l-2 34M39 28l5 32M25 81l16 29M40 81l-11 29M24 110h12M38 110h11"/>
+            </symbol>
+            <symbol id="idle-pose-pocket-lean" viewBox="0 0 72 118">
+              <path d="M9 4v110" stroke-dasharray="2.5 3.5" opacity=".45"/><circle cx="30" cy="14" r="7"/><path d="M24 21l-7 32 10 28h18l3-30-9-29z"/><path d="M20 31l10 24M43 31L36 55M27 81l17 28M44 81l-12 29M29 110h10M42 109h12"/>
+            </symbol>
+            <symbol id="idle-pose-heel-up" viewBox="0 0 72 118">
+              <path d="M9 4v109M6 113h61" stroke-dasharray="2.5 3.5" opacity=".42"/>
+              <circle cx="29" cy="14" r="7"/><path d="M25 21c-5 11-7 25-2 39l8 21h15l1-30-10-29"/>
+              <path d="M23 31l-3 34M39 30l7 34"/><path d="M31 81l3 29h12M45 81l12 11-17 10-29-2M11 100l8 5"/>
+              <circle cx="10" cy="35" r="2.4" fill="currentColor" stroke="none"/><circle cx="10" cy="100" r="2.4" fill="currentColor" stroke="none"/>
+            </symbol>
+            <symbol id="idle-pose-folded-cross" viewBox="0 0 72 118">
+              <path d="M9 4v110" stroke-dasharray="2.5 3.5" opacity=".45"/><circle cx="29" cy="14" r="7"/><path d="M22 10c-4 12-2 23 2 31M35 9c5 9 6 20 2 31"/><path d="M24 22l-7 31 8 29h19l3-31-10-28M18 35l25 14M43 34L22 49"/><path d="M26 82l17 28M43 82l-12 29M28 111h11M42 110h11"/>
+            </symbol>
+            <symbol id="idle-pose-side-cross" viewBox="0 0 72 118">
+              <path d="M9 4v110" stroke-dasharray="2.5 3.5" opacity=".45"/><circle cx="29" cy="14" r="7"/><path d="M22 9c-4 12-1 22 2 31M35 9c6 10 7 21 3 31"/><path d="M24 22l-6 32 15 28h18l-5-31-9-28M20 35l1 31M42 34l9 29"/><path d="M34 82l16 28M49 82l-7 28M40 110h11M49 110h11"/>
+            </symbol>
+          </svg>
+
+          <section class="motion-section" aria-labelledby="walk-section-title">
+            <div class="motion-section-head"><div><strong class="motion-section-title" id="walk-section-title">Horizon Walk</strong><p class="motion-section-copy">Traversal from one place on the desktop to another.</p></div><span class="pill" id="body-walk-state">Not generated</span></div>
+            <label>Movement style</label>
+            <div class="walk-style-grid" id="body-walk-styles" role="group" aria-label="Choose Horizon Walk movement style">
+              <button class="walk-style-card on" type="button" data-walk-style="office" aria-pressed="true"><svg aria-hidden="true"><use href="#walk-style-office"></use></svg><span><b>Office walk</b><small>Natural · compact · purposeful</small></span></button>
+              <button class="walk-style-card" type="button" data-walk-style="runway" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-runway"></use></svg><span><b>Runway catwalk</b><small>Sensual · controlled · narrow</small></span></button>
+              <button class="walk-style-card" type="button" data-walk-style="stroll" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-stroll"></use></svg><span><b>Relaxed stroll</b><small>Easy · unhurried · casual</small></span></button>
+              <button class="walk-style-card" type="button" data-walk-style="power" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-power"></use></svg><span><b>Brisk power walk</b><small>Fast · grounded · focused</small></span></button>
+              <button class="walk-style-card" type="button" data-walk-style="promenade" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-promenade"></use></svg><span><b>Elegant promenade</b><small>Graceful · measured · formal</small></span></button>
+              <button class="walk-style-card" type="button" data-walk-style="cartwheel" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-cartwheel"></use></svg><span><b>Cartwheel</b><small>One lateral pass</small></span></button>
+            </div>
+            <p class="note">Uses the generated side body automatically. Identity, wardrobe, and facial rig remain locked; only the traversal changes.</p>
+            <div class="body-motion-actions"><button class="btn danger hidden" id="body-walk-remove">Remove walk</button><div class="grow"></div><button class="btn pri" id="body-walk-generate">Generate Horizon Walk</button></div>
+            <p class="note" id="body-walk-status" style="margin-top:10px">Generate a full body first.</p>
+          </section>
+
+          <section class="motion-section" aria-labelledby="idle-section-title">
+            <div class="motion-section-head"><div><strong class="motion-section-title" id="idle-section-title">Edge Idle</strong><p class="motion-section-copy">The supported pose held when Horizon Walk reaches a screen edge.</p></div><span class="pill" id="body-idle-state">Not generated</span></div>
+            <label>Supported edge pose</label>
+            <div class="idle-pose-grid" id="body-motion-poses" role="group" aria-label="Choose Edge Idle pose">
+              <button class="idle-pose-card on" type="button" data-idle-pose="back-heel" aria-pressed="true" aria-label="High heel touch: knee raised to hip height and heel touching the wall"><svg aria-hidden="true"><use href="#idle-pose-back-heel"></use></svg><span>High heel touch</span><small>knee raised · heel to wall</small></button>
+              <button class="idle-pose-card" type="button" data-idle-pose="tailored-cross" aria-pressed="false"><svg aria-hidden="true"><use href="#idle-pose-tailored-cross"></use></svg><span>Tailored</span><small>ankles crossed</small></button>
+              <button class="idle-pose-card" type="button" data-idle-pose="pocket-lean" aria-pressed="false"><svg aria-hidden="true"><use href="#idle-pose-pocket-lean"></use></svg><span>Pockets</span><small>hands in pockets</small></button>
+              <button class="idle-pose-card" type="button" data-idle-pose="heel-up" aria-pressed="false" aria-label="Low heel touch: heel lifted behind and touching the wall"><svg aria-hidden="true"><use href="#idle-pose-heel-up"></use></svg><span>Low heel touch</span><small>heel lifted behind</small></button>
+              <button class="idle-pose-card" type="button" data-idle-pose="folded-cross" aria-pressed="false"><svg aria-hidden="true"><use href="#idle-pose-folded-cross"></use></svg><span>Folded</span><small>arms + ankles crossed</small></button>
+              <button class="idle-pose-card" type="button" data-idle-pose="side-cross" aria-pressed="false"><svg aria-hidden="true"><use href="#idle-pose-side-cross"></use></svg><span>Side lean</span><small>shoulder + hip contact</small></button>
+              <button class="idle-pose-card" type="button" data-idle-pose="custom" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M5 20.5l1-5 10.8-10.8a2 2 0 012.8 0l1.7 1.7a2 2 0 010 2.8L10.5 20zM14.8 6.7l6.5 6.5M5 23h18"/></svg><span>Custom pose</span><small>Describe your own supported edge pose</small></button>
+            </div>
+            <textarea class="idle-pose-prompt hidden" id="body-motion-prompt" maxlength="600" placeholder="Example: Rest one shoulder against the left edge, arms loosely folded, ankles crossed, gaze into the screen."></textarea>
+            <p class="note">This controls Edge Idle only. It no longer regenerates or changes Horizon Walk.</p>
+            <div class="body-motion-actions"><button class="btn danger hidden" id="body-idle-remove">Remove idle</button><div class="grow"></div><button class="btn pri" id="body-idle-generate">Generate Edge Idle</button></div>
+            <p class="note" id="body-idle-status" style="margin-top:10px">Generate a full body first.</p>
+          </section>
         </div>
         <div class="body-progress hidden" id="body-progress">
           <div class="jobhead"><span id="body-stage">Preparing</span><span id="body-percent">0%</span></div>
@@ -398,7 +580,7 @@ button.btn.danger{color:#d9705f}
           <button class="btn danger hidden" id="body-remove">Remove body</button>
           <div class="grow"></div>
           <button class="btn" id="body-cancel">Cancel</button>
-          <button class="btn pri" id="body-generate">Generate full body</button>
+          <button class="btn pri" id="body-generate">Generate 3 full-body views</button>
         </div>
       </aside>
     </div>
@@ -417,7 +599,15 @@ const api = async (p, o) => (await fetch(p, o)).json();
 const SHELL = window.vivieen;
 let CFG = null, CAT = null, GLOBALS = {}, MEDIA_DEFAULTS = {}, ACTIVE = null, POLL = null;
 let RIG = null, RIG_SLUG = null, RIG_PROFILE = null, RIG_POSE = 'closed', RIG_WATCH = null;
-let BODY_SLUG = null, BODY_STATE = null, BODY_WATCH = null;
+const WALK_STYLE_IDS = new Set(['office', 'runway', 'stroll', 'power', 'promenade', 'cartwheel']);
+const WALK_STYLE_LABELS = {
+  office: 'Office walk', runway: 'Runway catwalk', stroll: 'Relaxed stroll',
+  power: 'Brisk power walk', promenade: 'Elegant promenade', cartwheel: 'Cartwheel'
+};
+const IDLE_POSE_IDS = new Set(['back-heel', 'tailored-cross', 'pocket-lean', 'heel-up', 'folded-cross', 'side-cross', 'custom']);
+let BODY_SLUG = null, BODY_STATE = null, BODY_WATCH = null, BODY_VIEW = 'front';
+let BODY_MODE = 'body', BODY_CYCLE = null;
+let BODY_WALK_STYLE = 'office', BODY_IDLE_POSE = 'back-heel', BODY_BUSY = false;
 
 if (SHELL && SHELL.isElectron) {
   $('.back').onclick = e => { e.preventDefault(); SHELL.showAvatar(); };
@@ -974,6 +1164,303 @@ function closeBody() {
   document.body.style.overflow = '';
   if (BODY_WATCH) clearTimeout(BODY_WATCH);
   BODY_WATCH = null;
+  stopBodyMotionCycle();
+  BODY_SLUG = null;
+  BODY_BUSY = false;
+}
+
+function selectWalkStyle(style) {
+  if (!WALK_STYLE_IDS.has(style)) style = 'office';
+  BODY_WALK_STYLE = style;
+  document.querySelectorAll('[data-walk-style]').forEach(button => {
+    const selected = button.dataset.walkStyle === style;
+    button.classList.toggle('on', selected);
+    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  });
+}
+
+function selectIdlePose(pose, focusPrompt = false) {
+  if (!IDLE_POSE_IDS.has(pose)) pose = 'back-heel';
+  BODY_IDLE_POSE = pose;
+  document.querySelectorAll('[data-idle-pose]').forEach(button => {
+    const selected = button.dataset.idlePose === pose;
+    button.classList.toggle('on', selected);
+    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  });
+  const custom = pose === 'custom';
+  const prompt = $('#body-motion-prompt');
+  prompt.classList.toggle('hidden', !custom);
+  prompt.disabled = BODY_BUSY || !custom;
+  if (custom && focusPrompt) setTimeout(() => prompt.focus(), 0);
+}
+
+function setBodyBusy(busy) {
+  BODY_BUSY = busy;
+  const hasBody = Boolean(BODY_STATE && BODY_STATE.has_body);
+  const hasVideoProvider = Boolean(BODY_STATE && BODY_STATE.video_provider);
+  $('#body-generate').disabled = busy;
+  ['body-walk-generate', 'body-idle-generate'].forEach(id => {
+    $('#' + id).disabled = busy || !hasBody || !hasVideoProvider;
+  });
+  $('#body-remove').disabled = busy;
+  $('#body-walk-remove').disabled = busy;
+  $('#body-idle-remove').disabled = busy;
+  document.querySelectorAll('[data-walk-style], [data-idle-pose]').forEach(button => {
+    button.disabled = busy;
+  });
+  $('#body-motion-prompt').disabled = busy || BODY_IDLE_POSE !== 'custom';
+  ['body-style', 'body-pose', 'body-prompt', 'body-prompt-reset'].forEach(id => {
+    $('#' + id).disabled = busy;
+  });
+  document.querySelectorAll('[data-body-view]').forEach(button => {
+    button.disabled = busy;
+  });
+}
+
+function stopBodyMotionCycle() {
+  if (BODY_CYCLE && BODY_CYCLE.raf) cancelAnimationFrame(BODY_CYCLE.raf);
+  BODY_CYCLE = null;
+}
+
+function bodyMotionAssetUrl(asset) {
+  const parts = ['motion', ...String(asset.relative_path || '').split('/').filter(Boolean)];
+  return `/files/${encodeURIComponent(BODY_SLUG)}/${parts.map(encodeURIComponent).join('/')}`;
+}
+
+function bodyMotionAssets(kind) {
+  const catalog = (BODY_STATE && BODY_STATE.motion_assets) || {};
+  return [...(catalog[kind] || []), ...(catalog.shared || [])];
+}
+
+function formatBodyAssetSize(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value < 0) return '';
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(value < 10240 ? 1 : 0)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(value < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
+function bodyMotionAssetMeta(asset) {
+  const values = [formatBodyAssetSize(asset.size)];
+  if (Number(asset.frame_count) > 0) values.push(`${asset.frame_count} frames`);
+  if (Number(asset.fps) > 0) values.push(`${asset.fps} FPS`);
+  return values.filter(Boolean).join(' · ');
+}
+
+function bodyMotionPosterUrl(kind) {
+  const poster = bodyMotionAssets(kind).find(asset => asset.role === 'poster');
+  return poster ? bodyMotionAssetUrl(poster) : '';
+}
+
+function bodyMotionAssetPreview(asset, kind) {
+  const url = bodyMotionAssetUrl(asset);
+  const checker = ['alpha-frames', 'poster', 'alpha-video'].includes(asset.role);
+  if (asset.media_type === 'image') {
+    return `<div class="motion-asset-preview${checker ? ' checker' : ''}"><img src="${esc(url)}" alt="${esc(asset.label)}" loading="lazy"></div>`;
+  }
+  if (asset.media_type === 'video') {
+    const poster = asset.role === 'alpha-video' ? bodyMotionPosterUrl(kind) : '';
+    return `<div class="motion-asset-preview${checker ? ' checker' : ''}"><video src="${esc(url)}"${poster ? ` poster="${esc(poster)}"` : ''} controls muted loop playsinline preload="metadata"></video></div>`;
+  }
+  return `<div class="motion-asset-preview receipt" aria-label="${esc(asset.label)}">{ }</div>`;
+}
+
+async function saveBodyMotionAsset(asset, button) {
+  const status = $('#body-motion-save-status');
+  if (button) button.disabled = true;
+  status.textContent = `Preparing ${asset.name}…`;
+  try {
+    if (SHELL && typeof SHELL.saveMotionAsset === 'function') {
+      const result = await SHELL.saveMotionAsset({
+        slug: BODY_SLUG,
+        relativePath: asset.relative_path,
+        defaultName: asset.name,
+      });
+      status.textContent = result && result.saved ? `Saved ${asset.name}.` : '';
+    } else {
+      const link = document.createElement('a');
+      link.href = bodyMotionAssetUrl(asset);
+      link.download = asset.name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      status.textContent = `Downloading ${asset.name}.`;
+    }
+  } catch (error) {
+    status.textContent = `Could not save ${asset.name}: ${error.message}`;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function renderBodyMotionAssets(kind) {
+  const assets = bodyMotionAssets(kind);
+  $('#body-motion-file-count').textContent = `${assets.length} file${assets.length === 1 ? '' : 's'}`;
+  const grid = $('#body-motion-assets');
+  if (!assets.length) {
+    grid.innerHTML = '<div class="motion-library-empty">No retained motion files yet.<br>Generate this motion to populate every production stage.</div>';
+    return;
+  }
+  grid.innerHTML = assets.map((asset, index) => `
+    <article class="motion-asset-card">
+      <div class="motion-asset-stage">${esc(asset.stage)}</div>
+      ${bodyMotionAssetPreview(asset, kind)}
+      <strong class="motion-asset-name">${esc(asset.label)}</strong>
+      <span class="motion-asset-file">${esc(asset.name)}</span>
+      <div class="motion-asset-foot">
+        <span class="motion-asset-meta">${esc(bodyMotionAssetMeta(asset))}</span>
+        <button class="motion-save" type="button" data-motion-save="${index}">Save As…</button>
+      </div>
+    </article>`).join('');
+  grid.querySelectorAll('[data-motion-save]').forEach(button => {
+    button.onclick = () => saveBodyMotionAsset(assets[Number(button.dataset.motionSave)], button);
+  });
+}
+
+function drawBodyMotionFrame(state) {
+  const frame = Math.max(0, Math.min(state.frames - 1, Math.round(state.frame)));
+  const entry = state.sheets.find(item => {
+    const first = Number(item.sheet.first ?? 0);
+    const count = Number(item.sheet.count ?? (Number(item.sheet.columns || 1) * Number(item.sheet.rows || 1)));
+    return frame >= first && frame < first + count;
+  });
+  if (!entry) return;
+  const first = Number(entry.sheet.first ?? 0);
+  const local = frame - first;
+  const columns = Math.max(1, Number(entry.sheet.columns || 1));
+  const sourceX = (local % columns) * state.width;
+  const sourceY = Math.floor(local / columns) * state.height;
+  state.context.clearRect(0, 0, state.width, state.height);
+  state.context.drawImage(entry.image, sourceX, sourceY, state.width, state.height,
+    0, 0, state.width, state.height);
+  state.scrubber.value = String(frame);
+  state.label.textContent = `Frame ${frame + 1} / ${state.frames}`;
+}
+
+async function startBodyMotionCycle(kind) {
+  stopBodyMotionCycle();
+  const clip = BODY_STATE && BODY_STATE.motion && BODY_STATE.motion[kind];
+  const card = $('#body-motion-cycle');
+  if (!clip || !Array.isArray(clip.sheets) || !clip.sheets.length) {
+    card.classList.add('hidden');
+    return;
+  }
+  card.classList.remove('hidden');
+  const canvas = $('#body-motion-canvas');
+  const width = Math.max(1, Number(clip.frame_width || 256));
+  const height = Math.max(1, Number(clip.frame_height || 384));
+  canvas.width = width;
+  canvas.height = height;
+  const sheets = (await Promise.all(clip.sheets.map(sheet => new Promise(resolve => {
+    const image = new Image();
+    image.onload = () => resolve({sheet, image});
+    image.onerror = () => resolve(null);
+    image.src = bodyMotionAssetUrl({relative_path: sheet.image});
+  })))).filter(Boolean);
+  if (BODY_MODE !== kind || !BODY_SLUG || !sheets.length) return;
+  const packedFrames = sheets.reduce((sum, item) => sum + Number(item.sheet.count || 0), 0);
+  const frames = Math.max(1, Number(clip.frames || packedFrames));
+  const fps = Math.max(1, Number(clip.fps || 12));
+  const scrubber = $('#body-motion-scrubber');
+  const play = $('#body-motion-play');
+  scrubber.max = String(frames - 1);
+  scrubber.value = '0';
+  const state = {
+    kind, sheets, frames, fps, width, height,
+    context: canvas.getContext('2d'), scrubber, play,
+    label: $('#body-motion-frame-label'), frame: 0, playing: true,
+    started: performance.now(), raf: 0,
+  };
+  BODY_CYCLE = state;
+  play.textContent = 'Pause';
+  scrubber.oninput = () => {
+    if (BODY_CYCLE !== state) return;
+    state.playing = false;
+    play.textContent = 'Play';
+    state.frame = Number(scrubber.value || 0);
+    drawBodyMotionFrame(state);
+  };
+  play.onclick = () => {
+    if (BODY_CYCLE !== state) return;
+    state.playing = !state.playing;
+    play.textContent = state.playing ? 'Pause' : 'Play';
+    if (state.playing) state.started = performance.now() - (state.frame / state.fps) * 1000;
+  };
+  const tick = now => {
+    if (BODY_CYCLE !== state) return;
+    if (state.playing) state.frame = Math.floor((now - state.started) / 1000 * state.fps) % state.frames;
+    drawBodyMotionFrame(state);
+    state.raf = requestAnimationFrame(tick);
+  };
+  tick(performance.now());
+}
+
+function renderBodyMotionLibrary() {
+  const kind = BODY_MODE;
+  const title = kind === 'walk' ? 'Horizon Walk' : 'Edge Idle';
+  const clip = BODY_STATE && BODY_STATE.motion && BODY_STATE.motion[kind];
+  $('#body-motion-library-title').textContent = title;
+  $('#body-motion-library-copy').textContent = clip
+    ? `Inspect the complete ${title} build, from generated keyframe and raw I2V through packed alpha frames and the final transparent movie.`
+    : `${title} has not been generated for this companion yet.`;
+  const details = clip ? `${clip.frames || 0} loop frames · ${clip.fps || 0} FPS` : 'Awaiting generation';
+  $('#body-motion-cycle-copy').textContent = `Every packed RGBA frame, played at runtime speed over a transparency grid. ${details}.`;
+  renderBodyMotionAssets(kind);
+  startBodyMotionCycle(kind);
+}
+
+function setBodyMode(mode) {
+  if (!['body', 'walk', 'idle'].includes(mode)) return;
+  BODY_MODE = mode;
+  renderBodyPreview();
+}
+
+function renderBodyPreview() {
+  if (!BODY_STATE) return;
+  const metadata = BODY_STATE.body || {};
+  const records = metadata.views && Object.keys(metadata.views).length
+    ? metadata.views : {front: {image: metadata.image || 'body.png'}};
+  const available = ['front', 'side', 'back'].filter(view => records[view]);
+  if (!available.includes(BODY_VIEW)) BODY_VIEW = available[0] || 'front';
+  const hasBody = Boolean(BODY_STATE.has_body && records[BODY_VIEW]);
+  if (!hasBody && BODY_MODE !== 'body') BODY_MODE = 'body';
+  const showingBody = BODY_MODE === 'body';
+  const catalog = BODY_STATE.motion_assets || {};
+  $('#body-mode-tabs').classList.toggle('hidden', !hasBody);
+  $('#body-walk-file-count').textContent = String((catalog.walk || []).length);
+  $('#body-idle-file-count').textContent = String((catalog.idle || []).length);
+  document.querySelectorAll('[data-body-mode]').forEach(button => {
+    const selected = button.dataset.bodyMode === BODY_MODE;
+    button.classList.toggle('on', selected);
+    button.setAttribute('aria-selected', selected ? 'true' : 'false');
+  });
+  $('#body-motion-library').classList.toggle('hidden', showingBody);
+  $('#body-preview').classList.toggle('hidden', !showingBody || !hasBody);
+  $('#body-empty').classList.toggle('hidden', !showingBody || hasBody);
+  document.querySelectorAll('[data-body-view]').forEach(button => {
+    const exists = available.includes(button.dataset.bodyView);
+    button.classList.toggle('hidden', !exists);
+    button.classList.toggle('on', button.dataset.bodyView === BODY_VIEW);
+    button.setAttribute('aria-selected', button.dataset.bodyView === BODY_VIEW ? 'true' : 'false');
+  });
+  if (!showingBody) {
+    $('#body-view-tabs').classList.add('hidden');
+    $('#body-view-caption').classList.add('hidden');
+    renderBodyMotionLibrary();
+    return;
+  }
+  stopBodyMotionCycle();
+  $('#body-view-tabs').classList.toggle('hidden', !hasBody || available.length < 2);
+  $('#body-view-caption').classList.toggle('hidden', !hasBody || available.length < 2);
+  if (!hasBody) return;
+  const record = records[BODY_VIEW];
+  $('#body-preview').src = `/files/${encodeURIComponent(BODY_SLUG)}/body/${encodeURIComponent(record.image)}?t=${Date.now()}`;
+  $('#body-preview').alt = `Generated ${BODY_VIEW} full-body companion view`;
+  $('#body-view-caption').textContent = {
+    front: 'Front · standing runtime body with the calibrated live face',
+    side: 'Right side · automatic Horizon Walk image reference',
+    back: 'Back · retained turn-around continuity reference',
+  }[BODY_VIEW];
 }
 
 function renderBodyStudio() {
@@ -991,87 +1478,149 @@ function renderBodyStudio() {
   const metadata = BODY_STATE.body || {}, options = metadata.options || {};
   $('#body-style').value = options.style || 'photorealistic';
   $('#body-pose').value = options.pose || 'relaxed';
-  $('#body-outfit').value = options.outfit || '';
-  $('#body-notes').value = options.notes || '';
+  const legacyPrompt = [options.outfit, options.notes].filter(Boolean).join(' ');
+  $('#body-prompt').value = options.prompt || legacyPrompt || BODY_STATE.default_prompt || '';
   const hasBody = Boolean(BODY_STATE.has_body);
-  const hasMotion = Boolean(BODY_STATE.has_motion);
+  const hasTurnaround = Boolean(BODY_STATE.has_turnaround);
+  const motion = BODY_STATE.motion || {};
+  const hasWalk = Boolean(BODY_STATE.has_walk ?? (motion.walk && motion.walk.sheets));
+  const hasIdle = Boolean(BODY_STATE.has_idle ?? (motion.idle && motion.idle.sheets));
+  const savedWalkStyle = motion.walk_style || (motion.walk || {}).walk_style || {};
+  BODY_WALK_STYLE = WALK_STYLE_IDS.has(savedWalkStyle.id) ? savedWalkStyle.id : 'office';
+  selectWalkStyle(BODY_WALK_STYLE);
+  const savedIdlePose = motion.idle_pose || {};
+  BODY_IDLE_POSE = IDLE_POSE_IDS.has(savedIdlePose.id) ? savedIdlePose.id : 'back-heel';
+  $('#body-motion-prompt').value = BODY_IDLE_POSE === 'custom' ? savedIdlePose.prompt || '' : '';
+  selectIdlePose(BODY_IDLE_POSE);
   $('#body-preview').classList.toggle('hidden', !hasBody);
   $('#body-empty').classList.toggle('hidden', hasBody);
   $('#body-remove').classList.toggle('hidden', !hasBody);
-  $('#body-motion-remove').classList.toggle('hidden', !hasMotion);
-  $('#body-generate').textContent = hasBody ? 'Regenerate full body' : 'Generate full body';
-  $('#body-motion-generate').textContent = hasMotion ? 'Regenerate walk + edge idle' : 'Generate walk + edge idle';
-  $('#body-motion-generate').disabled = !hasBody || !videoProvider;
-  $('#body-motion-status').textContent = hasMotion
-    ? 'Ready · side-profile walk, edge-lean idle, and standing interaction.'
-    : hasBody ? 'Choose the pose reference, then generate both motion loops.' : 'Generate a full body first.';
-  if (hasBody) $('#body-preview').src = `/files/${encodeURIComponent(BODY_SLUG)}/body/body.png?t=${Date.now()}`;
+  $('#body-walk-remove').classList.toggle('hidden', !hasWalk);
+  $('#body-idle-remove').classList.toggle('hidden', !hasIdle);
+  $('#body-generate').textContent = hasBody ? 'Regenerate 3 full-body views' : 'Generate 3 full-body views';
+  $('#body-walk-generate').textContent = hasWalk ? 'Regenerate Horizon Walk' : 'Generate Horizon Walk';
+  $('#body-idle-generate').textContent = hasIdle ? 'Regenerate Edge Idle' : 'Generate Edge Idle';
+  const walkState = $('#body-walk-state');
+  walkState.textContent = hasWalk ? 'Ready' : 'Not generated';
+  walkState.className = 'pill ' + (hasWalk ? 'ok' : '');
+  const idleState = $('#body-idle-state');
+  idleState.textContent = hasIdle ? 'Ready' : 'Not generated';
+  idleState.className = 'pill ' + (hasIdle ? 'ok' : '');
+  $('#body-walk-status').textContent = hasWalk
+    ? `Ready · ${WALK_STYLE_LABELS[BODY_WALK_STYLE] || 'Horizon Walk'} controls desktop traversal.`
+    : hasTurnaround
+      ? 'Ready to generate from the dedicated side body.'
+      : hasBody
+        ? 'A legacy front plate can work, but regenerating the body adds the preferred side reference.'
+        : 'Generate the three full-body views first.';
+  const idleButton = document.querySelector(`[data-idle-pose="${BODY_IDLE_POSE}"] span`);
+  const idleLabel = idleButton ? idleButton.textContent : 'selected pose';
+  $('#body-idle-status').textContent = hasIdle
+    ? `Ready · ${idleLabel}. Regenerating Horizon Walk will not change it.`
+    : hasWalk
+      ? 'Optional · plays when Horizon Walk reaches the left or right screen edge.'
+      : hasBody
+        ? 'Can be generated independently; it becomes visible when Horizon Walk reaches an edge.'
+        : 'Generate the three full-body views first.';
+  renderBodyPreview();
+  setBodyBusy(false);
 }
 
 async function openBody(slug) {
   BODY_SLUG = slug;
+  BODY_VIEW = 'front';
+  BODY_MODE = 'body';
+  stopBodyMotionCycle();
+  if (BODY_WATCH) clearTimeout(BODY_WATCH);
+  BODY_WATCH = null;
   $('#body-modal').classList.add('on');
   document.body.style.overflow = 'hidden';
   $('#body-progress').classList.add('hidden');
-  $('#body-motion-reference').value = '';
-  BODY_STATE = await api('/api/avatar/body?slug=' + encodeURIComponent(slug));
+  const [bodyState, progressState] = await Promise.all([
+    api('/api/avatar/body?slug=' + encodeURIComponent(slug)),
+    api('/api/avatar/progress?slug=' + encodeURIComponent(slug)),
+  ]);
+  if (BODY_SLUG !== slug) return;
+  BODY_STATE = bodyState;
   renderBodyStudio();
+  const job = progressState.job || { done: true };
+  if (!job.done) {
+    $('#body-progress').classList.remove('hidden');
+    setBodyBusy(true);
+    pollBody(job.id);
+  }
 }
 
 function bodyProfile() {
   return {
     style: $('#body-style').value,
     pose: $('#body-pose').value,
-    outfit: $('#body-outfit').value.trim(),
-    notes: $('#body-notes').value.trim(),
+    prompt: $('#body-prompt').value.trim(),
   };
 }
 
 async function generateBody() {
-  const button = $('#body-generate');
-  button.disabled = true;
+  setBodyBusy(true);
   const response = await api('/api/avatar/body/generate', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ slug: BODY_SLUG, profile: bodyProfile() })
   });
+  if (!response.started && response.reason === 'already building') {
+    $('#body-progress').classList.remove('hidden');
+    setBodyBusy(true);
+    pollBody(response.job_id);
+    return;
+  }
   if (response.detail || !response.started) {
     alert(response.detail || response.reason || 'Unable to start full-body generation.');
-    button.disabled = false;
+    setBodyBusy(false);
     return;
   }
   $('#body-progress').classList.remove('hidden');
-  pollBody();
+  pollBody(response.job_id);
 }
 
-async function generateMotion() {
-  const reference = $('#body-motion-reference').files[0];
-  if (!reference) {
-    alert('Choose the edge-idle pose reference image first.');
+async function generateMotion(kind) {
+  const posePrompt = $('#body-motion-prompt').value.trim();
+  if (kind === 'idle' && BODY_IDLE_POSE === 'custom' && posePrompt.length < 12) {
+    alert('Describe the custom edge pose in at least 12 characters.');
+    $('#body-motion-prompt').focus();
     return;
   }
-  const button = $('#body-motion-generate');
-  button.disabled = true;
-  $('#body-generate').disabled = true;
-  const form = new FormData();
-  form.append('slug', BODY_SLUG);
-  form.append('reference', reference, reference.name);
+  setBodyBusy(true);
   const response = await api('/api/avatar/motion/generate', {
-    method: 'POST', body: form
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      slug: BODY_SLUG,
+      kind,
+      walk_style: BODY_WALK_STYLE,
+      pose: BODY_IDLE_POSE,
+      pose_prompt: kind === 'idle' && BODY_IDLE_POSE === 'custom' ? posePrompt : '',
+    })
   });
+  if (!response.started && response.reason === 'already building') {
+    $('#body-progress').classList.remove('hidden');
+    setBodyBusy(true);
+    pollBody(response.job_id);
+    return;
+  }
   if (response.detail || !response.started) {
-    alert(response.detail || response.reason || 'Unable to start desktop motion generation.');
-    button.disabled = false;
-    $('#body-generate').disabled = false;
+    const label = kind === 'walk' ? 'Horizon Walk' : 'Edge Idle';
+    alert(response.detail || response.reason || `Unable to start ${label} generation.`);
+    setBodyBusy(false);
     return;
   }
   $('#body-progress').classList.remove('hidden');
-  pollBody();
+  pollBody(response.job_id);
 }
 
-async function pollBody() {
+async function pollBody(expectedJobId) {
   if (!BODY_SLUG) return;
-  const response = await api('/api/avatar/progress?slug=' + encodeURIComponent(BODY_SLUG));
+  const slug = BODY_SLUG;
+  const response = await api('/api/avatar/progress?slug=' + encodeURIComponent(slug));
+  if (BODY_SLUG !== slug) return;
   const job = response.job || {}, progress = job.progress || {};
+  if (expectedJobId && job.id && job.id !== expectedJobId) expectedJobId = job.id;
   const value = Math.max(0, Math.min(1, Number(progress.value) || 0));
   const percent = Math.round(value * 100);
   $('#body-stage').textContent = job.error ? 'Generation failed' : progress.label || job.phase || 'Working';
@@ -1079,26 +1628,29 @@ async function pollBody() {
   $('#body-progress-bar').style.width = percent + '%';
   $('#body-progress-line').textContent = job.error || (job.log || []).slice(-1)[0] || '';
   if (!job.done) {
-    BODY_WATCH = setTimeout(pollBody, 1100);
+    BODY_WATCH = setTimeout(() => pollBody(expectedJobId), 1100);
     return;
   }
-  $('#body-generate').disabled = false;
-  $('#body-motion-generate').disabled = false;
-  if (job.error) return;
-  BODY_STATE = await api('/api/avatar/body?slug=' + encodeURIComponent(BODY_SLUG));
+  BODY_WATCH = null;
+  BODY_STATE = await api('/api/avatar/body?slug=' + encodeURIComponent(slug));
+  if (BODY_SLUG !== slug) return;
   renderBodyStudio();
+  setBodyBusy(false);
+  if (job.error) return;
   if (SHELL && SHELL.isElectron && BODY_SLUG === ACTIVE) await SHELL.avatarChanged();
   loadAvatars();
 }
 
-async function removeMotion() {
-  if (!confirm('Remove the generated walk and edge-idle motion?')) return;
-  $('#body-motion-remove').disabled = true;
+async function removeMotion(kind) {
+  const label = kind === 'walk' ? 'Horizon Walk' : 'Edge Idle';
+  if (!confirm(`Remove the generated ${label}? The other motion stays unchanged.`)) return;
+  const button = $(kind === 'walk' ? '#body-walk-remove' : '#body-idle-remove');
+  button.disabled = true;
   const response = await api('/api/avatar/motion/remove', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ slug: BODY_SLUG })
+    body: JSON.stringify({ slug: BODY_SLUG, kind })
   });
-  $('#body-motion-remove').disabled = false;
+  button.disabled = false;
   if (response.detail) { alert(response.detail); return; }
   BODY_STATE = await api('/api/avatar/body?slug=' + encodeURIComponent(BODY_SLUG));
   renderBodyStudio();
@@ -1124,8 +1676,32 @@ $('#body-close').onclick = closeBody;
 $('#body-cancel').onclick = closeBody;
 $('#body-generate').onclick = generateBody;
 $('#body-remove').onclick = removeBody;
-$('#body-motion-generate').onclick = generateMotion;
-$('#body-motion-remove').onclick = removeMotion;
+$('#body-walk-generate').onclick = () => generateMotion('walk');
+$('#body-idle-generate').onclick = () => generateMotion('idle');
+$('#body-walk-remove').onclick = () => removeMotion('walk');
+$('#body-idle-remove').onclick = () => removeMotion('idle');
+document.querySelectorAll('[data-walk-style]').forEach(button => {
+  button.onclick = () => selectWalkStyle(button.dataset.walkStyle);
+});
+document.querySelectorAll('[data-idle-pose]').forEach(button => {
+  button.onclick = () => selectIdlePose(
+    button.dataset.idlePose, button.dataset.idlePose === 'custom');
+});
+$('#body-motion-prompt').onfocus = () => {
+  if (BODY_IDLE_POSE !== 'custom') selectIdlePose('custom');
+};
+document.querySelectorAll('[data-body-mode]').forEach(button => {
+  button.onclick = () => setBodyMode(button.dataset.bodyMode);
+});
+document.querySelectorAll('[data-body-view]').forEach(button => {
+  button.onclick = () => {
+    BODY_VIEW = button.dataset.bodyView;
+    renderBodyPreview();
+  };
+});
+$('#body-prompt-reset').onclick = () => {
+  if (BODY_STATE) $('#body-prompt').value = BODY_STATE.default_prompt || '';
+};
 $('#body-modal').addEventListener('click', event => { if (event.target === $('#body-modal')) closeBody(); });
 
 const RIG_COLORS = {

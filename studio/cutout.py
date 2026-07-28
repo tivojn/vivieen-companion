@@ -43,22 +43,23 @@ def _decontaminate_edges(image):
                 propagated[:, :, channel] * filled, -1, (3, 3), normalize=False)
             propagated[:, :, channel][new] = total[new] / weights[new]
         filled[new] = True
-    interior = cv2.erode(foreground.astype("uint8"), kernel, iterations=3).astype(bool)
-    boundary = foreground & ~interior
     contaminated = foreground & (alpha < 246)
-    replace = (boundary | contaminated) & filled
+    replace = contaminated & filled
     image[:, :, :3][replace] = np.clip(propagated[replace], 0, 255).astype("uint8")
     return image
 
 
-def render(source, destination, log=print, tight=False):
+def render(source, destination, log=print, tight=False, pose_destination=None):
     helper = helper_path()
     if not helper:
         log("  cutout unavailable: macOS Vision helper is not installed")
         return None
     try:
+        command = [helper, source, destination]
+        if pose_destination:
+            command.append(pose_destination)
         result = subprocess.run(
-            [helper, source, destination],
+            command,
             capture_output=True,
             text=True,
             timeout=180,
@@ -70,6 +71,9 @@ def render(source, destination, log=print, tight=False):
     if result.returncode or not os.path.exists(destination):
         detail = (result.stderr or result.stdout or "unknown error").strip()[-240:]
         log(f"  cutout failed: {detail}")
+        return None
+    if pose_destination and not os.path.isfile(pose_destination):
+        log("  cutout failed: helper did not produce body-pose metadata")
         return None
     image = cv2.imread(destination, cv2.IMREAD_UNCHANGED)
     if image is None or image.ndim != 3 or image.shape[2] != 4:

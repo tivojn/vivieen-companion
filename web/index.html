@@ -580,7 +580,7 @@ function routedStatus(route,fallback=''){
                 load(M.body.head_mask).then(image=>{HEADMASK=image;})]:[]),
     ...(M.motion?[loadMotion('walk'),loadMotion('idle')]:[])
   ]);
-  const motionReady=Boolean(MOTION.walk&&MOTION.idle);
+  const motionReady=Boolean(MOTION.walk);
   if(SHELL&&SHELL.isElectron&&typeof SHELL.setPetMotionReady==='function')
     SHELL.setPetMotionReady(motionReady?motionPlaybackProfile():{ready:false});
   ready=true;requestAnimationFrame(loop);poll();
@@ -1491,10 +1491,10 @@ cv.addEventListener('contextmenu',event=>{
   if(!SHELL||!PET.enabled||!confirmPetEventHit(event))return;
   event.preventDefault();SHELL.showPetMenu({x:event.screenX,y:event.screenY});
 });
-cv.addEventListener('dblclick',event=>{
-  if(!SHELL||!PET.enabled||!confirmPetEventHit(event)||typeof SHELL.triggerEnconvoVoiceCommand!=='function')return;
-  SHELL.triggerEnconvoVoiceCommand();
+cv.addEventListener('dblclick',async event=>{
+  if(!SHELL||!PET.enabled||PET.roam||!confirmPetEventHit(event)||typeof SHELL.setPetRoam!=='function')return;
   event.preventDefault();
+  try{syncShellState(await SHELL.setPetRoam(true));}catch(error){}
 });
 cv.addEventListener('wheel',event=>{
   if(!SHELL||!PET.enabled||!confirmPetEventHit(event))return;
@@ -1505,7 +1505,7 @@ cv.addEventListener('wheel',event=>{
 if(SHELL&&SHELL.isElectron&&typeof SHELL.onPetChat==='function')SHELL.onPetChat(()=>{
   if(monitorEnabled){
     closePetChat();
-    SHELL.triggerEnconvoVoiceCommand?.();
+    SHELL.triggerEnconvoVoiceCommand();
     return;
   }
   document.documentElement.classList.add('chat-open');SHELL.setPetHit(true);

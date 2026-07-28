@@ -38,11 +38,37 @@ PROVIDER_ROUTES = {
 }
 STYLES = {"photorealistic", "editorial", "illustrated", "anime", "soft-3d"}
 POSES = {"relaxed", "confident", "friendly", "formal", "casual"}
+BODY_VIEWS = ("front", "side", "back")
+DEFAULT_BODY_PROMPT = (
+    "Dress the adult subject in a polished, contemporary, fashion-forward look "
+    "with excellent tailoring and refined materials. Build a disciplined palette "
+    "around one hero color, one restrained accent, and neutral foundations. Choose "
+    "one refined statement detail rather than stacking competing accessories. The "
+    "outfit must be opaque, properly fitted, and appropriate for public or "
+    "professional wear: no nudity, lingerie, sheer fabric, bare midriff, or extreme "
+    "neckline. Keep footwear elegant and the overall presentation sophisticated "
+    "rather than provocative. Preserve the person's identity, groomed hair, natural "
+    "proportions, real skin texture, and apparent age."
+)
 
 
 def _clean(value, maximum=800):
     value = re.sub(r"[\x00-\x1f\x7f]+", " ", str(value or ""))
     return re.sub(r"\s+", " ", value).strip()[:maximum]
+
+
+def _direction(options):
+    custom = _clean(options.get("prompt"), 2400)
+    if custom:
+        return custom
+    legacy = []
+    outfit = _clean(options.get("outfit"), 500)
+    notes = _clean(options.get("notes"), 600)
+    if outfit:
+        legacy.append(f"Wardrobe: {outfit}")
+    if notes:
+        legacy.append(f"Additional direction: {notes}")
+    return " ".join(legacy) or DEFAULT_BODY_PROMPT
 
 
 def _enconvo_config(preference_key, includes):
@@ -93,14 +119,12 @@ def default_video_provider():
     return selected_provider("video_create")
 
 
-def _prompt(options):
+def _prompt(options, view="front"):
+    if view not in BODY_VIEWS:
+        raise ValueError(f"unknown full-body view: {view}")
     style = options.get("style") if options.get("style") in STYLES else "photorealistic"
     pose = options.get("pose") if options.get("pose") in POSES else "relaxed"
-    outfit = _clean(options.get("outfit"), 500) or (
-        "Extend the clothing visible in the reference portrait into a coherent, "
-        "premium full-body outfit."
-    )
-    notes = _clean(options.get("notes"), 600)
+    direction = _direction(options)
     style_text = {
         "photorealistic": "Photorealistic editorial portrait photography with natural skin texture",
         "editorial": "High-fashion editorial portrait photography with restrained luxury styling",
@@ -115,28 +139,62 @@ def _prompt(options):
         "formal": "formal composed stance, shoulders level, hands naturally at the sides",
         "casual": "natural casual weight shift with hands clearly visible",
     }[pose]
-    extra = f" Additional art direction: {notes}." if notes else ""
-    return f"""Create a vertical 3:4 full-body character plate of the exact same adult person in the reference portrait.
+    view_text = {
+        "front": (
+            "Create the canonical FRONT view. Face, sternum, pelvis, knees, and toes point "
+            "straight toward the camera. Keep both shoulders and both sides of the outfit "
+            "equally readable; do not rotate into a three-quarter view. Reference 1, the "
+            "canonical HD head, is the identity authority."
+        ),
+        "side": (
+            "Create the canonical RIGHT-SIDE view. The nose, chest, knees, and toes point "
+            "exactly camera-right in a true 90-degree profile; do not drift toward front or "
+            "three-quarter. Reference 1, the canonical HD head, is the identity authority. "
+            "Reference 2, the approved front body plate, is the absolute authority for "
+            "wardrobe, body proportions, materials, color, accessories, and garment length."
+        ),
+        "back": (
+            "Create the canonical BACK view. The back of the head, shoulders, spine, hips, "
+            "knees, and heels face the camera while the face remains completely out of view; "
+            "do not turn the head over a shoulder. Reference 1, the canonical HD head, is the "
+            "identity and hair authority. Reference 2, the approved front body plate, is the "
+            "absolute authority for wardrobe, body proportions, materials, color, "
+            "accessories, and garment length."
+        ),
+    }[view]
+    return f"""Create one vertical 3:4 full-body {view}-view character plate of the exact same adult person.
 
-IDENTITY LOCK — preserve the reference person's facial identity, skull proportions, skin tone, hairline, eyebrows, eye shape and color, nose, lips, ears, and apparent age. Keep the head facing the same direction with a neutral closed mouth. Do not beautify, de-age, or redesign the face.
+TURNAROUND CONTRACT — this is one member of a matched FRONT / RIGHT-SIDE / BACK full-body set. Return exactly one complete figure for this {view} plate, never a triptych, contact sheet, split screen, duplicate person, inset, or labeled diagram. Treat the camera as rotating around one stationary person: preserve the same posture, shoulder level, arm placement, hand state, leg spacing, weight distribution, outfit, body scale, and camera height across all three plates.
+
+IDENTITY LOCK — preserve the reference person's facial identity, skull proportions, skin tone, hairline, hairstyle, eyebrows, eye shape and color, nose, lips, ears, and apparent age wherever those features are visible. Keep a neutral closed mouth. Do not beautify, de-age, or redesign the person.
+
+VIEW — {view_text}
 
 COMPOSITION — show the complete figure from the top of the hair through both feet with 7% clear margin around the silhouette. Camera at waist height, long portrait lens, minimal perspective distortion. Use a {pose_text}. Both hands, both legs, and all footwear must be complete and anatomically correct; no crop, no props, no furniture, no text.
 
-WARDROBE — {outfit}
+EDITABLE ART DIRECTION — {direction}
 
-STYLE — {style_text}. Match the reference portrait's lighting direction, color temperature, realism, and photographic texture. Avoid airbrushed skin, plastic fabric, exaggerated anatomy, or game-interface styling.
+DECENCY FLOOR — regardless of the editable direction, use tasteful opaque clothing suitable for an adult in public. No nudity, lingerie, transparent fabric, exposed intimate areas, or sexually provocative styling. The result must read as proper, decent, and intentionally fashionable.
 
-BACKGROUND — simple clean studio backdrop with strong person/background separation. The application will remove the background locally, so preserve fine hair edges and do not add smoke, veils, loose particles, or cast shadows behind the figure.{extra}"""
+STYLE — {style_text}. Match the reference head's lighting direction, color temperature, realism, and photographic texture. Avoid airbrushed skin, plastic fabric, exaggerated anatomy, or game-interface styling.
+
+BACKGROUND — simple clean studio backdrop with strong person/background separation. The application will remove the background locally, so preserve fine hair edges and do not add smoke, veils, loose particles, or cast shadows behind the figure."""
 
 
-def _provider_command(provider, keyframe, output_dir, prompt):
+def _provider_command(
+        provider, keyframe, output_dir, prompt, file_name="body-source"):
     route = provider["route"]
+    references = (
+        [os.fspath(reference) for reference in keyframe]
+        if isinstance(keyframe, (list, tuple)) else
+        [os.fspath(keyframe)]
+    )
     command = [
         ENCONVO, "image_create", "features", route,
         "--prompt", prompt,
-        "--reference_images", keyframe,
+        "--reference_images", *references,
         "--output_dir", output_dir,
-        "--file_name", "body-source",
+        "--file_name", file_name,
         "--download",
     ]
     if route == "gemini/create":
@@ -264,67 +322,143 @@ def _alpha_bounds(image):
     return [int(value) for value in cv2.boundingRect(points)]
 
 
-def build(avatar_dir, options, log=print):
+def _identity_reference(avatar_dir):
+    head = os.path.join(avatar_dir, "head.png")
+    return head if os.path.isfile(head) else os.path.join(avatar_dir, "keyframe.png")
+
+
+def _emit(progress, stage, value, label):
+    if progress:
+        progress(stage, value, label)
+
+
+def _cached_view_source(cache_dir, view):
+    if not os.path.isdir(cache_dir):
+        return None
+    prefix = f"source-{view}."
+    return next((
+        os.path.join(cache_dir, name)
+        for name in sorted(os.listdir(cache_dir))
+        if name.startswith(prefix) and os.path.isfile(os.path.join(cache_dir, name))
+    ), None)
+
+
+def build(avatar_dir, options, log=print, progress=None):
     keyframe_path = os.path.join(avatar_dir, "keyframe.png")
     keyframe = cv2.imread(keyframe_path)
     if keyframe is None:
         raise RuntimeError("avatar keyframe is missing")
+    identity_reference = _identity_reference(avatar_dir)
+    if not os.path.isfile(identity_reference):
+        raise RuntimeError("avatar identity head is missing")
     provider = default_provider()
-    prompt = _prompt(options)
+    prompts = {view: _prompt(options, view=view) for view in BODY_VIEWS}
+    with open(identity_reference, "rb") as handle:
+        identity_digest = hashlib.sha256(handle.read()).hexdigest()
     signature = hashlib.sha256(
-        (provider["name"] + "\n" + str(provider.get("model")) + "\n" + prompt).encode("utf-8")
+        (provider["name"] + "\n" + str(provider.get("model")) + "\n" +
+         identity_digest + "\n" + "\n--- VIEW ---\n".join(
+             prompts[view] for view in BODY_VIEWS)).encode("utf-8")
     ).hexdigest()
     cache_dir = os.path.join(avatar_dir, ".body-cache")
     cache_signature = os.path.join(cache_dir, "signature")
-    cached = None
+    cache_matches = False
     if os.path.isfile(cache_signature):
         with open(cache_signature) as handle:
-            if handle.read().strip() == signature:
-                cached = next((os.path.join(cache_dir, name) for name in os.listdir(cache_dir)
-                               if name.startswith("source.") and os.path.isfile(os.path.join(cache_dir, name))), None)
+            cache_matches = handle.read().strip() == signature
+    if not cache_matches:
+        shutil.rmtree(cache_dir, ignore_errors=True)
+        os.makedirs(cache_dir, mode=0o700)
+        with open(cache_signature, "w") as handle:
+            handle.write(signature)
+    cached = {
+        view: _cached_view_source(cache_dir, view)
+        for view in BODY_VIEWS
+    }
     stage = tempfile.mkdtemp(prefix=".body-stage-", dir=avatar_dir)
     raw_dir = os.path.join(stage, "raw")
     os.makedirs(raw_dir)
     try:
         log(f"using EnConvo default image provider: {provider['title']}")
-        if cached:
-            log("reusing the generated body plate after a local QA retry")
-            generated = cached
-        else:
-            log("generating full-body identity reference")
-            started = time.time()
-            result = subprocess.run(
-                _provider_command(provider, keyframe_path, raw_dir, prompt),
-                capture_output=True,
-                text=True,
-                timeout=900,
-                stdin=subprocess.DEVNULL,
-            )
-            if result.returncode:
-                detail = (result.stderr or result.stdout or "generation failed").strip()[-1200:]
-                raise RuntimeError(detail)
-            generated = _generated_file(raw_dir, started, result.stdout)
-            extension = os.path.splitext(generated)[1].lower() or ".png"
-            os.makedirs(cache_dir, mode=0o700, exist_ok=True)
-            cached = os.path.join(cache_dir, "source" + extension)
-            shutil.copy2(generated, cached)
-            with open(cache_signature, "w") as handle:
-                handle.write(signature)
-            generated = cached
-        extension = os.path.splitext(generated)[1].lower() or ".png"
-        source_path = os.path.join(stage, "source" + extension)
-        shutil.copy2(generated, source_path)
+        sources = {}
+        for view_index, view in enumerate(BODY_VIEWS):
+            generated = cached[view]
+            if generated:
+                log(f"reusing the generated {view} body plate after a local QA retry")
+            else:
+                _emit(
+                    progress, "generation", .14 + view_index * .18,
+                    f"Generating {view} full-body view")
+                log(f"generating {view} full body from the canonical HD head")
+                references = [identity_reference]
+                if view != "front":
+                    references.append(sources["front"])
+                provider_dir = os.path.join(raw_dir, view)
+                os.makedirs(provider_dir, mode=0o700)
+                started = time.time()
+                result = subprocess.run(
+                    _provider_command(
+                        provider, references, provider_dir, prompts[view],
+                        file_name=f"body-source-{view}"),
+                    capture_output=True,
+                    text=True,
+                    timeout=900,
+                    stdin=subprocess.DEVNULL,
+                )
+                if result.returncode:
+                    detail = (result.stderr or result.stdout or "generation failed").strip()[-1200:]
+                    raise RuntimeError(f"{view} view: {detail}")
+                generated = _generated_file(provider_dir, started, result.stdout)
+                extension = os.path.splitext(generated)[1].lower() or ".png"
+                cached_path = os.path.join(cache_dir, f"source-{view}{extension}")
+                shutil.copy2(generated, cached_path)
+                generated = cached_path
+            sources[view] = generated
 
-        log("removing background locally with macOS Vision")
-        body_path = os.path.join(stage, "body.png")
-        if not cutout.render(source_path, body_path, log=log, tight=True):
-            raise RuntimeError("local person cutout failed")
-        body_rgba = cv2.imread(body_path, cv2.IMREAD_UNCHANGED)
-        if body_rgba is None or body_rgba.shape[2] != 4:
-            raise RuntimeError("generated body did not produce an RGBA plate")
+        staged_sources = {}
+        for view in BODY_VIEWS:
+            extension = os.path.splitext(sources[view])[1].lower() or ".png"
+            staged_sources[view] = os.path.join(stage, f"source-{view}{extension}")
+            shutil.copy2(sources[view], staged_sources[view])
+        front_extension = os.path.splitext(staged_sources["front"])[1]
+        shutil.copy2(
+            staged_sources["front"], os.path.join(stage, "source" + front_extension))
 
-        log("locking the calibrated face onto the generated body")
-        transform, alignment, key_landmarks = _face_transform(keyframe, body_rgba[:, :, :3])
+        log("removing all three backgrounds locally with macOS Vision")
+        view_metadata = {}
+        view_images = {}
+        purposes = {
+            "front": "standing runtime body",
+            "side": "Horizon Walk image reference",
+            "back": "turn-around continuity reference",
+        }
+        for view_index, view in enumerate(BODY_VIEWS):
+            _emit(
+                progress, "cutout", .64 + view_index * .05,
+                f"Cutting out {view} full-body view")
+            body_path = os.path.join(stage, f"body-{view}.png")
+            if not cutout.render(
+                    staged_sources[view], body_path, log=log, tight=True):
+                raise RuntimeError(f"local person cutout failed for the {view} view")
+            body_rgba = cv2.imread(body_path, cv2.IMREAD_UNCHANGED)
+            if body_rgba is None or body_rgba.ndim != 3 or body_rgba.shape[2] != 4:
+                raise RuntimeError(f"generated {view} body did not produce an RGBA plate")
+            height, width = body_rgba.shape[:2]
+            view_images[view] = body_rgba
+            view_metadata[view] = {
+                "image": os.path.basename(body_path),
+                "source": os.path.basename(staged_sources[view]),
+                "width": int(width),
+                "height": int(height),
+                "bounds": _alpha_bounds(body_rgba),
+                "purpose": purposes[view],
+            }
+        shutil.copy2(os.path.join(stage, "body-front.png"), os.path.join(stage, "body.png"))
+
+        log("locking the calibrated face onto the generated front body")
+        _emit(progress, "identity", .80, "Locking the calibrated face to the front view")
+        transform, alignment, key_landmarks = _face_transform(
+            keyframe, view_images["front"][:, :, :3])
         portrait_cutout_path = os.path.join(stage, "portrait-cutout.png")
         if not cutout.render(keyframe_path, portrait_cutout_path, log=lambda _message: None):
             raise RuntimeError("could not build the identity overlay mask")
@@ -332,20 +466,36 @@ def build(avatar_dir, options, log=print):
         _head_mask(portrait_cutout, key_landmarks, os.path.join(stage, "head-mask.png"))
         os.remove(portrait_cutout_path)
 
-        height, width = body_rgba.shape[:2]
+        height, width = view_images["front"].shape[:2]
+        face_transform = [
+            [round(float(value), 7) for value in row]
+            for row in transform
+        ]
+        view_metadata["front"]["face_transform"] = face_transform
+        view_metadata["front"]["alignment"] = alignment
         metadata = {
-            "v": 1,
+            "v": 3,
             "image": "body.png",
             "head_mask": "head-mask.png",
+            "identity_reference": os.path.basename(identity_reference),
             "width": int(width),
             "height": int(height),
-            "bounds": _alpha_bounds(body_rgba),
-            "face_transform": [[round(float(value), 7) for value in row] for row in transform],
+            "bounds": _alpha_bounds(view_images["front"]),
+            "face_transform": face_transform,
             "alignment": alignment,
+            "turnaround": list(BODY_VIEWS),
+            "views": view_metadata,
+            "motion_reference": {
+                "walk_view": "side",
+                "walk_source": view_metadata["side"]["source"],
+                "idle_view": "front",
+                "idle_source": view_metadata["front"]["source"],
+            },
             "provider": provider,
             "options": {
                 "style": options.get("style", "photorealistic"),
                 "pose": options.get("pose", "relaxed"),
+                "prompt": _direction(options),
                 "outfit": _clean(options.get("outfit"), 500),
                 "notes": _clean(options.get("notes"), 600),
             },

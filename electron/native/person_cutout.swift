@@ -20,13 +20,73 @@ func loadImage(_ path: String) throws -> CGImage {
     return cgImage
 }
 
-func writeCutout(inputPath: String, outputPath: String) throws {
+let poseJoints: [(String, VNHumanBodyPoseObservation.JointName)] = [
+    ("nose", .nose),
+    ("neck", .neck),
+    ("left_shoulder", .leftShoulder),
+    ("left_elbow", .leftElbow),
+    ("left_wrist", .leftWrist),
+    ("right_shoulder", .rightShoulder),
+    ("right_elbow", .rightElbow),
+    ("right_wrist", .rightWrist),
+    ("root", .root),
+    ("left_hip", .leftHip),
+    ("left_knee", .leftKnee),
+    ("left_ankle", .leftAnkle),
+    ("right_hip", .rightHip),
+    ("right_knee", .rightKnee),
+    ("right_ankle", .rightAnkle),
+]
+
+func writePose(
+    _ observation: VNHumanBodyPoseObservation?,
+    width: Int,
+    height: Int,
+    outputPath: String
+) throws {
+    var joints: [String: [String: Double]] = [:]
+    if let observation = observation {
+        for (key, name) in poseJoints {
+            guard let point = try? observation.recognizedPoint(name),
+                  point.confidence > 0.05 else {
+                continue
+            }
+            joints[key] = [
+                "x": Double(point.location.x) * Double(width),
+                "y": (1.0 - Double(point.location.y)) * Double(height),
+                "confidence": Double(point.confidence),
+            ]
+        }
+    }
+    let payload: [String: Any] = [
+        "width": width,
+        "height": height,
+        "joints": joints,
+    ]
+    let outputURL = URL(fileURLWithPath: outputPath)
+    try FileManager.default.createDirectory(
+        at: outputURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    let data = try JSONSerialization.data(
+        withJSONObject: payload,
+        options: [.prettyPrinted, .sortedKeys]
+    )
+    try data.write(to: outputURL, options: .atomic)
+}
+
+func writeCutout(inputPath: String, outputPath: String, poseOutputPath: String?) throws {
     let cgImage = try loadImage(inputPath)
     let request = VNGeneratePersonSegmentationRequest()
     request.qualityLevel = .accurate
     request.outputPixelFormat = kCVPixelFormatType_OneComponent8
+    let poseRequest = poseOutputPath == nil ? nil : VNDetectHumanBodyPoseRequest()
     let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up)
-    try handler.perform([request])
+    var requests: [VNRequest] = [request]
+    if let poseRequest = poseRequest {
+        requests.append(poseRequest)
+    }
+    try handler.perform(requests)
     guard let observation = request.results?.first else {
         throw CutoutFailure(message: "No person was detected")
     }
@@ -66,17 +126,38 @@ func writeCutout(inputPath: String, outputPath: String) throws {
         format: .RGBA8,
         colorSpace: colorSpace
     )
+    if let poseOutputPath = poseOutputPath {
+        try writePose(
+            poseRequest?.results?.first,
+            width: cgImage.width,
+            height: cgImage.height,
+            outputPath: poseOutputPath
+        )
+    }
 }
 
 let arguments = CommandLine.arguments
-if arguments.count != 3 {
-    FileHandle.standardError.write(Data("usage: person-cutout INPUT OUTPUT\n".utf8))
+if arguments.count != 3 && arguments.count != 4 {
+    FileHandle.standardError.write(
+        Data("usage: person-cutout INPUT OUTPUT [POSE_JSON]\n".utf8)
+    )
     exit(2)
 }
 
 do {
-    try writeCutout(inputPath: arguments[1], outputPath: arguments[2])
-    let payload = ["ok": true, "output": arguments[2]] as [String: Any]
+    let poseOutputPath = arguments.count == 4 ? arguments[3] : nil
+    try writeCutout(
+        inputPath: arguments[1],
+        outputPath: arguments[2],
+        poseOutputPath: poseOutputPath
+    )
+    var payload = [
+        "ok": true,
+        "output": arguments[2],
+    ] as [String: Any]
+    if let poseOutputPath = poseOutputPath {
+        payload["pose"] = poseOutputPath
+    }
     let data = try JSONSerialization.data(withJSONObject: payload)
     FileHandle.standardOutput.write(data)
     FileHandle.standardOutput.write(Data([0x0A]))

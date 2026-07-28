@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('vivieen', Object.freeze({
   setEnconvoMonitor: (enabled) => ipcRenderer.invoke('vivieen:set-enconvo-monitor', Boolean(enabled)),
   avatarChanged: () => ipcRenderer.invoke('vivieen:avatar-changed'),
   restartBackend: () => ipcRenderer.invoke('vivieen:restart-backend'),
+  saveMotionAsset: (asset) => ipcRenderer.invoke('vivieen:save-motion-asset', asset),
   onState: (callback) => subscribe('vivieen:state', callback),
   onEnconvoMonitor: (callback) => subscribe('vivieen:monitor-state', callback),
   onEnconvoAudio: (callback) => subscribe('vivieen:monitor-sample', callback),

@@ -21,6 +21,7 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const { EnconvoAudioMonitor } = require('./enconvo-audio-monitor.cjs');
+const { boundsForPetZoom } = require('./pet-window-bounds.cjs');
 
 app.setName('Vivieen');
 
@@ -89,6 +90,42 @@ const audioTapExecutable = () => path.join(
 
 function ensureDataRoot() {
   fs.mkdirSync(dataRoot(), { recursive: true, mode: 0o700 });
+}
+
+function resolveMotionAsset(slug, relativePath) {
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,62})$/.test(String(slug || ''))) {
+    throw new Error('Invalid avatar.');
+  }
+  const root = fs.realpathSync(path.join(dataRoot(), 'avatars', slug, 'motion'));
+  const requested = String(relativePath || '').split(path.win32.sep).join('/');
+  if (!requested || path.isAbsolute(requested)) throw new Error('Invalid motion asset.');
+  const source = fs.realpathSync(path.resolve(root, requested));
+  if (!source.startsWith(`${root}${path.sep}`)) throw new Error('Invalid motion asset.');
+  if (!fs.statSync(source).isFile()) throw new Error('Motion asset is unavailable.');
+  return source;
+}
+
+async function saveMotionAsset(event, asset = {}) {
+  const source = resolveMotionAsset(asset.slug, asset.relativePath);
+  const requestedName = path.basename(String(asset.defaultName || path.basename(source)));
+  const defaultName = requestedName && requestedName !== '.' ? requestedName : path.basename(source);
+  const extension = path.extname(defaultName).slice(1);
+  const options = {
+    title: 'Save motion asset',
+    buttonLabel: 'Save',
+    defaultPath: path.join(app.getPath('downloads'), defaultName),
+    properties: ['createDirectory', 'showOverwriteConfirmation'],
+    filters: extension ? [{ name: `${extension.toUpperCase()} file`, extensions: [extension] }] : [],
+  };
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  const result = owner
+    ? await dialog.showSaveDialog(owner, options)
+    : await dialog.showSaveDialog(options);
+  if (result.canceled || !result.filePath) return { saved: false, canceled: true };
+  if (path.resolve(result.filePath) !== source) {
+    await fs.promises.copyFile(source, result.filePath);
+  }
+  return { saved: true, canceled: false, filePath: result.filePath };
 }
 
 function executable(file) {
@@ -488,18 +525,8 @@ function petBoundsForZoom(value) {
   const zoom = Math.max(PET_ZOOM_RANGE.min,
     Math.min(PET_ZOOM_RANGE.max, Number(value) || 1));
   const current = mainWindow.getBounds();
-  const area = screen.getDisplayMatching(current).workArea;
-  const width = Math.min(area.width, Math.max(PET_NORMAL_MINIMUM.width,
-    Math.round(PET_BASE_SIZE.width * zoom)));
-  const height = Math.min(area.height, Math.max(PET_NORMAL_MINIMUM.height,
-    Math.round(PET_BASE_SIZE.height * zoom)));
-  const centerX = current.x + current.width / 2;
-  const centerY = current.y + current.height / 2;
-  const x = Math.max(area.x, Math.min(area.x + area.width - width,
-    Math.round(centerX - width / 2)));
-  const y = Math.max(area.y, Math.min(area.y + area.height - height,
-    Math.round(centerY - height / 2)));
-  return { x, y, width, height };
+  return boundsForPetZoom(
+    current, PET_BASE_SIZE, PET_NORMAL_MINIMUM, zoom);
 }
 
 function applyPetZoom(value) {
@@ -994,7 +1021,7 @@ function triggerEnconvoVoiceCommand() {
         } catch {}
         if (error || !payload || payload.ok !== true) {
           const message = payload?.message
-            || 'Allow Vivieen in Privacy & Security → Accessibility, then double-click me again.';
+            || 'Allow Vivieen in Privacy & Security → Accessibility, then choose Talk via EnConvo again.';
           const detail = payload?.code || stderr || error?.message || 'native event failed';
           writeBackendLog(`[EnConvo voice trigger failed] ${String(detail).trim()}\n`);
           showSpeechBubble(message);
@@ -1019,11 +1046,13 @@ function createMainWindow() {
     roundedCorners: false,
     hasShadow: false,
     resizable: true,
+    enableLargerThanScreen: true,
     fullscreenable: false,
     skipTaskbar: true,
     acceptFirstMouse: true,
     title: 'Vivieen',
     webPreferences: {
+      backgroundThrottling: false,
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
@@ -1282,6 +1311,7 @@ async function restartBackend() {
 
 function installIpc() {
   ipcMain.handle('vivieen:get-state', () => shellState());
+  ipcMain.handle('vivieen:save-motion-asset', saveMotionAsset);
   ipcMain.handle('vivieen:get-enconvo-samples', (_event, afterSequence = 0) => {
     const requested = Number(afterSequence);
     const after = Number.isFinite(requested) && requested > 0

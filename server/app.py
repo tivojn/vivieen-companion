@@ -82,6 +82,37 @@ _jobs = {}                      # slug -> live build/calibration state
 _jlock = threading.Lock()
 
 
+def _reserve_job(slug, kind, label="Queued"):
+    with _jlock:
+        current = _jobs.get(slug)
+        if current and not current.get("done"):
+            return None
+        job_id = secrets.token_hex(12)
+        _jobs[slug] = dict(
+            id=job_id, phase=label, done=False, error="", log=[], kind=kind,
+            progress={"stage": "queued", "value": 0.0, "label": label})
+        return job_id
+
+
+def _finish_job(slug, job_id, error=""):
+    with _jlock:
+        job = _jobs.get(slug)
+        if not job or job.get("id") != job_id:
+            return
+        job["error"] = str(error or job.get("error") or "")
+        job["done"] = True
+
+
+def _already_running(slug):
+    with _jlock:
+        job_id = (_jobs.get(slug) or {}).get("id")
+    return {
+        "started": False,
+        "reason": "already building",
+        "job_id": job_id,
+    }
+
+
 def reg():
     from studio import build as _r
     return _r
@@ -91,6 +122,62 @@ def reg():
 
 def runtime_dir(slug):
     return os.path.join(reg().adir(slug), "runtime")
+
+
+def _runtime_manifest(directory):
+    manifest_path = os.path.join(directory, "manifest.json")
+    if not os.path.isfile(manifest_path):
+        raise ValueError("runtime manifest is missing")
+    with open(manifest_path) as handle:
+        manifest = json.load(handle)
+    if not isinstance(manifest, dict):
+        raise ValueError("runtime manifest is not an object")
+    return manifest
+
+
+def _runtime_asset(directory, reference):
+    if not isinstance(reference, str) or not reference.startswith("assets/"):
+        raise ValueError("runtime asset reference is invalid")
+    root = os.path.abspath(directory)
+    asset = os.path.abspath(os.path.join(root, reference[len("assets/"):]))
+    if os.path.commonpath((root, asset)) != root:
+        raise ValueError("runtime asset escapes its bundle")
+    if not os.path.isfile(asset) or os.path.getsize(asset) <= 0:
+        raise ValueError(f"runtime asset is missing: {reference}")
+
+
+def _validate_runtime_bundle(directory, expect_motion=None):
+    manifest = _runtime_manifest(directory)
+    runtime_motion = manifest.get("motion")
+    if expect_motion is False and runtime_motion:
+        raise ValueError("runtime still contains motion after removal")
+    available = []
+    if runtime_motion:
+        if not isinstance(runtime_motion, dict):
+            raise ValueError("runtime motion metadata is missing")
+        for kind in ("walk", "idle"):
+            clip = runtime_motion.get(kind)
+            if not clip:
+                continue
+            if not isinstance(clip, dict) or not clip.get("sheets"):
+                raise ValueError(f"runtime {kind} atlas metadata is missing")
+            for sheet in clip["sheets"]:
+                _runtime_asset(directory, sheet.get("image"))
+            if clip.get("poster"):
+                _runtime_asset(directory, clip["poster"])
+            available.append(kind)
+    if expect_motion is True and not available:
+        raise ValueError("runtime motion metadata is missing")
+    return manifest
+
+
+def _recover_runtime_swap(slug):
+    live = runtime_dir(slug)
+    previous = live + ".previous"
+    if not os.path.exists(live) and os.path.isdir(previous):
+        _validate_runtime_bundle(previous)
+        os.replace(previous, live)
+    return live
 
 
 def active_slug():
@@ -103,7 +190,7 @@ def active_slug():
 def ensure_runtime(slug, log=print):
     """An avatar is only usable once it has a runtime bundle. Build one on demand
     rather than at activation time, so importing an old avatar folder works."""
-    d = runtime_dir(slug)
+    d = _recover_runtime_swap(slug)
     if os.path.exists(os.path.join(d, "manifest.json")):
         return d
     from studio import export
@@ -130,15 +217,19 @@ def jlog(slug, phase=None):
     return w
 
 
-def _job_progress(slug, stage, value, label):
+def _job_progress(slug, stage, value, label, job_id=None):
     payload = {
         "stage": str(stage),
         "value": max(0.0, min(1.0, float(value))),
         "label": str(label),
     }
     with _jlock:
-        job = _jobs.setdefault(
-            slug, {"log": [], "phase": "", "done": False, "error": ""})
+        job = _jobs.get(slug)
+        if job_id and (not job or job.get("id") != job_id):
+            return
+        if not job:
+            job = _jobs.setdefault(
+                slug, {"log": [], "phase": "", "done": False, "error": ""})
         job["progress"] = payload
         job["phase"] = payload["label"]
 
@@ -208,6 +299,7 @@ def _recompose_thread(slug, profile):
 def _publish_runtime_atomic(slug, log=print):
     from studio import export
     directory = reg().adir(slug)
+    _recover_runtime_swap(slug)
     staged = tempfile.mkdtemp(prefix=".runtime-stage-", dir=directory)
     live = runtime_dir(slug)
     previous = live + ".previous"
@@ -220,11 +312,21 @@ def _publish_runtime_atomic(slug, log=print):
             export.publish_pet_assets(slug, staged, log=log)
         else:
             raise ValueError("avatar has neither source visemes nor a published runtime")
+        expect_motion = os.path.isfile(
+            os.path.join(directory, "motion", "motion.json"))
+        _validate_runtime_bundle(staged, expect_motion=expect_motion)
         shutil.rmtree(previous, ignore_errors=True)
         if os.path.exists(live):
             os.replace(live, previous)
-        os.replace(staged, live)
-        staged = None
+        try:
+            os.replace(staged, live)
+            staged = None
+            _validate_runtime_bundle(live, expect_motion=expect_motion)
+        except Exception:
+            shutil.rmtree(live, ignore_errors=True)
+            if os.path.exists(previous):
+                os.replace(previous, live)
+            raise
         shutil.rmtree(previous, ignore_errors=True)
     except Exception:
         if not os.path.exists(live) and os.path.exists(previous):
@@ -244,8 +346,11 @@ def _body_thread(slug, options):
                       "label": "Reading EnConvo image provider"})
     try:
         from studio import body, motion
-        _job_progress(slug, "generation", .12, "Generating full-body character")
-        metadata = body.build(reg().adir(slug), options, log=w)
+        _job_progress(slug, "generation", .12, "Generating front, side, and back bodies")
+        metadata = body.build(
+            reg().adir(slug), options, log=w,
+            progress=lambda stage, value, label:
+                _job_progress(slug, stage, value, label))
         motion.remove(reg().adir(slug))
         manifest = reg().read_manifest(slug) or {}
         manifest["body"] = metadata
@@ -253,8 +358,8 @@ def _body_thread(slug, options):
         reg().write_manifest(slug, manifest)
         _job_progress(slug, "runtime", .86, "Publishing transparent companion")
         _publish_runtime_atomic(slug, log=w)
-        _job_progress(slug, "done", 1.0, "Full body ready")
-        w("full-body companion ready")
+        _job_progress(slug, "done", 1.0, "Three full-body views ready")
+        w("front, side, and back full-body companion plates ready")
     except Exception as error:
         with _jlock:
             _jobs[slug]["error"] = str(error)
@@ -264,40 +369,80 @@ def _body_thread(slug, options):
             _jobs[slug]["done"] = True
 
 
-def _motion_thread(slug, reference_path):
+def _motion_thread(
+        slug, reference_path, job_id, idle_pose=None,
+        kinds=None, walk_style=None):
     writer = jlog(slug, "starting desktop motion generation")
     with _jlock:
-        _jobs[slug].update(
+        job = _jobs.get(slug)
+        if not job or job.get("id") != job_id:
+            if reference_path:
+                try:
+                    os.remove(reference_path)
+                except FileNotFoundError:
+                    pass
+            return
+        job.update(
             done=False, error="", log=[], kind="motion",
             progress={"stage": "provider", "value": .03,
                       "label": "Reading EnConvo media providers"})
+    previous_manifest = reg().read_manifest(slug) or {}
+    motion_replaced = False
+    runtime_published = False
+    failure = ""
     try:
         from studio import motion
         metadata = motion.build(
             reg().adir(slug),
             pose_reference=reference_path,
+            idle_pose=idle_pose,
+            kinds=kinds,
+            walk_style=walk_style,
             log=writer,
             progress=lambda stage, value, label: _job_progress(
-                slug, stage, value, label),
+                slug, stage, value, label, job_id=job_id),
+            keep_previous=True,
         )
-        manifest = reg().read_manifest(slug) or {}
+        motion_replaced = True
+        manifest = dict(previous_manifest)
         manifest["motion"] = metadata
         reg().write_manifest(slug, manifest)
-        _job_progress(slug, "runtime", .94, "Publishing alpha motion")
+        _job_progress(
+            slug, "runtime", .94, "Publishing alpha motion", job_id=job_id)
         _publish_runtime_atomic(slug, log=writer)
-        _job_progress(slug, "done", 1.0, "Desktop motion ready")
-        writer("walk, edge idle, and standing interaction are ready")
+        runtime_published = True
+        motion.commit_pending_build(reg().adir(slug))
+        selected = tuple(kinds or ("walk", "idle"))
+        label = (
+            "Horizon Walk and Edge Idle"
+            if len(selected) == 2 else
+            "Horizon Walk" if selected == ("walk",) else "Edge Idle"
+        )
+        _job_progress(
+            slug, "done", 1.0, f"{label} ready", job_id=job_id)
+        writer(f"{label} and standing interaction are ready")
     except Exception as error:
-        with _jlock:
-            _jobs[slug]["error"] = str(error)
-        writer(f"FAILED: {error}")
+        failure = str(error)
+        rollback_errors = []
+        if motion_replaced and not runtime_published:
+            try:
+                motion.rollback_pending_build(reg().adir(slug))
+            except Exception as rollback_error:
+                rollback_errors.append(f"motion rollback: {rollback_error}")
+            try:
+                reg().write_manifest(slug, previous_manifest)
+            except Exception as rollback_error:
+                rollback_errors.append(f"manifest rollback: {rollback_error}")
+        if rollback_errors:
+            failure = f"{failure}; {'; '.join(rollback_errors)}"
+        writer(f"FAILED: {failure}")
     finally:
-        try:
-            os.remove(reference_path)
-        except FileNotFoundError:
-            pass
-        with _jlock:
-            _jobs[slug]["done"] = True
+        if reference_path:
+            try:
+                os.remove(reference_path)
+            except FileNotFoundError:
+                pass
+        _finish_job(slug, job_id, failure)
 
 
 @app.get("/api/avatars")
@@ -369,6 +514,7 @@ class RigRequest(BaseModel):
 class BodyProfileInput(BaseModel):
     style: str = Field(default="photorealistic", pattern=r"^(photorealistic|editorial|illustrated|anime|soft-3d)$")
     pose: str = Field(default="relaxed", pattern=r"^(relaxed|confident|friendly|formal|casual)$")
+    prompt: str = Field(default="", max_length=2400)
     outfit: str = Field(default="", max_length=500)
     notes: str = Field(default="", max_length=600)
 
@@ -376,6 +522,98 @@ class BodyProfileInput(BaseModel):
 class BodyRequest(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
     profile: BodyProfileInput
+
+
+class MotionRequest(BaseModel):
+    slug: str = Field(pattern=SLUG_PATTERN)
+    kind: str = Field(default="both", pattern=r"^(walk|idle|both)$")
+    walk_style: str = Field(default="office", max_length=40)
+    pose: str = Field(default="back-heel", max_length=40)
+    pose_prompt: str = Field(default="", max_length=600)
+
+
+class MotionRemoveRequest(BaseModel):
+    slug: str = Field(pattern=SLUG_PATTERN)
+    kind: str = Field(default="both", pattern=r"^(walk|idle|both)$")
+
+
+def _motion_asset_catalog(slug, directory, motion_metadata):
+    motion_root = os.path.join(directory, "motion")
+    catalog = {"walk": [], "idle": [], "shared": []}
+    seen = set()
+
+    def add(kind, relative, role, stage, label, order, extra=None):
+        relative = str(relative or "").replace("\\", "/").lstrip("/")
+        if not relative or relative in seen:
+            return
+        full = _safe_file(motion_root, relative)
+        if not full:
+            return
+        extension = os.path.splitext(relative)[1].lower()
+        media_type = (
+            "video" if extension in {".mp4", ".mov", ".webm", ".m4v"} else
+            "image" if extension in {".png", ".jpg", ".jpeg", ".webp"} else
+            "json" if extension == ".json" else "file"
+        )
+        stat = os.stat(full)
+        record = {
+            "kind": kind,
+            "role": role,
+            "stage": stage,
+            "label": label,
+            "order": order,
+            "name": os.path.basename(relative),
+            "relative_path": relative,
+            "media_type": media_type,
+            "size": stat.st_size,
+            "modified": int(stat.st_mtime),
+        }
+        if extra:
+            record.update({key: value for key, value in extra.items()
+                           if value is not None})
+        catalog[kind].append(record)
+        seen.add(relative)
+
+    for kind in ("walk", "idle"):
+        clip = motion_metadata.get(kind) or {}
+        if not clip:
+            continue
+        title = "Horizon Walk" if kind == "walk" else "Edge Idle"
+        add(
+            kind, f"raw/{kind}-keyframe.png", "keyframe", "01 · Keyframe",
+            f"{title} generated keyframe", 10)
+        add(
+            kind, f"raw/{kind}-source.mp4", "raw-video", "02 · Raw I2V",
+            "Raw xAI image-to-video", 20)
+        for sheet_index, sheet in enumerate(clip.get("sheets") or []):
+            name = os.path.basename(str(sheet.get("image") or ""))
+            add(
+                kind, name, "alpha-frames", "03 · Alpha frames",
+                f"Transparent frame atlas {sheet_index + 1}", 30 + sheet_index,
+                {
+                    "frame_first": sheet.get("first", sheet.get("start", 0)),
+                    "frame_count": sheet.get("count", sheet.get("frames")),
+                    "columns": sheet.get("columns"),
+                    "rows": sheet.get("rows"),
+                    "frame_width": clip.get("frame_width"),
+                    "frame_height": clip.get("frame_height"),
+                    "fps": clip.get("fps"),
+                })
+        add(
+            kind, os.path.basename(str(clip.get("poster") or f"{kind}-poster.png")),
+            "poster", "04 · Loop poster", "Transparent loop poster", 70)
+        add(
+            kind,
+            os.path.basename(str(clip.get("alpha_video") or f"{kind}-alpha.mov")),
+            "alpha-video", "05 · Alpha video",
+            "Final transparent animation", 80,
+            {"frame_count": clip.get("frames"), "fps": clip.get("fps")})
+        catalog[kind].sort(key=lambda asset: (asset["order"], asset["name"]))
+
+    add(
+        "shared", "motion.json", "receipt", "06 · Production receipt",
+        "Motion metadata and quality receipt", 90)
+    return catalog
 
 
 @app.get("/api/avatar/rig")
@@ -506,18 +744,47 @@ async def api_body(slug: str = Query(pattern=SLUG_PATTERN)):
         video_provider = None
         video_provider_error = str(error)
     directory = reg().adir(slug)
+    body_metadata = manifest.get("body") or {}
+    motion_metadata = manifest.get("motion") or {}
+    body_views = body_metadata.get("views") or {}
+    has_turnaround = all(
+        isinstance(body_views.get(view), dict) and
+        os.path.isfile(os.path.join(
+            directory, "body",
+            os.path.basename(str(body_views[view].get("image") or ""))))
+        for view in ("front", "side", "back")
+    )
+    def has_motion_clip(kind):
+        clip = motion_metadata.get(kind) or {}
+        sheets = clip.get("sheets") or []
+        return bool(sheets) and all(
+            os.path.isfile(os.path.join(
+                directory, "motion", os.path.basename(str(sheet.get("image") or ""))))
+            for sheet in sheets
+        )
+
+    has_walk = has_motion_clip("walk")
+    has_idle = has_motion_clip("idle")
     with _jlock:
         job = _jobs.get(slug)
-        job = dict(job) if job and job.get("kind") in {"body", "motion"} else None
+        job = dict(job) if job and (
+            job.get("kind") == "body" or
+            str(job.get("kind") or "").startswith("motion")) else None
     return {
         "body": manifest.get("body"),
         "motion": manifest.get("motion"),
+        "motion_assets": _motion_asset_catalog(
+            slug, directory, motion_metadata),
         "has_body": os.path.isfile(os.path.join(directory, "body", "body.json")),
-        "has_motion": os.path.isfile(os.path.join(directory, "motion", "motion.json")),
+        "has_turnaround": has_turnaround,
+        "has_motion": has_walk or has_idle,
+        "has_walk": has_walk,
+        "has_idle": has_idle,
         "provider": provider,
         "provider_error": provider_error,
         "video_provider": video_provider,
         "video_provider_error": video_provider_error,
+        "default_prompt": body.DEFAULT_BODY_PROMPT,
         "job": job,
     }
 
@@ -545,71 +812,104 @@ async def api_body_generate(request: BodyRequest):
         raise HTTPException(404, "avatar not found")
     if manifest.get("status") != "ready":
         raise HTTPException(400, "build this avatar before generating a body")
-    with _jlock:
-        job = _jobs.get(request.slug)
-        if job and not job["done"]:
-            return {"started": False, "reason": "already building"}
-        _jobs[request.slug] = dict(
-            phase="Queued", done=False, error="", log=[], kind="body",
-            progress={"stage": "queued", "value": 0.0, "label": "Queued"})
+    job_id = _reserve_job(request.slug, "body")
+    if not job_id:
+        return _already_running(request.slug)
     profile = (request.profile.model_dump()
                if hasattr(request.profile, "model_dump")
                else request.profile.dict())
-    threading.Thread(
-        target=_body_thread,
-        args=(request.slug, profile), daemon=True).start()
-    return {"started": True, "slug": request.slug, "kind": "body"}
+    try:
+        threading.Thread(
+            target=_body_thread,
+            args=(request.slug, profile), daemon=True).start()
+    except Exception as error:
+        _finish_job(request.slug, job_id, error)
+        raise
+    return {
+        "started": True, "slug": request.slug, "kind": "body",
+        "job_id": job_id}
 
 
 @app.post("/api/avatar/motion/generate")
-async def api_motion_generate(
-        slug: str = Form(pattern=SLUG_PATTERN),
-        reference: UploadFile = File(...)):
+async def api_motion_generate(request: MotionRequest):
+    slug = request.slug
     manifest = reg().read_manifest(slug)
     if not manifest:
         raise HTTPException(404, "avatar not found")
     directory = reg().adir(slug)
     if not os.path.isfile(os.path.join(directory, "body", "body.json")):
         raise HTTPException(400, "generate a full body before creating motion")
-    with _jlock:
-        job = _jobs.get(slug)
-        if job and not job["done"]:
-            return {"started": False, "reason": "already building"}
-    payload = await reference.read(15 * 1024 * 1024 + 1)
-    if len(payload) > 15 * 1024 * 1024:
-        raise HTTPException(413, "pose reference is larger than 15 MB")
-    import cv2
-    image = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR)
-    if image is None or min(image.shape[:2]) < 160:
-        raise HTTPException(400, "pose reference is not a readable image")
-    with tempfile.NamedTemporaryFile(
-            prefix=".motion-reference-", suffix=".png", dir=directory,
-            delete=False) as handle:
-        reference_path = handle.name
-    if not cv2.imwrite(reference_path, image):
-        os.remove(reference_path)
-        raise HTTPException(500, "could not stage pose reference")
-    with _jlock:
-        _jobs[slug] = dict(
-            phase="Queued", done=False, error="", log=[], kind="motion",
-            progress={"stage": "queued", "value": 0.0, "label": "Queued"})
-    threading.Thread(
-        target=_motion_thread,
-        args=(slug, reference_path), daemon=True).start()
-    return {"started": True, "slug": slug, "kind": "motion"}
+    from studio import motion
+    kinds = (
+        ("walk", "idle") if request.kind == "both" else (request.kind,)
+    )
+    try:
+        walk_style = (
+            motion.resolve_walk_style(request.walk_style)
+            if "walk" in kinds else None
+        )
+        idle_pose = (
+            motion.resolve_idle_pose(request.pose, request.pose_prompt)
+            if "idle" in kinds else None
+        )
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    label = (
+        "Validating Horizon Walk and Edge Idle"
+        if len(kinds) == 2 else
+        "Validating Horizon Walk style" if kinds == ("walk",) else
+        "Validating Edge Idle pose"
+    )
+    job_id = _reserve_job(slug, "motion", label)
+    if not job_id:
+        return _already_running(slug)
+    try:
+        threading.Thread(
+            target=_motion_thread,
+            args=(slug, None, job_id, idle_pose, kinds, walk_style),
+            daemon=True).start()
+    except BaseException as error:
+        _finish_job(slug, job_id, getattr(error, "detail", error))
+        raise
+    return {
+        "started": True, "slug": slug, "kind": request.kind,
+        "job_id": job_id,
+        "pose": idle_pose["id"] if idle_pose else None,
+        "walk_style": walk_style["id"] if walk_style else None,
+    }
 
 
 @app.post("/api/avatar/motion/remove")
-async def api_motion_remove(request: Slug):
+async def api_motion_remove(request: MotionRemoveRequest):
     manifest = reg().read_manifest(request.slug)
     if not manifest:
         raise HTTPException(404, "avatar not found")
-    from studio import motion
-    motion.remove(reg().adir(request.slug))
-    manifest.pop("motion", None)
-    reg().write_manifest(request.slug, manifest)
-    _publish_runtime_atomic(request.slug, log=jlog(request.slug, "removing desktop motion"))
-    return {"removed": True, "slug": request.slug}
+    kind = getattr(request, "kind", "both")
+    label = (
+        "Removing Horizon Walk" if kind == "walk" else
+        "Removing Edge Idle" if kind == "idle" else
+        "Removing desktop motion"
+    )
+    job_id = _reserve_job(request.slug, "motion-remove", label)
+    if not job_id:
+        raise HTTPException(409, "avatar generation is still running")
+    failure = ""
+    try:
+        from studio import motion
+        metadata = motion.remove(reg().adir(request.slug), kind)
+        if metadata:
+            manifest["motion"] = metadata
+        else:
+            manifest.pop("motion", None)
+        reg().write_manifest(request.slug, manifest)
+        _publish_runtime_atomic(
+            request.slug, log=jlog(request.slug, label.lower()))
+        return {"removed": True, "slug": request.slug, "kind": kind}
+    except Exception as error:
+        failure = str(error)
+        raise
+    finally:
+        _finish_job(request.slug, job_id, failure)
 
 
 @app.post("/api/avatar/body/remove")
@@ -617,14 +917,25 @@ async def api_body_remove(request: Slug):
     manifest = reg().read_manifest(request.slug)
     if not manifest:
         raise HTTPException(404, "avatar not found")
-    from studio import body, motion
-    body.remove(reg().adir(request.slug))
-    motion.remove(reg().adir(request.slug))
-    manifest.pop("body", None)
-    manifest.pop("motion", None)
-    reg().write_manifest(request.slug, manifest)
-    _publish_runtime_atomic(request.slug, log=jlog(request.slug, "publishing portrait mode"))
-    return {"removed": True, "slug": request.slug}
+    job_id = _reserve_job(request.slug, "body-remove", "Removing full body")
+    if not job_id:
+        raise HTTPException(409, "avatar generation is still running")
+    failure = ""
+    try:
+        from studio import body, motion
+        body.remove(reg().adir(request.slug))
+        motion.remove(reg().adir(request.slug))
+        manifest.pop("body", None)
+        manifest.pop("motion", None)
+        reg().write_manifest(request.slug, manifest)
+        _publish_runtime_atomic(
+            request.slug, log=jlog(request.slug, "publishing portrait mode"))
+        return {"removed": True, "slug": request.slug}
+    except Exception as error:
+        failure = str(error)
+        raise
+    finally:
+        _finish_job(request.slug, job_id, failure)
 
 
 @app.get("/api/avatar/progress")

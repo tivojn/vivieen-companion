@@ -4,16 +4,37 @@ The CLI mirrors the local API 1:1, so the pipeline can generate a whole set on
 its own - a user drops in a photo and gets a finished viseme bank without any
 agent in the loop.
 """
-import os, json, hashlib, shutil, subprocess, time
+import os, json, hashlib, shutil, subprocess, tempfile, time
 from concurrent.futures import ThreadPoolExecutor
+
+import cv2
+
 from . import visemes
 
 ENCONVO = shutil.which("enconvo") or os.path.expanduser("~/.config/enconvo/bin/enconvo")
 MAX_WORKERS = 4
 RETRIES = 2
+HEAD_PROMPT_VERSION = 2
+HEAD_PROMPT = """Create an ultra-high-definition square identity head reference from the supplied photo.
+
+IDENTITY — preserve the exact same adult person's facial identity, skull and facial proportions, skin tone and texture, apparent age, hairline, hairstyle, eyebrows, eye shape and color, nose, lips, ears, and distinctive natural features. Do not beautify, de-age, stylize, or redesign the person.
+
+FRAMING — show only the complete head and hair, centered and fully visible, with at most a very small neutral upper-neck transition below the jaw. No shoulders, collarbones, chest, torso, arms, or hands. No clothing of any kind, jewelry, accessories, props, or text anywhere in the image. Do not crop the hair, chin, jaw, or ears.
+
+POSE — face the camera straight on with an upright head, eyes naturally open, and a neutral closed mouth. Preserve realistic asymmetry. Use even soft studio light and a plain neutral background with clean separation around every hair edge.
+
+This is a reusable identity asset for facial animation and later full-body image editing, not a fashion portrait or profile photograph."""
 
 
-def _find_output(out_dir, name, before, stdout=""):
+def _file_digest(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _find_output(out_dir, name, before, stdout="", prefix="v_"):
     """Locate the render.  The CLI reports {"paths": [...]}; fall back to the
     expected filename and then to whatever is new in the directory."""
     try:
@@ -25,7 +46,7 @@ def _find_output(out_dir, name, before, stdout=""):
         pass
     for _ in range(3):                      # the writer can lag the process exit
         for ext in (".png", ".jpg", ".jpeg", ".webp"):
-            q = os.path.join(out_dir, f"v_{name}{ext}")
+            q = os.path.join(out_dir, f"{prefix}{name}{ext}")
             if os.path.exists(q) and os.path.getsize(q) > 4096:
                 return q
         time.sleep(1.0)
@@ -33,10 +54,103 @@ def _find_output(out_dir, name, before, stdout=""):
            and f.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))]
     if new:
         newest = max(new, key=lambda f: os.path.getmtime(os.path.join(out_dir, f)))
-        dst = os.path.join(out_dir, f"v_{name}.png")
+        dst = os.path.join(out_dir, f"{prefix}{name}.png")
         os.replace(os.path.join(out_dir, newest), dst)
         return dst
     return None
+
+
+def default_head_provider():
+    from . import body
+    return body.default_provider()
+
+
+def _head_command(provider, reference, out_dir, quality):
+    route = provider["route"]
+    command = [
+        ENCONVO, "image_create", "features", route,
+        "--prompt", HEAD_PROMPT,
+        "--reference_images", reference,
+        "--output_dir", out_dir,
+        "--file_name", "head",
+        "--download",
+    ]
+    if route == "gemini/create":
+        image_size = "1K" if "flash-lite" in str(provider.get("model", "")) else "2K"
+        command += ["--mode", "edit", "--aspectRatio", "1:1", "--imageSize", image_size]
+    elif route == "open_ai/create":
+        command += [
+            "--mode", "edit", "--size", "1024x1024", "--quality", quality,
+            "--background", "opaque", "--input_fidelity", "high",
+        ]
+    elif route == "x_ai/create":
+        command += ["--aspect_ratio", "1:1", "--resolution", "2k"]
+    elif route == "kie_ai/create":
+        command += ["--mode", "edit", "--aspect_ratio", "1:1", "--resolution", "2k"]
+    elif route == "azure/create":
+        command += ["--mode", "edit", "--size", "1024x1024"]
+    elif route in {"together/create", "straico/create"}:
+        command += ["--mode", "edit"]
+    return command
+
+
+def generate_head(reference, destination, provider=None, quality="high",
+                  timeout=1800, log=print, overwrite=False):
+    """Create and cache the canonical head-only identity asset used downstream."""
+    provider = provider or default_head_provider()
+    signature = hashlib.sha256((
+        f"v{HEAD_PROMPT_VERSION}\n{provider['name']}\n{provider.get('model')}\n"
+        f"{quality}\n{HEAD_PROMPT}\n" + _file_digest(reference)
+    ).encode("utf-8")).hexdigest()
+    signature_file = destination + ".prompt"
+    if not overwrite and os.path.isfile(destination) and os.path.getsize(destination) > 4096:
+        try:
+            with open(signature_file) as handle:
+                if handle.read().strip() == signature:
+                    log("reusing canonical HD head")
+                    return destination
+        except OSError:
+            pass
+
+    os.makedirs(os.path.dirname(destination), exist_ok=True)
+    stage = tempfile.mkdtemp(prefix=".head-provider-", dir=os.path.dirname(destination))
+    last_error = ""
+    try:
+        for attempt in range(1, RETRIES + 2):
+            before = set(os.listdir(stage))
+            stdout = ""
+            try:
+                result = subprocess.run(
+                    _head_command(provider, reference, stage, quality),
+                    capture_output=True, text=True, timeout=timeout,
+                    stdin=subprocess.DEVNULL)
+                stdout = result.stdout or ""
+                last_error = (result.stderr or stdout or
+                              f"provider exited with status {result.returncode}").strip()
+                if result.returncode:
+                    raise RuntimeError(last_error)
+            except subprocess.TimeoutExpired:
+                last_error = f"timed out after {timeout}s"
+            except Exception as error:
+                last_error = str(error)
+
+            rendered = _find_output(stage, "head", before, stdout, prefix="")
+            image = cv2.imread(rendered, cv2.IMREAD_COLOR) if rendered else None
+            if image is not None and min(image.shape[:2]) >= 512:
+                temporary = destination + ".tmp.png"
+                if not cv2.imwrite(temporary, image, [cv2.IMWRITE_PNG_COMPRESSION, 3]):
+                    raise RuntimeError("could not save the canonical HD head")
+                os.replace(temporary, destination)
+                with open(signature_file, "w") as handle:
+                    handle.write(signature)
+                return destination
+            log(f"  head: attempt {attempt} failed ({last_error[-220:] or 'no usable output image'})")
+            time.sleep(2 * attempt)
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+    raise RuntimeError(
+        "could not create the canonical HD head" +
+        (f": {last_error[-500:]}" if last_error else ""))
 
 
 def generate_one(keyframe, name, out_dir, yaw=None, roll=None,
@@ -44,7 +158,9 @@ def generate_one(keyframe, name, out_dir, yaw=None, roll=None,
                  timeout=1800, log=print, overwrite=False):
     os.makedirs(out_dir, exist_ok=True)
     prompt = visemes.prompt_for(name, yaw, roll)
-    sig = hashlib.sha1(prompt.encode("utf-8")).hexdigest()[:12]
+    sig = hashlib.sha1(
+        (prompt + "\n" + _file_digest(keyframe)).encode("utf-8")
+    ).hexdigest()[:12]
     sig_file = os.path.join(out_dir, f".{name}.prompt")
 
     # A cached render is only valid for the prompt that produced it.  Keying the

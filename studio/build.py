@@ -4,7 +4,9 @@ An avatar is a self-contained folder:
 
     avatars/<slug>/
         source.png        the photo the user uploaded
-        keyframe.png      face-centred 1024 square everything is built on
+        source-keyframe.png immutable crop of the uploaded photo
+        head.png          generated head-only identity reference
+        keyframe.png      face-centred 1024 square built from head.png
         raw/v_*.png       untouched generator output (kept for re-composing)
         visemes/v_*.jpg   pose-locked, mouth-only composites - the shipping bank
         preview.mp4       cross-blended demo sentence
@@ -148,13 +150,17 @@ def create_avatar(image_path, name=None, slug=None):
         shutil.copyfile(image_path, src)
     os.chmod(src, 0o600)
 
+    source_key = os.path.join(d, "source-keyframe.png")
     key = os.path.join(d, "keyframe.png")
-    metrics = prep.build_keyframe(src, key, diag_dir=os.path.join(d, "diag"))
+    metrics = prep.build_keyframe(
+        src, source_key, diag_dir=os.path.join(d, "diag"))
+    shutil.copy2(source_key, key)
 
     return write_manifest(slug, dict(
         slug=slug, name=name,
         created=datetime.datetime.now().isoformat(timespec="seconds"),
-        source=os.path.basename(src), keyframe="keyframe.png",
+        source=os.path.basename(src), source_keyframe="source-keyframe.png",
+        keyframe="keyframe.png",
         status="draft", progress=dict(done=0, total=len(visemes.ORDER)),
         metrics=metrics, warnings=metrics.get("warnings", []),
         visemes=[], preview=None, sheet=None, log=[]))
@@ -378,6 +384,39 @@ def build_avatar(slug, shapes=None, log=None, quality="high"):
     write_manifest(slug, m)
 
     try:
+        source_keyframe = os.path.join(
+            d, m.get("source_keyframe") or "source-keyframe.png")
+        if not os.path.isfile(source_keyframe):
+            source_image = os.path.join(d, m.get("source") or "")
+            if os.path.isfile(source_image):
+                prep.build_keyframe(source_image, source_keyframe)
+            else:
+                shutil.copy2(key, source_keyframe)
+            m["source_keyframe"] = os.path.basename(source_keyframe)
+
+        m["progress"] = dict(done=0, total=len(names), stage="head")
+        write_manifest(slug, m)
+        emit("creating canonical HD head-only identity reference...")
+        head_path = os.path.join(d, "head.png")
+        head_provider = generate.default_head_provider()
+        generate.generate_head(
+            source_keyframe, head_path, provider=head_provider,
+            log=emit, quality=quality)
+        staged_keyframe = os.path.join(d, ".head-keyframe.png")
+        head_metrics = prep.build_keyframe(
+            head_path, staged_keyframe, diag_dir=diag)
+        os.replace(staged_keyframe, key)
+        m.setdefault("source_metrics", copy.deepcopy(m.get("metrics") or {}))
+        m["metrics"] = head_metrics
+        m["head"] = dict(
+            image="head.png",
+            source=os.path.basename(source_keyframe),
+            prompt_version=generate.HEAD_PROMPT_VERSION,
+            provider=head_provider.get("name"),
+            model=head_provider.get("model"),
+        )
+        write_manifest(slug, m)
+
         yaw = m["metrics"].get("yaw")
         roll = m["metrics"].get("roll")
         emit(f"keyframe pose: yaw {yaw:+.1f} pitch {m['metrics'].get('pitch'):+.1f} "
