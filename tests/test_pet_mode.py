@@ -22,10 +22,19 @@ class PetInputBridgeTests(unittest.TestCase):
         renderer = (ROOT / "web" / "index.html").read_text()
         self.assertIn("screen.getCursorScreenPoint()", main)
         self.assertIn("vivieen:pet-pointer", main)
-        self.assertIn("mainWindow.webContents.send('vivieen:pet-pointer', { x: -1, y: -1 });", main)
+        # Off-window coordinates now flow through (for cursor gaze) with an
+        # `inside` flag; the renderer restores the {-1,-1} hit sentinel itself
+        # so click-through behaviour is unchanged.
+        self.assertIn(
+            "x: point.x - bounds.x, y: point.y - bounds.y, inside,", main)
         self.assertIn("onPetPointer", preload)
         self.assertIn("HAS_GLOBAL_PET_POINTER", renderer)
         self.assertIn("SHELL.onPetPointer", renderer)
+        self.assertIn(
+            "pointer=inside?{x:Number(point.x),y:Number(point.y)}:{x:-1,y:-1};",
+            renderer)
+        self.assertIn("noteCursor(Number(point.x),Number(point.y));", renderer)
+        self.assertIn("cursorGazeFor", renderer)
         self.assertIn("hitConfidence", renderer)
         self.assertIn("ctx.getImageData", renderer)
 

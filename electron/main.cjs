@@ -505,15 +505,20 @@ function startPetPointerTracking() {
     const bounds = mainWindow.getBounds();
     const inside = point.x >= bounds.x && point.x < bounds.x + bounds.width
       && point.y >= bounds.y && point.y < bounds.y + bounds.height;
+    // Coordinates are sent even outside the window (they go negative or past
+    // the edge) so the renderer's gaze can follow the cursor across the
+    // desktop; `inside` keeps the hit-testing semantics unchanged.
+    const localPoint = {
+      x: point.x - bounds.x, y: point.y - bounds.y, inside,
+    };
     if (!inside) {
       if (process.env.VIVIEEN_DEBUG_HIT && petPointerInteractive) {
         console.error(`[pet-pointer] point=${point.x},${point.y} bounds=${bounds.x},${bounds.y},${bounds.width},${bounds.height}`);
       }
-      mainWindow.webContents.send('vivieen:pet-pointer', { x: -1, y: -1 });
+      mainWindow.webContents.send('vivieen:pet-pointer', localPoint);
       setPetHit(false, 'outside-window');
       return;
     }
-    const localPoint = {x: point.x - bounds.x, y: point.y - bounds.y};
     if (process.env.VIVIEEN_DEBUG_HIT && Date.now() - petPointerDebugAt > 1000) {
       petPointerDebugAt = Date.now();
       console.error(`[pet-pointer] local=${localPoint.x},${localPoint.y}`);
