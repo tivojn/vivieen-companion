@@ -612,22 +612,30 @@ class MotionServerTransactionTests(unittest.TestCase):
 
 
 class WalkCycleContractTests(unittest.TestCase):
-    # The loop gate needs two hip-line crossings per limb, i.e. a full two-step
-    # cycle. These lock the generation prompt to what the validator accepts.
+    # The loop gate needs a full two-step cycle. These lock the generation
+    # prompt to what the validator accepts: gait styles are authored in-place
+    # loops (first frame = final frame), traversal styles cross the runway.
 
-    def test_every_gait_style_demands_a_two_step_cycle(self):
+    def test_every_gait_style_demands_an_in_place_two_step_cycle(self):
         for style_id, preset in motion.WALK_STYLE_PRESETS.items():
             if preset["validation"] == "traversal":
                 continue
             with self.subTest(style=style_id):
+                self.assertEqual(motion.walk_mode(style_id), "loop")
                 prompt = motion._walk_video_prompt(style_id)
                 self.assertIn("TWO-STEP GAIT CYCLE", prompt)
-                self.assertIn("one step is not a loop", prompt)
-                self.assertIn("BEHIND the hip", prompt)
+                self.assertIn("one step is not a cycle", prompt)
+                self.assertIn("BEHIND its hip", prompt)
+                self.assertIn("EXACT first frame and the EXACT final frame",
+                              prompt)
+                self.assertIn("IN PLACE", prompt)
+                self.assertIn("chroma-key green", prompt)
 
-    def test_traversal_styles_do_not_get_the_gait_contract(self):
+    def test_traversal_styles_keep_the_runway_contract(self):
+        self.assertEqual(motion.walk_mode("cartwheel"), "traversal")
         prompt = motion._walk_video_prompt("cartwheel")
         self.assertNotIn("TWO-STEP GAIT CYCLE", prompt)
+        self.assertIn("camera-left to camera-right", prompt)
 
     def test_office_loop_window_can_hold_the_prompted_cadence(self):
         # the office prompt asks for 108-114 steps per minute, so a two-step
