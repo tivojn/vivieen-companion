@@ -625,50 +625,38 @@ const MIN_POSE=0.020;                    // preserve real 25ms consonants
 const VISUAL_LEAD=XFADE*0.5;             // dissolve midpoint meets audio event
 const LOCKED_POSES=new Set(['sil','PP']);
 
-/* Follow EnConvo receives one coarse spectrum packet every ~25ms, not phoneme
-   timestamps. The old stabilizer was called by the 60fps render loop, so one
-   noisy packet could sit unchanged long enough to confirm itself. Confirm only
-   on distinct native packets, use their audio timestamps, and require multiple
-   corroborating packets. The jaw envelope stays immediate; only categorical
-   texture swaps are paced. */
+/* Follow EnConvo receives one coarse spectrum packet every ~32ms (the tap's
+   25ms timer quantises to buffer boundaries), not phoneme timestamps. The old
+   stabiliser demanded 3 consecutive identical packets before moving the mouth,
+   but the measured mean identical-run in real speech is 2.48 packets - most
+   articulation could never confirm and whole phrases froze (see
+   docs/follow-enconvo-lipsync-diagnosis.md). Instead: keep the last 5
+   candidates and render the majority vote centred two packets back. Dither
+   runs (1-2 packets) lose the vote; real syllables (~4 packets) win it. Costs
+   ~64ms of mouth lag, well under the ~125ms video-late threshold. Ties go to
+   the centre packet so a split vote never invents a third shape. */
 const EXTERNAL_XFADE=0.065;
-const EXTERNAL_MIN_HOLD_MS=110;
-const EXTERNAL_CONFIRM_MS=55;
-const EXTERNAL_ATTACK_CONFIRM_MS=35;
-const EXTERNAL_SILENCE_CONFIRM_MS=70;
-let externalPose='sil',externalPoseAt=0;
-let externalCandidate='sil',externalCandidateAt=0,externalCandidateSamples=0;
+const EXTERNAL_VOTE_WINDOW=5;
+const EXTERNAL_VOTE_LOOKAHEAD=2;
+let externalPose='sil',externalVotes=[];
 let externalSampleTimestamp=-Infinity;
 function resetExternalViseme(timestampMs=Date.now()){
-  const now=Number.isFinite(+timestampMs)?+timestampMs:Date.now();
-  externalPose='sil';externalPoseAt=now;
-  externalCandidate='sil';externalCandidateAt=now;externalCandidateSamples=0;
+  externalPose='sil';externalVotes=[];
   externalSampleTimestamp=-Infinity;
 }
 function stabiliseExternalViseme(candidate,timestampMs=Date.now(),active=true){
   const now=Number(timestampMs);
   if(!Number.isFinite(now)||now<=externalSampleTimestamp)return externalPose;
   externalSampleTimestamp=now;
-  candidate=active?(candidate||'sil'):'sil';
-  if(candidate===externalPose){
-    externalCandidate=candidate;externalCandidateAt=now;externalCandidateSamples=0;
-    return externalPose;
-  }
-  if(candidate!==externalCandidate){
-    externalCandidate=candidate;externalCandidateAt=now;externalCandidateSamples=1;
-    return externalPose;
-  }
-  externalCandidateSamples++;
-  const held=now-externalPoseAt,confirmed=now-externalCandidateAt;
-  const minimum=candidate==='sil'||externalPose==='sil'?0:EXTERNAL_MIN_HOLD_MS;
-  const required=candidate==='sil'?EXTERNAL_SILENCE_CONFIRM_MS:
-    (externalPose==='sil'?EXTERNAL_ATTACK_CONFIRM_MS:EXTERNAL_CONFIRM_MS);
-  const minimumSamples=externalPose==='sil'?2:3;
-  if(held>=minimum&&confirmed>=required&&
-      externalCandidateSamples>=minimumSamples){
-    externalPose=candidate;externalPoseAt=now;
-    externalCandidate=candidate;externalCandidateAt=now;externalCandidateSamples=0;
-  }
+  externalVotes.push(active?(candidate||'sil'):'sil');
+  if(externalVotes.length>EXTERNAL_VOTE_WINDOW)externalVotes.shift();
+  const centre=externalVotes.length-1-EXTERNAL_VOTE_LOOKAHEAD;
+  if(centre<0)return externalPose;    // window still filling at utterance start
+  const tally={};
+  for(const vote of externalVotes)tally[vote]=(tally[vote]||0)+1;
+  let winner=externalVotes[centre],best=tally[winner];
+  for(const vote in tally)if(tally[vote]>best){winner=vote;best=tally[vote];}
+  externalPose=winner;
   return externalPose;
 }
 
