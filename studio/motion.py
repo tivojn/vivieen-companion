@@ -50,11 +50,11 @@ WALK_STYLE_PRESETS = {
             "footpath. Do NOT use a flat side profile, high knee, high front foot, heel "
             "kicked toward the calf or knee, split stride, marching, power walk, long "
             "runway lunge, crossed legs, chest-height hand, airplane arms, or theatrical "
-            "arm swing. Spine tall, gaze level toward her destination. Both complete "
+            "arm swing. Spine tall, gaze level toward the destination. Both complete "
             "shoes and the full original hair silhouette must be visible."
         ),
         "video": (
-            "Animate the exact selected woman taking a NORMAL, charming office walk in "
+            "Animate the exact selected person taking a NORMAL, charming office walk in "
             "a straight line from one place on an office floor to another, moving "
             "camera-left to camera-right across this locked green-screen frame.\n\n"
             "PRIORITY 2 — ORDINARY OFFICE GAIT: this must look like a real office "
@@ -72,7 +72,7 @@ WALK_STYLE_PRESETS = {
             "distance just ahead of and behind its hip. Hands never rise above the waist "
             "and arms never open sideways. Use correct contralateral coordination: right "
             "leg forward with LEFT arm forward; left leg forward with RIGHT arm forward.\n\n"
-            "PRIORITY 4 — BILATERAL COMPLETENESS WITHOUT EXAGGERATION: keep her torso at "
+            "PRIORITY 4 — BILATERAL COMPLETENESS WITHOUT EXAGGERATION: keep the torso at "
             "a stable right-facing 25–30 degree three-quarter angle so both shoulders, "
             "sleeves, elbows, wrists, and hands remain naturally readable. Preserve a "
             "small separation around both wrists by orientation alone; do NOT increase "
@@ -559,7 +559,7 @@ def _walk_video_prompt(walk_style=None, walk_frame=None):
 
 PRIORITY 1 — IDENTITY, HAIR, AND WARDROBE: preserve the exact selected person's face, apparent age, body proportions, skin tone, hairline, hairstyle, outfit, materials, colors, accessories, and both complete shoes from the input keyframe in every frame. Never restyle, beautify, de-age, change clothes, change footwear, or invent a different person.
 
-CAMERA AND PLATE: the three darker-green vertical registration lines and floor line remain exactly stationary. Camera scale, exposure, and color remain constant. The entire background and floor stay saturated chroma-key green with no scenery, shadows, reflections, text, props, gray, white, or green spill. Keep her complete full body and both shoes inside frame while she crosses from roughly {enters}% to {exits}% at constant speed.
+CAMERA AND PLATE: the three darker-green vertical registration lines and floor line remain exactly stationary. Camera scale, exposure, and color remain constant. The entire background and floor stay saturated chroma-key green with no scenery, shadows, reflections, text, props, gray, white, or green spill. Keep the subject's complete full body and both shoes inside frame while the subject crosses from roughly {enters}% to {exits}% at constant speed.
 
 STYLE-SPECIFIC REJECTIONS — {walk_style['reject']}
 
