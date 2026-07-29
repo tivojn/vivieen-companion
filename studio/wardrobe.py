@@ -12,11 +12,14 @@ brief. A photoreal fashion subject gets silhouette, palette and jewellery
 discipline; a game or fantasy character gets costume, armour, material and
 lighting detail instead.
 
-Two rules are structural rather than stylistic, so they are enforced in code
-after the model writes: NO HEAVY LAYERS and NO BAGGY TROUSERS. Both destroy the
-silhouette the runtime rig depends on - bulky outerwear hides the shoulder line
-the face is mapped onto, and wide slouchy legs break the walk cycle's stride
-read. The model is told, and the result is then checked.
+Three rules are structural rather than stylistic, so they are enforced in code
+after the model writes: NO HEAVY LAYERS, NO BAGGY TROUSERS, and NOTHING IN THE
+HANDS. The first two destroy the silhouette the runtime rig depends on - bulky
+outerwear hides the shoulder line the face is mapped onto, and wide slouchy legs
+break the walk cycle's stride read. The third breaks every downstream pose: a
+handbag welded to one hand cannot wave, point, or swing through a walk cycle,
+and a carried prop re-appears inconsistently across the front/side/back
+turnaround. The model is told, and the result is then checked.
 
 Everything degrades to the static preset: no vision model, no network, bad JSON,
 or a banned garment surviving the rewrite all fall back rather than fail the
@@ -51,6 +54,12 @@ BANNED_PATTERNS = (
     r"bagg(?:y|ie)", r"slouch(?:y|ed)", r"wide[-\s]?leg", r"palazzo",
     r"harem\s+pant", r"parachute\s+pant", r"cargo\s+pant", r"oversized\s+pant",
     r"loose[-\s]?fit(?:ting)?\s+(?:pant|trouser|jean)",
+    # Carried props: a bag welded to one hand cannot survive the turnaround or
+    # any downstream pose, so nothing may be held, slung, or hooked on an arm.
+    r"\bbags?\b", r"handbag", r"\bpurse\b", r"\bclutch\b", r"\btotes?\b",
+    r"\bsatchel\b", r"briefcase", r"backpack", r"rucksack", r"crossbody",
+    r"\bumbrella\b", r"holding\s+(?:a|an|the|any)\b", r"\bhand-?held\b",
+    r"in\s+(?:her|his|their|one)\s+hands?\b",
 )
 BANNED = tuple(re.compile(pattern, re.IGNORECASE) for pattern in BANNED_PATTERNS)
 
@@ -59,6 +68,17 @@ SILHOUETTE_RULE = (
     "use baggy, slouchy, wide-leg, or oversized trousers: the silhouette must stay "
     "clean and readable from shoulder to ankle."
 )
+
+HANDS_RULE = (
+    "The subject carries nothing at all: both hands stay completely empty and "
+    "clearly visible, with no bag, handbag, clutch, purse, tote, backpack, "
+    "briefcase, phone, cup, umbrella, weapon, or any other held prop, and nothing "
+    "slung over a shoulder, hooked on an elbow, or worn across the body."
+)
+
+# Appended to every finished brief. Kept out of the ban check, since the rules
+# name the very garments and props they forbid.
+STRUCTURAL_RULE = f"{SILHOUETTE_RULE} {HANDS_RULE}"
 
 SYSTEM = (
     "You are a senior costume designer and fashion director. You look at one "
@@ -93,11 +113,18 @@ SYSTEM = (
     "parkas, trench coats, capes, cloaks or shawls; and never baggy, slouchy, "
     "wide-leg, cargo, or oversized trousers. Keep trousers, skirts and armour "
     "greaves fitted and the full silhouette readable from shoulder to ankle.\n"
-    "7. Clothing stays opaque and suitable for public view: no nudity, lingerie, "
+    "7. HARD BAN: the subject carries NOTHING. Never mention, describe, or imply "
+    "a bag, handbag, clutch, purse, tote, backpack, briefcase, phone, cup, "
+    "umbrella, weapon, staff, or any other held or carried object, and never "
+    "sling a bag or strap over a shoulder, an elbow, or across the body. Both "
+    "hands stay empty. Carried props break the pose rig and cannot survive the "
+    "front/side/back turnaround.\n"
+    "8. Clothing stays opaque and suitable for public view: no nudity, lingerie, "
     "sheer fabric, exposed intimate areas, or vulgar styling. Allure comes from "
     "cut, fit and confidence, never from exposure.\n"
-    "8. Never describe the face, hairstyle, skin tone, or identity - those are "
-    "locked elsewhere. Write only wardrobe, materials, palette, accessories, "
+    "9. Never describe the face, hairstyle, skin tone, or identity - those are "
+    "locked elsewhere, and any eyeglasses already worn in the portrait stay "
+    "exactly as they are. Write only wardrobe, materials, palette, accessories, "
     "footwear, and for stylised media the lighting and rendering detail."
 )
 
@@ -221,7 +248,7 @@ def _parse(text):
         parsed = json.loads(match.group(0))
     if not isinstance(parsed, dict):
         raise RuntimeError("the vision model did not return a JSON object")
-    direction = _clean(parsed.get("direction"), PROMPT_LIMIT - 200)
+    direction = _clean(parsed.get("direction"), PROMPT_LIMIT - 600)
     if len(direction) < 60:
         raise RuntimeError("the vision model returned an unusably short brief")
     palette = parsed.get("palette")
@@ -239,20 +266,24 @@ def _parse(text):
 
 
 def _finalise(direction):
-    """Append the structural rule, and refuse anything that broke the hard ban."""
-    if not direction.endswith((".", "!", "?")):
-        direction += "."
-    prompt = _clean(f"{direction} {SILHOUETTE_RULE}", PROMPT_LIMIT)
-    violations = banned_terms(prompt.replace(SILHOUETTE_RULE, " "))
+    """Refuse anything that broke a hard ban, then append the structural rules.
+
+    The check runs on the model's own words BEFORE the rules are appended: the
+    rules have to name the banned garments and props to forbid them, so checking
+    the joined text would flag the cure as the disease.
+    """
+    violations = banned_terms(direction)
     if violations:
         raise RuntimeError(
             "the vision model kept a banned garment: " + ", ".join(violations))
-    return prompt
+    if not direction.endswith((".", "!", "?")):
+        direction += "."
+    return _clean(f"{direction} {STRUCTURAL_RULE}", PROMPT_LIMIT)
 
 
 def preset_prompt():
     from . import body
-    return _clean(f"{body.DEFAULT_BODY_PROMPT} {SILHOUETTE_RULE}", PROMPT_LIMIT)
+    return _clean(f"{body.DEFAULT_BODY_PROMPT} {STRUCTURAL_RULE}", PROMPT_LIMIT)
 
 
 def _identity_reference(avatar_dir):

@@ -14,12 +14,14 @@ from . import visemes
 ENCONVO = shutil.which("enconvo") or os.path.expanduser("~/.config/enconvo/bin/enconvo")
 MAX_WORKERS = 4
 RETRIES = 2
-HEAD_PROMPT_VERSION = 2
+HEAD_PROMPT_VERSION = 3
 HEAD_PROMPT = """Create an ultra-high-definition square identity head reference from the supplied photo.
 
 IDENTITY — preserve the exact same adult person's facial identity, skull and facial proportions, skin tone and texture, apparent age, hairline, hairstyle, eyebrows, eye shape and color, nose, lips, ears, and distinctive natural features. Do not beautify, de-age, stylize, or redesign the person.
 
-FRAMING — show only the complete head and hair, centered and fully visible, with at most a very small neutral upper-neck transition below the jaw. No shoulders, collarbones, chest, torso, arms, or hands. No clothing of any kind, jewelry, accessories, props, or text anywhere in the image. Do not crop the hair, chin, jaw, or ears.
+EYEWEAR — if the supplied photo shows the person wearing eyeglasses, those glasses are part of their identity. Keep the exact same pair on the face: same frame shape, rim style, frame thickness, frame color and material, temple arms, lens shape and any lens tint, sitting at the same position on the nose and ears. Never remove them, never swap them for a different pair, and never render an unglassed version of this person. If the supplied photo shows no eyeglasses, do not add any.
+
+FRAMING — show only the complete head and hair, centered and fully visible, with at most a very small neutral upper-neck transition below the jaw. No shoulders, collarbones, chest, torso, arms, or hands. No clothing of any kind, jewelry, earrings, hats, headwear, headphones, other accessories, props, or text anywhere in the image — eyeglasses already worn in the supplied photo are the single exception and must be kept exactly as described above. Do not crop the hair, chin, jaw, or ears.
 
 POSE — face the camera straight on with an upright head, eyes naturally open, and a neutral closed mouth. Preserve realistic asymmetry. Use even soft studio light and a plain neutral background with clean separation around every hair edge.
 

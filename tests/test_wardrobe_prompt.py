@@ -1,7 +1,8 @@
 """The full-body brief is written from the portrait, not from a fixed paragraph.
 
-These tests pin the three things that actually matter: the brief adapts to the
-subject, the two rig-breaking garment families never survive, and every failure
+These tests pin the things that actually matter: the brief adapts to the
+subject, the rig-breaking garment families and carried props never survive,
+glasses worn in the upload survive into every generated plate, and every failure
 path lands on the static preset instead of breaking Full Body Studio.
 """
 import json
@@ -14,7 +15,7 @@ from unittest import mock
 import numpy as np
 import cv2
 
-from studio import body, wardrobe
+from studio import body, generate, wardrobe
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -322,6 +323,129 @@ class WardrobeIntegrationTests(unittest.TestCase):
         self.assertLess(generate_at, motion_at)
         self.assertIn("tailorBodyPrompt", settings)
         self.assertIn("setBodyPromptNote", settings)
+
+
+class CarriedPropTests(unittest.TestCase):
+    """No bag, and nothing in the hands - the third structural rule."""
+
+    def test_banned_terms_catch_carried_props(self):
+        for phrase in (
+            "a structured leather handbag", "carrying a small clutch",
+            "a quilted shoulder bag", "a slim leather tote",
+            "a canvas backpack", "a black briefcase", "a leather satchel",
+            "a crossbody strap across the chest", "a folded umbrella",
+            "holding a takeaway coffee cup", "a hand-held paper fan",
+            "a bouquet in her hands", "shopping bags",
+        ):
+            self.assertTrue(
+                wardrobe.banned_terms(phrase),
+                f"{phrase!r} should be rejected")
+
+    def test_carry_ban_does_not_fire_on_legitimate_wardrobe(self):
+        for phrase in (
+            "a tailored scarlet blazer over an ivory silk shell",
+            "slim cropped cigarette trousers that hold a clean line",
+            "lacquer black carries the costume, bronze is the hero metal",
+            "articulated bronze shoulder plating with engraved bracers",
+        ):
+            self.assertEqual(
+                wardrobe.banned_terms(phrase), [],
+                f"{phrase!r} should be allowed")
+
+    def test_system_instruction_states_the_carry_ban(self):
+        instruction = wardrobe.SYSTEM.lower()
+        self.assertIn("carries nothing", instruction)
+        self.assertIn("handbag", instruction)
+        self.assertIn("both hands stay empty", instruction)
+
+    def test_preset_and_tailored_prompts_both_carry_the_hands_rule(self):
+        self.assertIn(wardrobe.HANDS_RULE, wardrobe.preset_prompt())
+        with tempfile.TemporaryDirectory() as directory:
+            _portrait(directory)
+            with mock.patch.object(wardrobe, "_llm_route",
+                                   return_value=("llm/features/x/chat", "m")), \
+                 mock.patch.object(wardrobe, "_chat",
+                                   return_value=json.dumps(FASHION)):
+                result = wardrobe.tailored_prompt(directory)
+        self.assertEqual(result["source"], "tailored")
+        self.assertIn(wardrobe.HANDS_RULE, result["prompt"])
+        self.assertIn(wardrobe.SILHOUETTE_RULE, result["prompt"])
+
+    def test_a_bag_in_the_model_reply_falls_back_to_preset(self):
+        rogue = dict(FASHION)
+        rogue["direction"] = (
+            "Dress her in a precisely tailored scarlet blazer over an ivory silk "
+            "shell with slim cigarette trousers, and finish the look with a "
+            "structured black leather handbag carried in one hand, plus pointed "
+            "leather pumps at ninety millimetres."
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            _portrait(directory)
+            with mock.patch.object(wardrobe, "_llm_route",
+                                   return_value=("llm/features/x/chat", "m")), \
+                 mock.patch.object(wardrobe, "_chat",
+                                   return_value=json.dumps(rogue)):
+                result = wardrobe.tailored_prompt(directory)
+        self.assertEqual(result["source"], "preset")
+        self.assertEqual(result["prompt"], wardrobe.preset_prompt())
+        self.assertIn("handbag", result["error"])
+
+    def test_the_appended_rules_are_never_read_as_a_violation(self):
+        """The rules must name the props they forbid without self-rejecting."""
+        self.assertTrue(wardrobe.banned_terms(wardrobe.STRUCTURAL_RULE))
+        with tempfile.TemporaryDirectory() as directory:
+            _portrait(directory)
+            with mock.patch.object(wardrobe, "_llm_route",
+                                   return_value=("llm/features/x/chat", "m")), \
+                 mock.patch.object(wardrobe, "_chat",
+                                   return_value=json.dumps(FASHION)):
+                result = wardrobe.tailored_prompt(directory)
+        self.assertEqual(result["source"], "tailored")
+
+    def test_the_structural_rules_always_fit_inside_the_prompt_limit(self):
+        longest = "x" * (wardrobe.PROMPT_LIMIT * 2)
+        stub = dict(FASHION, direction=longest)
+        direction, _traits = wardrobe._parse(json.dumps(stub))
+        self.assertIn(wardrobe.STRUCTURAL_RULE, wardrobe._finalise(direction))
+
+    def test_every_body_plate_bans_carried_objects(self):
+        for view in body.BODY_VIEWS:
+            plate = body._prompt({}, view=view)
+            self.assertIn("CARRY NOTHING", plate)
+            self.assertIn("handbag", plate)
+            self.assertIn("both hands are completely empty", plate.lower())
+
+
+class EyewearLockTests(unittest.TestCase):
+    """Glasses worn in the upload survive into head.png and keyframe.png."""
+
+    def test_head_prompt_preserves_existing_glasses(self):
+        prompt = generate.HEAD_PROMPT
+        self.assertIn("EYEWEAR", prompt)
+        lowered = prompt.lower()
+        self.assertIn("eyeglasses", lowered)
+        self.assertIn("never remove them", lowered)
+        self.assertIn("do not add any", lowered)
+
+    def test_head_prompt_no_longer_strips_glasses_as_an_accessory(self):
+        framing = generate.HEAD_PROMPT.split("FRAMING", 1)[1].split("\n\n", 1)[0]
+        self.assertNotIn(
+            "accessories, props, or text anywhere in the image.", framing)
+        self.assertIn("eyeglasses already worn", framing)
+
+    def test_head_prompt_version_moved_so_cached_heads_rebuild(self):
+        self.assertGreaterEqual(generate.HEAD_PROMPT_VERSION, 3)
+
+    def test_keyframe_is_cropped_from_the_generated_head(self):
+        source = (ROOT / "studio" / "build.py").read_text()
+        self.assertIn(
+            "prep.build_keyframe(\n            head_path, staged_keyframe", source)
+
+    def test_body_plates_keep_the_reference_glasses(self):
+        for view in body.BODY_VIEWS:
+            plate = body._prompt({}, view=view)
+            self.assertIn("eyeglasses", plate)
+            self.assertIn("never remove them", plate)
 
 
 if __name__ == "__main__":

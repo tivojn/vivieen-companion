@@ -47,8 +47,11 @@ DEFAULT_BODY_PROMPT = (
     "outfit must be opaque, properly fitted, and appropriate for public or "
     "professional wear: no nudity, lingerie, sheer fabric, bare midriff, or extreme "
     "neckline. Keep footwear elegant and the overall presentation sophisticated "
-    "rather than provocative. Preserve the person's identity, groomed hair, natural "
-    "proportions, real skin texture, and apparent age."
+    "rather than provocative. The subject carries nothing at all: both hands stay "
+    "empty, with no bag, handbag, clutch, purse, tote, backpack, briefcase, phone, "
+    "cup, or umbrella held in either hand and nothing slung over a shoulder or arm. "
+    "Preserve the person's identity, any eyeglasses worn in the reference, groomed "
+    "hair, natural proportions, real skin texture, and apparent age."
 )
 
 
@@ -166,11 +169,13 @@ def _prompt(options, view="front"):
 
 TURNAROUND CONTRACT — this is one member of a matched FRONT / RIGHT-SIDE / BACK full-body set. Return exactly one complete figure for this {view} plate, never a triptych, contact sheet, split screen, duplicate person, inset, or labeled diagram. Treat the camera as rotating around one stationary person: preserve the same posture, shoulder level, arm placement, hand state, leg spacing, weight distribution, outfit, body scale, and camera height across all three plates.
 
-IDENTITY LOCK — preserve the reference person's facial identity, skull proportions, skin tone, hairline, hairstyle, eyebrows, eye shape and color, nose, lips, ears, and apparent age wherever those features are visible. Keep a neutral closed mouth. Do not beautify, de-age, or redesign the person.
+IDENTITY LOCK — preserve the reference person's facial identity, skull proportions, skin tone, hairline, hairstyle, eyebrows, eye shape and color, nose, lips, ears, and apparent age wherever those features are visible. If the reference head wears eyeglasses, keep that exact pair on the face in every plate — same frame shape, thickness, color and position — and never remove them; if the reference wears none, do not add any. Keep a neutral closed mouth. Do not beautify, de-age, or redesign the person.
 
 VIEW — {view_text}
 
 COMPOSITION — show the complete figure from the top of the hair through both feet with 7% clear margin around the silhouette. Camera at waist height, long portrait lens, minimal perspective distortion. Use a {pose_text}. Both hands, both legs, and all footwear must be complete and anatomically correct; no crop, no props, no furniture, no text.
+
+CARRY NOTHING — both hands are completely empty and clearly visible. Do NOT place a bag, handbag, clutch, purse, tote, shopping bag, backpack, briefcase, portfolio, folder, book, paper, phone, cup, glass, umbrella, weapon, staff, or any other object in either hand, and do NOT sling a bag, strap, or pouch over a shoulder, hook one on an elbow, or wear one across the body. Nothing is held, carried, hooked, or leaned against the figure in any plate of the turnaround.
 
 EDITABLE ART DIRECTION — {direction}
 
