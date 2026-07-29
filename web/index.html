@@ -1053,19 +1053,19 @@ function availablePose(...names){
   return names.find(name=>valid.has(name))||'sil';
 }
 function byExternalEnergy(){
-  const amplitude=externalAudio.rms;
-  if(!externalAudio.active||amplitude<0.0025)return'sil';
+  /* Spectral ratios only decide the shape. Loudness must never pick viseme
+     identity - volume ripple inside a single vowel would flip the mouth and
+     reset the vote (51 of the 234 measured flips came from RMS crossing
+     0.045 while the spectrum stayed put). Loudness already drives jaw
+     opening through lvl in jawFor(); the 0.0025 floor only gates silence. */
+  if(!externalAudio.active||externalAudio.rms<0.0025)return'sil';
   const total=externalAudio.low+externalAudio.mid+externalAudio.high+1e-6;
   const low=externalAudio.low/total,mid=externalAudio.mid/total,high=externalAudio.high/total;
   if(high>0.43||externalAudio.zcr>0.16)
     return availablePose(high>0.54?'SS':'CH','E','ih');
-  if(low>0.58){
-    if(amplitude>0.045)return availablePose('aa','oh');
-    return availablePose(mid<0.24?'oh':'ou','ih');
-  }
-  if(mid>0.40)return availablePose(amplitude>0.035?'E':'ih','aa');
-  if(amplitude>0.05)return availablePose('aa','oh');
-  return availablePose('oh','ou','ih');
+  if(low>0.58)return availablePose(mid>0.24?'aa':'oh','ou','ih');
+  if(mid>0.40)return availablePose(high>0.22?'E':'ih','aa');
+  return availablePose(low>0.45?'oh':'ou','ih');
 }
 
 /* fallback only: no track, so infer a coarse shape from spectrum */
