@@ -63,6 +63,40 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("appearance.html", web_filter)
         self.assertIn("bubble.html", web_filter)
 
+    def test_live_pinch_zoom_stays_in_sync_and_scales_animations(self):
+        main = (ROOT / "electron" / "main.cjs").read_text()
+        preload = (ROOT / "electron" / "preload.cjs").read_text()
+        renderer = (ROOT / "web" / "index.html").read_text()
+        appearance = (ROOT / "web" / "appearance.html").read_text()
+        appearance_preload = (ROOT / "electron" / "appearance-preload.cjs").read_text()
+        bounds = (ROOT / "electron" / "pet-window-bounds.cjs").read_text()
+        # the pinch drives the window every frame instead of a trailing debounce
+        self.assertIn("vivieen:pet-zoom-live", main)
+        self.assertIn("vivieen:pet-zoom-live", preload)
+        self.assertIn("applyPetZoomLive", main)
+        self.assertIn("setPetZoomLive", renderer)
+        self.assertNotIn("setTimeout(()=>SHELL.setPetZoom(PET.zoom),160)", renderer)
+        # one anchor per gesture, so rounding cannot walk the window sideways
+        self.assertIn("boundsForPetZoomAtAnchor", bounds)
+        self.assertIn("petZoomAnchor(mainWindow.getBounds())", main)
+        # the alpha probe is a GPU readback: once per gesture, not per event
+        self.assertIn("if(!zoomGesture&&!confirmPetEventHit(event))return;", renderer)
+        # a shell echo must never rewind a pinch that is still in flight
+        self.assertIn("zoomEchoUntil", renderer)
+        # the panel adopts whatever the pinch left behind, focus or not
+        self.assertNotIn("document.activeElement!==size", appearance)
+        self.assertIn("getState", appearance)
+        self.assertIn("visibilitychange", appearance)
+        # edge idle and horizon walk resize on their own slider
+        self.assertIn('id="motion" type="range" min="50" max="300"', appearance)
+        self.assertIn("setMotionSize", appearance_preload)
+        self.assertIn("vivieen:set-pet-roam-zoom", main)
+        self.assertIn("PET_ROAM_ZOOM_RANGE", main)
+        self.assertIn("petRoamSize()", main)
+        self.assertIn("petRoamZoom", main)
+        self.assertIn("roamZoomValue", renderer)
+        self.assertIn("syncMotionProfile", renderer)
+
     def test_horizon_walk_requires_alpha_motion_and_restores_live_standing(self):
         main = (ROOT / "electron" / "main.cjs").read_text()
         preload = (ROOT / "electron" / "preload.cjs").read_text()

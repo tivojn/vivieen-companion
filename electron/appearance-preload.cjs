@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('vivieenAppearance', Object.freeze({
   getState: () => ipcRenderer.invoke('vivieen:get-state'),
   setSize: (value) => ipcRenderer.invoke('vivieen:set-pet-zoom', Number(value)),
   setOpacity: (value) => ipcRenderer.invoke('vivieen:set-pet-opacity', Number(value)),
+  setMotionSize: (value) => ipcRenderer.invoke('vivieen:set-pet-roam-zoom', Number(value)),
   onState: (callback) => {
     if (typeof callback !== 'function') return () => {};
     const listener = (_event, payload) => callback(payload);

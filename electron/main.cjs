@@ -21,7 +21,13 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const { EnconvoAudioMonitor } = require('./enconvo-audio-monitor.cjs');
-const { boundsForPetZoom } = require('./pet-window-bounds.cjs');
+const {
+  boundsForPetZoom,
+  boundsForPetZoomAtAnchor,
+  clampPetZoom,
+  petZoomAnchor,
+  roamSizeForZoom,
+} = require('./pet-window-bounds.cjs');
 
 app.setName('Vivieen');
 
@@ -53,6 +59,8 @@ let petPointerInteractive = null;
 let petPointerDebugAt = 0;
 let petRoamTimer = null;
 let petRoamRuntime = null;
+let petZoomGesture = null;
+let appearancePushAt = 0;
 let petMotionReady = false;
 let petMotionProfile = {
   walkSpeed: 64,
@@ -67,6 +75,8 @@ const PET_BASE_SIZE = Object.freeze({ width: 560, height: 760 });
 const PET_NORMAL_MINIMUM = Object.freeze({ width: 140, height: 190 });
 const PET_ZOOM_RANGE = Object.freeze({ min: 0.25, max: 4 });
 const PET_ROAM_SIZE = Object.freeze({ width: 250, height: 340 });
+const PET_ROAM_MINIMUM = Object.freeze({ width: 96, height: 130 });
+const PET_ROAM_ZOOM_RANGE = Object.freeze({ min: 0.5, max: 3 });
 const PET_ROAM_MIN_SPEED = 42;
 const PET_ROAM_MAX_SPEED = 150;
 const PET_LEDGE_HOLD_MS = 9000;
@@ -360,6 +370,7 @@ function defaultState() {
     petOpacity: 0.5,
     petView: 'half',
     petZoom: 1,
+    petRoamZoom: 1,
     petClickThrough: true,
     petLocked: false,
     petRoam: false,
@@ -374,8 +385,8 @@ function loadState() {
     const saved = JSON.parse(fs.readFileSync(statePath(), 'utf8'));
     const next = { ...defaults, ...saved, bounds: { ...defaults.bounds, ...(saved.bounds || {}) } };
     next.petOpacity = Math.max(0, Math.min(1, Number(next.petOpacity) || 0));
-    next.petZoom = Math.max(PET_ZOOM_RANGE.min,
-      Math.min(PET_ZOOM_RANGE.max, Number(next.petZoom) || 1));
+    next.petZoom = clampPetZoom(next.petZoom, PET_ZOOM_RANGE);
+    next.petRoamZoom = clampPetZoom(next.petRoamZoom, PET_ROAM_ZOOM_RANGE);
     next.petView = PET_VIEWS.has(next.petView) ? next.petView : defaults.petView;
     next.petRoam = Boolean(next.petRoam);
     if (Number(saved.enconvoFollowDefaultVersion || 0) < 1) {
@@ -423,6 +434,7 @@ function shellState() {
       opacity: Number(state && state.petOpacity),
       view: (state && state.petView) || 'half',
       zoom: Number(state && state.petZoom) || 1,
+      roamZoom: Number(state && state.petRoamZoom) || 1,
       clickThrough: Boolean(state && state.petClickThrough),
       locked: Boolean(state && state.petLocked),
       roam: Boolean(state && state.petRoam),
@@ -438,6 +450,16 @@ function broadcastState() {
     if (window && !window.isDestroyed()) window.webContents.send('vivieen:state', value);
   }
   buildTrayMenu();
+}
+
+// The appearance panel has to track a live pinch without paying for a tray
+// rebuild on every frame, so it gets its own cheap, throttled push.
+function pushAppearanceState(force = false) {
+  if (!appearanceWindow || appearanceWindow.isDestroyed()) return;
+  const now = Date.now();
+  if (!force && now - appearancePushAt < 70) return;
+  appearancePushAt = now;
+  appearanceWindow.webContents.send('vivieen:state', shellState());
 }
 
 function applyAlwaysOnTop(value) {
@@ -530,8 +552,8 @@ function petBoundsForZoom(value) {
 }
 
 function applyPetZoom(value) {
-  state.petZoom = Math.max(PET_ZOOM_RANGE.min,
-    Math.min(PET_ZOOM_RANGE.max, Number(value) || 1));
+  petZoomGesture = null;
+  state.petZoom = clampPetZoom(value, PET_ZOOM_RANGE);
   if (!state.petRoam) {
     const bounds = petBoundsForZoom(state.petZoom);
     if (bounds) {
@@ -539,6 +561,64 @@ function applyPetZoom(value) {
       state.bounds = { ...bounds };
     }
   }
+  saveStateSoon();
+  broadcastState();
+  return shellState();
+}
+
+function petRoamSize(zoom) {
+  const requested = zoom === undefined ? (state && state.petRoamZoom) : zoom;
+  return roamSizeForZoom(
+    PET_ROAM_SIZE, PET_ROAM_MINIMUM, clampPetZoom(requested, PET_ROAM_ZOOM_RANGE));
+}
+
+function resizePetRoamWindow(zoom) {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  const size = petRoamSize(zoom);
+  const area = petRoamDisplay().workArea;
+  const bounds = mainWindow.getBounds();
+  const centre = bounds.x + bounds.width / 2;
+  const rightEdge = area.x + area.width - size.width;
+  const x = Math.round(Math.max(area.x, Math.min(rightEdge, centre - size.width / 2)));
+  const y = Math.round(area.y + area.height - size.height + 2);
+  mainWindow.setMinimumSize(size.width, size.height);
+  mainWindow.setBounds({ x, y, width: size.width, height: size.height }, false);
+  if (petRoamRuntime) petRoamRuntime.x = x;
+  return size;
+}
+
+function applyPetRoamZoom(value) {
+  state.petRoamZoom = clampPetZoom(value, PET_ROAM_ZOOM_RANGE);
+  if (state.petRoam) resizePetRoamWindow(state.petRoamZoom);
+  saveStateSoon();
+  broadcastState();
+  return shellState();
+}
+
+// Pinch feedback: resize on every frame the renderer sends, persist and
+// broadcast once the gesture ends. Roaming pinches retune the animation box.
+function applyPetZoomLive(payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) return shellState();
+  const data = payload && typeof payload === 'object' ? payload : { value: payload };
+  const phase = data.phase === 'start' || data.phase === 'end' ? data.phase : 'move';
+  if (state.petRoam) {
+    state.petRoamZoom = clampPetZoom(data.value, PET_ROAM_ZOOM_RANGE);
+    resizePetRoamWindow(state.petRoamZoom);
+  } else {
+    if (phase === 'start' || !petZoomGesture) {
+      petZoomGesture = { anchor: petZoomAnchor(mainWindow.getBounds()) };
+    }
+    state.petZoom = clampPetZoom(data.value, PET_ZOOM_RANGE);
+    const bounds = boundsForPetZoomAtAnchor(
+      petZoomGesture.anchor, PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);
+    mainWindow.setBounds(bounds, false);
+    state.bounds = { ...bounds };
+  }
+  if (phase !== 'end') {
+    pushAppearanceState();
+    return shellState();
+  }
+  petZoomGesture = null;
   saveStateSoon();
   broadcastState();
   return shellState();
@@ -676,21 +756,22 @@ function startPetRoamMotion() {
   const display = petRoamDisplay();
   const area = display.workArea;
   const home = state.petHomeBounds || state.bounds || {};
-  const maximumX = area.x + area.width - PET_ROAM_SIZE.width;
+  const size = petRoamSize();
+  const maximumX = area.x + area.width - size.width;
   const homeCenter = Number.isFinite(home.x) && Number.isFinite(home.width)
     ? home.x + home.width / 2 : area.x + area.width / 2;
   const startX = Math.round(Math.max(area.x, Math.min(
-    maximumX, homeCenter - PET_ROAM_SIZE.width / 2)));
-  const startY = Math.round(area.y + area.height - PET_ROAM_SIZE.height + 2);
+    maximumX, homeCenter - size.width / 2)));
+  const startY = Math.round(area.y + area.height - size.height + 2);
   const direction = startX > area.x + area.width / 2 ? -1 : 1;
 
   mainWindow.setResizable(false);
-  mainWindow.setMinimumSize(PET_ROAM_SIZE.width, PET_ROAM_SIZE.height);
+  mainWindow.setMinimumSize(size.width, size.height);
   mainWindow.setBounds({
     x: startX,
     y: startY,
-    width: PET_ROAM_SIZE.width,
-    height: PET_ROAM_SIZE.height,
+    width: size.width,
+    height: size.height,
   }, false);
   mainWindow.setAlwaysOnTop(true, 'floating');
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -970,7 +1051,7 @@ function createAppearanceWindow() {
   if (appearanceWindow && !appearanceWindow.isDestroyed()) return appearanceWindow;
   appearanceWindow = new BrowserWindow({
     width: 390,
-    height: 226,
+    height: 316,
     show: false,
     frame: false,
     transparent: true,
@@ -1007,7 +1088,7 @@ function showAppearanceWindow() {
   positionAppearanceWindow();
   window.show();
   window.focus();
-  window.webContents.send('vivieen:state', shellState());
+  pushAppearanceState(true);
 }
 
 function triggerEnconvoVoiceCommand() {
@@ -1331,6 +1412,10 @@ function installIpc() {
   ipcMain.handle('vivieen:set-pet-view', (_event, value) => applyPetView(value));
   ipcMain.handle('vivieen:set-pet-opacity', (_event, value) => applyPetOpacity(value));
   ipcMain.handle('vivieen:set-pet-zoom', (_event, value) => applyPetZoom(value));
+  ipcMain.handle('vivieen:set-pet-roam-zoom', (_event, value) => applyPetRoamZoom(value));
+  ipcMain.on('vivieen:pet-zoom-live', (event, payload) => {
+    if (mainWindow && event.sender === mainWindow.webContents) applyPetZoomLive(payload);
+  });
   ipcMain.handle('vivieen:set-pet-click-through', (_event, value) => applyPetClickThrough(value));
   ipcMain.handle('vivieen:set-pet-lock', (_event, value) => applyPetLock(value));
   ipcMain.handle('vivieen:set-pet-roam', (_event, value) => applyPetRoam(value));

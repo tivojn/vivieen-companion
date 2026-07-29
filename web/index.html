@@ -207,8 +207,13 @@ if(SHELL&&SHELL.isElectron){
     if(!s)return;
     pin.classList.toggle('on',!!s.alwaysOnTop);
     if(s.pet){
+      // A pinch in flight owns the zoom: never let the shell echo rewind it.
+      const live=Boolean(zoomGesture)||performance.now()<zoomEchoUntil;
+      const heldZoom=PET.zoom,heldRoamZoom=PET.roamZoom;
       Object.assign(PET,s.pet);
+      if(live){PET.zoom=heldZoom;PET.roamZoom=heldRoamZoom;}
       document.documentElement.classList.toggle('pet',PET.enabled!==false);
+      syncMotionProfile();
     }
     if(s.enconvoMonitor)applyMonitorState(s.enconvoMonitor);
   };
@@ -407,9 +412,10 @@ const faceCtx=faceSurface.getContext('2d',{alpha:true}),headCtx=headSurface.getC
 const previewView=new URLSearchParams(location.search).get('view');
 const PET={enabled:true,opacity:.5,
   view:['full','three-quarter','half','bust','head','face'].includes(previewView)?previewView:'half',
-  zoom:1,clickThrough:true,locked:false,roam:false,motionReady:false};
+  zoom:1,roamZoom:1,clickThrough:true,locked:false,roam:false,motionReady:false};
 const ROAM={enabled:false,mode:'idle',direction:1,phase:0,edge:null};
 let pointer={x:-1,y:-1},petHit=false,hitConfidence=0,dragging=false,zoomSaveTimer=0,lastHitCheck=0;
+let zoomGesture=null,zoomEchoUntil=0,motionProfileZoom=null;
 let petEngaged=false,petHoverUntil=0;
 let monitorEnabled=false;
 let monitorInfo={enabled:false,status:'off',message:'Follow EnConvo is off.'};
@@ -581,8 +587,10 @@ function routedStatus(route,fallback=''){
     ...(M.motion?[loadMotion('walk'),loadMotion('idle')]:[])
   ]);
   const motionReady=Boolean(MOTION.walk);
-  if(SHELL&&SHELL.isElectron&&typeof SHELL.setPetMotionReady==='function')
+  if(SHELL&&SHELL.isElectron&&typeof SHELL.setPetMotionReady==='function'){
+    if(motionReady)motionProfileZoom=roamZoomValue();
     SHELL.setPetMotionReady(motionReady?motionPlaybackProfile():{ready:false});
+  }
   ready=true;requestAnimationFrame(loop);poll();
 })();
 
@@ -1162,10 +1170,29 @@ function petCamera(meta,width,height){
     cv.height/2-(crop.y+crop.h/2)*scale;
   return {scale,x,y,crop};
 }
+const ROAM_BOX={width:250,height:340};
+const ROAM_ZOOM={min:.5,max:3};
+function roamZoomValue(){
+  const value=Number(PET.roamZoom);
+  return Math.max(ROAM_ZOOM.min,Math.min(ROAM_ZOOM.max,
+    Number.isFinite(value)&&value>0?value:1));
+}
+// Walk speed and stride length live in the same CSS space as the roam window,
+// so a resized animation has to re-publish its profile or she moonwalks.
+function syncMotionProfile(){
+  if(!SHELL||!SHELL.isElectron||typeof SHELL.setPetMotionReady!=='function')return;
+  if(!MOTION||!MOTION.walk)return;
+  const zoom=roamZoomValue();
+  if(motionProfileZoom!==null&&Math.abs(motionProfileZoom-zoom)<.001)return;
+  motionProfileZoom=zoom;
+  SHELL.setPetMotionReady(motionPlaybackProfile());
+}
 function motionPlaybackProfile(){
   const clip=MOTION&&MOTION.walk;if(!clip)return{ready:false};
   const bounds=clip.bounds||[0,0,clip.frame_width||256,clip.frame_height||384];
-  const cssScale=Math.min(250/Math.max(1,bounds[2]),340/Math.max(1,bounds[3]))*.985;
+  const roamZoom=roamZoomValue();
+  const cssScale=Math.min(ROAM_BOX.width*roamZoom/Math.max(1,bounds[2]),
+    ROAM_BOX.height*roamZoom/Math.max(1,bounds[3]))*.985;
   const cycleSeconds=Number(clip.cycle_seconds)||Math.max(.1,Number(clip.frames||1)/Math.max(1,Number(clip.fps||1)));
   const groundSpeed=Number(clip.ground_speed)||64/cssScale;
   const cycleDistance=(Number(clip.cycle_distance)||groundSpeed*cycleSeconds)*cssScale;
@@ -1496,12 +1523,49 @@ cv.addEventListener('dblclick',async event=>{
   event.preventDefault();
   try{syncShellState(await SHELL.setPetRoam(true));}catch(error){}
 });
+const STAND_ZOOM={min:.25,max:4};
+const ZOOM_SETTLE_MS=140;
+function zoomRange(){return PET.roam?ROAM_ZOOM:STAND_ZOOM;}
+function zoomValue(){
+  const range=zoomRange(),value=Number(PET.roam?PET.roamZoom:PET.zoom);
+  return Math.max(range.min,Math.min(range.max,
+    Number.isFinite(value)&&value>0?value:1));
+}
+function holdZoom(value){if(PET.roam)PET.roamZoom=value;else PET.zoom=value;}
+function wheelZoomFactor(event){
+  const unit=event.deltaMode===1?16:event.deltaMode===2?innerHeight:1;
+  const delta=Math.max(-90,Math.min(90,event.deltaY*unit));
+  // macOS reports a trackpad pinch as a small ctrl-wheel: it needs more gain
+  // than a scroll or the gesture feels like it is dragging through syrup.
+  return Math.exp(-delta*(event.ctrlKey?.0075:.0016));
+}
+function publishZoom(phase){
+  if(!SHELL||typeof SHELL.setPetZoomLive!=='function')return;
+  SHELL.setPetZoomLive({value:zoomValue(),phase,roam:Boolean(PET.roam)});
+}
+function settleZoomGesture(){
+  if(!zoomGesture)return;
+  cancelAnimationFrame(zoomGesture.frame);
+  zoomGesture=null;
+  zoomEchoUntil=performance.now()+260;
+  publishZoom('end');
+}
 cv.addEventListener('wheel',event=>{
-  if(!SHELL||!PET.enabled||!confirmPetEventHit(event))return;
+  if(!SHELL||!PET.enabled)return;
+  // The alpha probe is a GPU readback; run it once per gesture, not per event.
+  if(!zoomGesture&&!confirmPetEventHit(event))return;
   event.preventDefault();
-  PET.zoom=Math.max(.25,Math.min(4,PET.zoom*Math.exp(-event.deltaY*.0012)));
-  clearTimeout(zoomSaveTimer);zoomSaveTimer=setTimeout(()=>SHELL.setPetZoom(PET.zoom),160);
+  const range=zoomRange();
+  holdZoom(Math.max(range.min,Math.min(range.max,zoomValue()*wheelZoomFactor(event))));
+  zoomEchoUntil=performance.now()+260;
+  if(!zoomGesture){zoomGesture={frame:0};publishZoom('start');}
+  else if(!zoomGesture.frame)zoomGesture.frame=requestAnimationFrame(()=>{
+    if(!zoomGesture)return;
+    zoomGesture.frame=0;publishZoom('move');
+  });
+  clearTimeout(zoomSaveTimer);zoomSaveTimer=setTimeout(settleZoomGesture,ZOOM_SETTLE_MS);
 },{passive:false});
+addEventListener('blur',settleZoomGesture);
 if(SHELL&&SHELL.isElectron&&typeof SHELL.onPetChat==='function')SHELL.onPetChat(()=>{
   if(monitorEnabled){
     closePetChat();

@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld('vivieen', Object.freeze({
   setPetView: (value) => ipcRenderer.invoke('vivieen:set-pet-view', String(value || '')),
   setPetOpacity: (value) => ipcRenderer.invoke('vivieen:set-pet-opacity', Number(value)),
   setPetZoom: (value) => ipcRenderer.invoke('vivieen:set-pet-zoom', Number(value)),
+  setPetRoamZoom: (value) => ipcRenderer.invoke('vivieen:set-pet-roam-zoom', Number(value)),
+  setPetZoomLive: (payload) => ipcRenderer.send('vivieen:pet-zoom-live', payload),
   setPetClickThrough: (value) => ipcRenderer.invoke('vivieen:set-pet-click-through', Boolean(value)),
   setPetLock: (value) => ipcRenderer.invoke('vivieen:set-pet-lock', Boolean(value)),
   setPetRoam: (value) => ipcRenderer.invoke('vivieen:set-pet-roam', Boolean(value)),

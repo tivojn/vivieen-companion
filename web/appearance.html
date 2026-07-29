@@ -15,52 +15,101 @@
     .hint{color:var(--muted);font-size:10px;font-weight:650;letter-spacing:.05em;text-transform:uppercase}
     .control{padding:10px 0 8px;border-top:1px solid var(--line)}
     .control:first-of-type{border-top:0}
-    .label{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+    .label{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:7px}
     label{font-size:12px;font-weight:680}
+    label em{display:block;margin-top:2px;font-style:normal;font-size:9.5px;font-weight:650;letter-spacing:.03em;color:var(--muted)}
     output{min-width:54px;text-align:right;color:var(--pink);font-variant-numeric:tabular-nums;font-size:12px;font-weight:760}
     input[type=range]{width:100%;height:20px;margin:0;appearance:none;background:transparent;cursor:pointer;-webkit-app-region:no-drag}
     input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:999px;background:linear-gradient(90deg,var(--pink) 0 var(--fill,50%),var(--track) var(--fill,50%) 100%)}
     input[type=range]::-webkit-slider-thumb{appearance:none;width:18px;height:18px;margin-top:-6.5px;border:2px solid white;border-radius:50%;background:var(--pink);box-shadow:0 2px 8px rgba(128,8,60,.32)}
     input[type=range]:focus-visible{outline:2px solid rgba(213,20,102,.3);outline-offset:3px;border-radius:8px}
     input[type=range]:disabled{cursor:not-allowed;filter:grayscale(.65);opacity:.48}
-    #note{height:14px;margin-top:2px;color:var(--muted);font-size:10px;line-height:14px}
+    #note{height:28px;margin-top:2px;color:var(--muted);font-size:10px;line-height:14px}
   </style>
 </head>
 <body>
   <main>
     <header><h1>Character Appearance</h1><span class="hint">Live</span></header>
     <section class="control">
-      <div class="label"><label for="size">Size</label><output id="sizeValue">100%</output></div>
+      <div class="label"><label for="size">Size<em>Standing character</em></label><output id="sizeValue">100%</output></div>
       <input id="size" type="range" min="25" max="400" step="1" value="100" aria-label="Character size">
     </section>
     <section class="control">
       <div class="label"><label for="opacity">Opacity</label><output id="opacityValue">50%</output></div>
       <input id="opacity" type="range" min="0" max="100" step="1" value="50" aria-label="Character opacity">
     </section>
+    <section class="control">
+      <div class="label"><label for="motion">Animation Size<em>Horizon Walk &amp; edge idle</em></label><output id="motionValue">100%</output></div>
+      <input id="motion" type="range" min="50" max="300" step="1" value="100" aria-label="Animation size">
+    </section>
     <div id="note">Empty pixels remain click-through.</div>
   </main>
   <script>
     const api=window.vivieenAppearance;
-    const size=document.getElementById('size'),opacity=document.getElementById('opacity');
-    const sizeValue=document.getElementById('sizeValue'),opacityValue=document.getElementById('opacityValue');
     const note=document.getElementById('note');
-    const paint=input=>{const min=Number(input.min),max=Number(input.max),value=Number(input.value);input.style.setProperty('--fill',`${(value-min)/(max-min)*100}%`)};
-    function sync(state={}){
-      const pet=state.pet||{};
-      const sizePercent=Math.round((Number(pet.zoom)||1)*100);
-      const opacityPercent=Math.round(Math.max(0,Math.min(1,Number(pet.opacity)||0))*100);
-      if(document.activeElement!==size)size.value=String(sizePercent);
-      if(document.activeElement!==opacity)opacity.value=String(opacityPercent);
-      sizeValue.value=`${size.value}%`;opacityValue.value=`${opacity.value}%`;
-      size.disabled=Boolean(pet.roam);
-      note.textContent=pet.roam?'Pause Horizon Walk to resize the standing character.':'Empty pixels remain click-through.';
-      paint(size);paint(opacity);
+    const percent=(value,fallback)=>{
+      const number=Number(value);
+      return (Number.isFinite(number)&&number>0?number:fallback)*100;
+    };
+    const controls=[
+      {input:document.getElementById('size'),out:document.getElementById('sizeValue'),
+        read:pet=>percent(pet.zoom,1),send:value=>api?.setSize(value/100)},
+      {input:document.getElementById('opacity'),out:document.getElementById('opacityValue'),
+        read:pet=>Math.max(0,Math.min(1,Number(pet.opacity)||0))*100,send:value=>api?.setOpacity(value/100)},
+      {input:document.getElementById('motion'),out:document.getElementById('motionValue'),
+        read:pet=>percent(pet.roamZoom,1),send:value=>api?.setMotionSize(value/100)},
+    ];
+    const frames=new WeakMap();
+    let holding=null,editedAt=0;
+    // Only an in-progress drag may outrank the shell. Focus alone must not:
+    // a slider keeps focus after the panel hides, which used to freeze the
+    // readout at a stale value while a pinch moved the real size underneath.
+    const engaged=input=>holding===input||performance.now()-editedAt<420;
+    const paint=input=>{
+      const min=Number(input.min),max=Number(input.max),value=Number(input.value);
+      input.style.setProperty('--fill',`${(value-min)/(max-min)*100}%`);
+    };
+    const show=control=>{control.out.value=`${control.input.value}%`;paint(control.input);};
+    function adopt(control,value){
+      const input=control.input;
+      const next=String(Math.round(Math.max(Number(input.min),Math.min(Number(input.max),value))));
+      if(!engaged(input)&&input.value!==next)input.value=next;
+      show(control);
     }
-    let sizeFrame=0,opacityFrame=0;
-    size.addEventListener('input',()=>{sizeValue.value=`${size.value}%`;paint(size);cancelAnimationFrame(sizeFrame);sizeFrame=requestAnimationFrame(()=>api?.setSize(Number(size.value)/100))});
-    opacity.addEventListener('input',()=>{opacityValue.value=`${opacity.value}%`;paint(opacity);cancelAnimationFrame(opacityFrame);opacityFrame=requestAnimationFrame(()=>api?.setOpacity(Number(opacity.value)/100))});
-    api?.onState(sync);api?.getState().then(sync);
-    addEventListener('keydown',event=>{if(event.key==='Escape')window.close()});
+    function sync(state){
+      const pet=(state&&state.pet)||{};
+      for(const control of controls)adopt(control,control.read(pet));
+      note.textContent=pet.roam
+        ?'Animation Size is live while she walks. Size applies when Horizon Walk stops.'
+        :'Animation Size scales Horizon Walk and edge idle. Empty pixels stay click-through.';
+    }
+    function refresh(){
+      const pending=api?.getState?.();
+      if(pending&&typeof pending.then==='function')pending.then(sync);
+    }
+    for(const control of controls){
+      const input=control.input;
+      input.addEventListener('pointerdown',()=>{holding=input;editedAt=performance.now();});
+      input.addEventListener('input',()=>{
+        editedAt=performance.now();show(control);
+        cancelAnimationFrame(frames.get(input)||0);
+        frames.set(input,requestAnimationFrame(()=>control.send(Number(input.value))));
+      });
+      input.addEventListener('change',()=>{editedAt=performance.now();control.send(Number(input.value));});
+    }
+    addEventListener('pointerup',()=>{holding=null;});
+    addEventListener('pointercancel',()=>{holding=null;});
+    addEventListener('blur',()=>{
+      holding=null;editedAt=0;
+      if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
+    });
+    addEventListener('focus',()=>{holding=null;editedAt=0;refresh();});
+    document.addEventListener('visibilitychange',()=>{
+      if(document.hidden)return;
+      holding=null;editedAt=0;refresh();
+    });
+    api?.onState(sync);refresh();
+    addEventListener('keydown',event=>{if(event.key==='Escape')window.close();});
   </script>
 </body>
 </html>

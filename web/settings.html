@@ -240,8 +240,72 @@ button.btn.danger{color:#d9705f}
 .body-panel h4{margin:20px 0 12px;font-size:11px;color:var(--dim);letter-spacing:.12em;text-transform:uppercase}
 .body-panel h4:first-child{margin-top:0}.body-provider{padding:14px;border:1px solid #2b2b33;border-radius:11px;background:#111115}
 .body-provider strong{display:block;margin-top:7px}.body-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.body-progress{margin-top:16px;padding:14px;border:1px solid #2b2b33;border-radius:11px;background:#0b0b0e}
-.body-progress .bar{height:5px;margin:10px 0}.body-actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:18px}
+.body-progress{position:relative;margin-top:16px;padding:14px;border:1px solid #2b2b33;
+  border-radius:11px;background:#0b0b0e;scroll-margin:12px}
+.body-progress .jobhead{gap:8px}
+.body-progress-dot{flex:none;width:7px;height:7px;border-radius:50%;background:#3a3a44}
+#body-stage{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--ink);font-weight:600;font-size:12px}
+.body-progress-elapsed{margin-left:auto;color:var(--dim);font-variant-numeric:tabular-nums;
+  font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace}
+#body-percent{min-width:40px;text-align:right;color:#ff8a7e;font-variant-numeric:tabular-nums;
+  font:700 12px ui-monospace,SFMono-Regular,Menlo,monospace}
+.body-progress .bar{position:relative;height:6px;margin:11px 0 0;background:#1b1b21;
+  border-radius:4px;overflow:hidden}
+.body-progress .bar i{display:block;height:100%;width:0;border-radius:4px;
+  background:linear-gradient(90deg,#e2483a,#ff9264);transition:width .45s cubic-bezier(.4,0,.2,1)}
+#body-progress-line{margin:9px 0 0;color:var(--dim);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;font:10.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+.body-progress-hint{display:flex;gap:8px;align-items:flex-start;margin:11px 0 0;padding:9px 10px;
+  border:1px solid rgba(201,144,58,.28);border-radius:9px;background:rgba(201,144,58,.075);
+  color:#d3ab6c;font-size:11.5px;line-height:1.5}
+.body-progress-hint b{color:#f0cd93;font-weight:600}
+.body-progress-sheen{position:absolute;inset:0;overflow:hidden;pointer-events:none;
+  border-radius:inherit;opacity:0}
+.body-progress.live{position:sticky;top:0;z-index:9;border-color:rgba(226,72,58,.5);
+  background:linear-gradient(180deg,rgba(26,13,12,.97),rgba(10,10,13,.97));
+  backdrop-filter:blur(16px);animation:bodyGlow 2.4s ease-in-out infinite}
+.body-progress.live .body-progress-sheen{opacity:1}
+.body-progress.live.pinned:before{content:"";position:absolute;left:-25px;right:-25px;
+  bottom:calc(100% + 1px);height:28px;background:#101013;pointer-events:none}
+.body-progress.live .body-progress-sheen:before{content:"";position:absolute;top:0;bottom:0;width:36%;
+  background:linear-gradient(90deg,transparent,rgba(255,146,100,.13),transparent);
+  animation:bodySheen 2.9s ease-in-out infinite}
+.body-progress.live .body-progress-dot{background:var(--accent);animation:bodyPing 1.4s ease-out infinite}
+.body-progress.live .bar i{box-shadow:0 0 14px rgba(226,72,58,.55);
+  background:linear-gradient(115deg,rgba(255,255,255,.24) 0 8px,transparent 8px 20px) 0 0/26px 100% repeat,
+    linear-gradient(90deg,#e2483a,#ff9264);
+  animation:bodyStripes .9s linear infinite}
+.body-progress.live .bar.indeterminate i{width:32%!important;transition:none;
+  animation:bodyStripes .9s linear infinite,bodySlide 1.7s cubic-bezier(.6,0,.35,1) infinite}
+.body-progress.live.flash{animation:bodyFlash .8s cubic-bezier(.34,1.32,.5,1),
+  bodyGlow 2.4s ease-in-out infinite}
+.body-progress.done{border-color:rgba(78,167,123,.45)}
+.body-progress.done .body-progress-dot{background:var(--ok)}
+.body-progress.done .bar i{background:linear-gradient(90deg,#4ea77b,#6cc79a)}
+.body-progress.done #body-percent{color:#87d8b2}
+.body-progress.done .body-progress-hint{border-color:rgba(78,167,123,.3);
+  background:rgba(78,167,123,.08);color:#87d8b2}
+.body-progress.done .body-progress-hint b{color:#a6e6c4}
+.body-progress.failed{border-color:rgba(226,72,58,.6)}
+.body-progress.failed .body-progress-dot{background:var(--accent)}
+.body-progress.failed .body-progress-hint{border-color:rgba(226,72,58,.38);
+  background:rgba(226,72,58,.09);color:#f0a49a}
+.body-progress.failed .body-progress-hint b{color:#ff9d90}
+@keyframes bodyGlow{0%,100%{box-shadow:0 16px 40px rgba(0,0,0,.55),0 0 0 1px rgba(226,72,58,.12)}
+  50%{box-shadow:0 16px 40px rgba(0,0,0,.55),0 0 0 1px rgba(226,72,58,.4),0 0 26px rgba(226,72,58,.22)}}
+@keyframes bodySheen{0%{transform:translateX(-140%)}55%,100%{transform:translateX(330%)}}
+@keyframes bodyPing{0%{box-shadow:0 0 0 0 rgba(226,72,58,.55)}
+  70%{box-shadow:0 0 0 9px rgba(226,72,58,0)}100%{box-shadow:0 0 0 0 rgba(226,72,58,0)}}
+@keyframes bodyStripes{to{background-position:26px 0,0 0}}
+@keyframes bodySlide{0%{transform:translateX(-105%)}100%{transform:translateX(320%)}}
+@keyframes bodyFlash{0%{transform:scale(.985)}45%{transform:scale(1.014)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){
+  .body-progress.live,.body-progress.live.flash,.body-progress.live .bar i,
+  .body-progress.live .body-progress-dot,.body-progress.live .body-progress-sheen:before{animation:none!important}
+  .body-progress.live{box-shadow:0 0 0 1px rgba(226,72,58,.45)}
+  .body-progress.live .bar.indeterminate i{width:100%!important}}
+.body-actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:18px}
 .body-identity{margin-top:14px;padding:12px 13px;border:1px solid rgba(78,167,123,.28);border-radius:10px;
   background:rgba(78,167,123,.07);color:#87d8b2;font-size:12px;line-height:1.45}
 .body-motion{padding:14px;border:1px solid #2b2b33;border-radius:11px;background:#111115}
@@ -500,10 +564,20 @@ button.btn.danger{color:#d9705f}
             <button class="btn sm" id="body-prompt-reset" type="button">Rewrite for this portrait</button>
           </div>
         </div>
-        <div class="body-progress hidden" id="body-progress">
-          <div class="jobhead"><span id="body-stage">Preparing</span><span id="body-percent">0%</span></div>
-          <div class="bar"><i id="body-progress-bar" style="width:0%"></i></div>
-          <div class="note" id="body-progress-line"></div>
+        <div id="body-progress-anchor" aria-hidden="true"></div>
+        <div class="body-progress hidden" id="body-progress" role="region"
+             aria-label="Generation progress" tabindex="-1">
+          <div class="body-progress-sheen" aria-hidden="true"></div>
+          <div class="jobhead">
+            <span class="body-progress-dot" aria-hidden="true"></span>
+            <span id="body-stage" aria-live="polite">Preparing</span>
+            <span class="body-progress-elapsed" id="body-elapsed" title="Elapsed time">0:00</span>
+            <span id="body-percent">0%</span>
+          </div>
+          <div class="bar" id="body-progress-track" role="progressbar"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="body-progress-bar" style="width:0%"></i></div>
+          <div id="body-progress-line"></div>
+          <p class="body-progress-hint" id="body-progress-hint"></p>
         </div>
         <div class="body-actions">
           <button class="btn danger hidden" id="body-remove">Remove body</button>
@@ -1165,9 +1239,172 @@ function closeBody() {
   document.body.style.overflow = '';
   if (BODY_WATCH) clearTimeout(BODY_WATCH);
   BODY_WATCH = null;
+  stopBodyElapsed();
+  unwatchBodyPin();
   stopBodyMotionCycle();
   BODY_SLUG = null;
   BODY_BUSY = false;
+}
+
+/* ---- Live generation progress card -------------------------------------- */
+
+const BODY_JOB_COPY = {
+  body: {
+    work: 'Three full-body views are being rendered by the image provider.',
+    wait: 'Expect roughly 1–3 minutes. Keep this window open — a bar that sits still is normal while the provider renders.'
+  },
+  motion: {
+    work: 'Image generation, then video generation, then alpha cutting — run one after another.',
+    wait: 'Video generation is the slow stage: expect roughly 3–8 minutes. Keep this window open — a bar that sits still is normal while the provider renders.'
+  }
+};
+let BODY_JOB_KIND = 'body', BODY_JOB_START = 0, BODY_ELAPSED_TIMER = null, BODY_ELAPSED_PREFIX = '';
+let BODY_POLL_MISSES = 0;
+
+function normaliseJobKind(kind) {
+  const value = String(kind || '');
+  return (value.startsWith('motion') || value === 'walk' || value === 'idle') ? 'motion' : 'body';
+}
+
+function formatElapsed(ms) {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
+}
+
+function paintBodyElapsed() {
+  if (!BODY_JOB_START) return;
+  $('#body-elapsed').textContent = BODY_ELAPSED_PREFIX + formatElapsed(Date.now() - BODY_JOB_START);
+}
+
+function paintBodyHint() {
+  const box = $('#body-progress'), hint = $('#body-progress-hint');
+  if (!box || !hint) return;
+  if (box.classList.contains('failed')) {
+    hint.innerHTML = '<span aria-hidden="true">⚠︎</span><span><b>Generation stopped.</b> ' +
+      'Read the line above, adjust the inputs, and run it again. Files already on disk were kept.</span>';
+    return;
+  }
+  if (box.classList.contains('done')) {
+    hint.innerHTML = '<span aria-hidden="true">✓</span><span><b>Finished.</b> ' +
+      'Every retained production file is written to disk and listed in the motion library.</span>';
+    return;
+  }
+  const copy = BODY_JOB_COPY[BODY_JOB_KIND] || BODY_JOB_COPY.body;
+  const seconds = BODY_JOB_START ? (Date.now() - BODY_JOB_START) / 1000 : 0;
+  const patience = seconds < 45 ? copy.wait
+    : seconds < 240 ? 'Still running. ' + copy.wait
+    : 'Long render in progress — normal for video. The job is alive; the elapsed clock above is proof.';
+  hint.innerHTML = '<span aria-hidden="true">⏳</span><span><b>This takes a while.</b> ' +
+    copy.work + ' ' + patience + '</span>';
+}
+
+function stopBodyElapsed() {
+  if (BODY_ELAPSED_TIMER) clearInterval(BODY_ELAPSED_TIMER);
+  BODY_ELAPSED_TIMER = null;
+}
+
+function resetBodyProgress() {
+  stopBodyElapsed();
+  unwatchBodyPin();
+  BODY_JOB_START = 0;
+  BODY_ELAPSED_PREFIX = '';
+  const box = $('#body-progress');
+  if (!box) return;
+  box.classList.remove('live', 'flash', 'done', 'failed');
+  box.classList.add('hidden');
+  $('#body-progress-track').classList.remove('indeterminate');
+  $('#body-progress-track').setAttribute('aria-valuenow', '0');
+  $('#body-progress-bar').style.width = '0%';
+  $('#body-percent').textContent = '0%';
+  $('#body-elapsed').textContent = '0:00';
+  $('#body-progress-line').textContent = '';
+}
+
+let BODY_PIN_OBSERVER = null;
+
+/* Paint a curtain over the panel's top padding while the card is pinned, so
+   content scrolling underneath never bleeds above it. */
+function watchBodyPin() {
+  const box = $('#body-progress'), anchor = $('#body-progress-anchor');
+  const panel = box && box.closest('.body-panel');
+  if (BODY_PIN_OBSERVER) { BODY_PIN_OBSERVER.disconnect(); BODY_PIN_OBSERVER = null; }
+  if (!box || !anchor || !panel || typeof IntersectionObserver !== 'function') return;
+  BODY_PIN_OBSERVER = new IntersectionObserver(entries => {
+    box.classList.toggle('pinned', !entries[entries.length - 1].isIntersecting);
+  }, { root: panel, threshold: 0 });
+  BODY_PIN_OBSERVER.observe(anchor);
+}
+
+function unwatchBodyPin() {
+  if (BODY_PIN_OBSERVER) BODY_PIN_OBSERVER.disconnect();
+  BODY_PIN_OBSERVER = null;
+  const box = $('#body-progress');
+  if (box) box.classList.remove('pinned');
+}
+
+function focusBodyProgress() {
+  const box = $('#body-progress');
+  if (!box || box.classList.contains('hidden')) return;
+  const panel = box.closest('.body-panel');
+  requestAnimationFrame(() => {
+    if (panel) {
+      const host = panel.getBoundingClientRect(), card = box.getBoundingClientRect();
+      const visible = Math.min(card.bottom, host.bottom) - Math.max(card.top, host.top);
+      if (visible < card.height - 6) {
+        const anchor = $('#body-progress-anchor') || box;
+        const top = panel.scrollTop + (anchor.getBoundingClientRect().top - host.top) - 10;
+        panel.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      }
+    } else {
+      box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    box.classList.remove('flash');
+    void box.offsetWidth;
+    box.classList.add('flash');
+    setTimeout(() => box.classList.remove('flash'), 900);
+  });
+}
+
+function startBodyProgress(kind, resuming) {
+  BODY_JOB_KIND = normaliseJobKind(kind);
+  BODY_JOB_START = Date.now();
+  BODY_ELAPSED_PREFIX = resuming ? '+' : '';
+  BODY_POLL_MISSES = 0;
+  const box = $('#body-progress');
+  box.classList.remove('hidden', 'done', 'failed');
+  box.classList.add('live');
+  $('#body-progress-track').classList.add('indeterminate');
+  $('#body-progress-track').setAttribute('aria-valuenow', '0');
+  $('#body-progress-bar').style.width = '0%';
+  $('#body-percent').textContent = '0%';
+  $('#body-elapsed').textContent = BODY_ELAPSED_PREFIX + '0:00';
+  $('#body-stage').textContent = resuming ? 'Reattaching to a running job' : 'Queued';
+  $('#body-progress-line').textContent = resuming
+    ? 'This avatar was already generating; the card is following that job.'
+    : 'Handing the job to the provider…';
+  paintBodyHint();
+  stopBodyElapsed();
+  BODY_ELAPSED_TIMER = setInterval(() => { paintBodyElapsed(); paintBodyHint(); }, 1000);
+  watchBodyPin();
+  focusBodyProgress();
+}
+
+function endBodyProgress(failed) {
+  stopBodyElapsed();
+  unwatchBodyPin();
+  const box = $('#body-progress');
+  if (!box) return;
+  paintBodyElapsed();
+  box.classList.remove('live', 'flash');
+  box.classList.add(failed ? 'failed' : 'done');
+  $('#body-progress-track').classList.remove('indeterminate');
+  paintBodyHint();
+}
+
+function failBodyProgress(message) {
+  $('#body-stage').textContent = 'Generation failed';
+  $('#body-progress-line').textContent = message;
+  endBodyProgress(true);
 }
 
 function selectWalkStyle(style) {
@@ -1602,7 +1839,7 @@ async function openBody(slug) {
   BODY_WATCH = null;
   $('#body-modal').classList.add('on');
   document.body.style.overflow = 'hidden';
-  $('#body-progress').classList.add('hidden');
+  resetBodyProgress();
   const [bodyState, progressState] = await Promise.all([
     api('/api/avatar/body?slug=' + encodeURIComponent(slug)),
     api('/api/avatar/progress?slug=' + encodeURIComponent(slug)),
@@ -1615,7 +1852,7 @@ async function openBody(slug) {
   }
   const job = progressState.job || { done: true };
   if (!job.done) {
-    $('#body-progress').classList.remove('hidden');
+    startBodyProgress(job.kind, true);
     setBodyBusy(true);
     pollBody(job.id);
   }
@@ -1631,22 +1868,29 @@ function bodyProfile() {
 
 async function generateBody() {
   setBodyBusy(true);
-  const response = await api('/api/avatar/body/generate', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ slug: BODY_SLUG, profile: bodyProfile() })
-  });
+  startBodyProgress('body');
+  let response;
+  try {
+    response = await api('/api/avatar/body/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: BODY_SLUG, profile: bodyProfile() })
+    });
+  } catch (error) {
+    failBodyProgress('Could not reach the local backend. Check that the Vivieen server is running, then try again.');
+    setBodyBusy(false);
+    return;
+  }
   if (!response.started && response.reason === 'already building') {
-    $('#body-progress').classList.remove('hidden');
     setBodyBusy(true);
     pollBody(response.job_id);
     return;
   }
   if (response.detail || !response.started) {
+    resetBodyProgress();
     alert(response.detail || response.reason || 'Unable to start full-body generation.');
     setBodyBusy(false);
     return;
   }
-  $('#body-progress').classList.remove('hidden');
   pollBody(response.job_id);
 }
 
@@ -1658,49 +1902,81 @@ async function generateMotion(kind) {
     return;
   }
   setBodyBusy(true);
-  const response = await api('/api/avatar/motion/generate', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      slug: BODY_SLUG,
-      kind,
-      walk_style: BODY_WALK_STYLE,
-      pose: BODY_IDLE_POSE,
-      pose_prompt: kind === 'idle' && BODY_IDLE_POSE === 'custom' ? posePrompt : '',
-    })
-  });
+  startBodyProgress('motion');
+  let response;
+  try {
+    response = await api('/api/avatar/motion/generate', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        slug: BODY_SLUG,
+        kind,
+        walk_style: BODY_WALK_STYLE,
+        pose: BODY_IDLE_POSE,
+        pose_prompt: kind === 'idle' && BODY_IDLE_POSE === 'custom' ? posePrompt : '',
+      })
+    });
+  } catch (error) {
+    failBodyProgress('Could not reach the local backend. Check that the Vivieen server is running, then try again.');
+    setBodyBusy(false);
+    return;
+  }
   if (!response.started && response.reason === 'already building') {
-    $('#body-progress').classList.remove('hidden');
     setBodyBusy(true);
     pollBody(response.job_id);
     return;
   }
   if (response.detail || !response.started) {
+    resetBodyProgress();
     const label = kind === 'walk' ? 'Horizon Walk' : 'Edge Idle';
     alert(response.detail || response.reason || `Unable to start ${label} generation.`);
     setBodyBusy(false);
     return;
   }
-  $('#body-progress').classList.remove('hidden');
   pollBody(response.job_id);
 }
 
 async function pollBody(expectedJobId) {
   if (!BODY_SLUG) return;
   const slug = BODY_SLUG;
-  const response = await api('/api/avatar/progress?slug=' + encodeURIComponent(slug));
+  let response;
+  try {
+    response = await api('/api/avatar/progress?slug=' + encodeURIComponent(slug));
+    BODY_POLL_MISSES = 0;
+  } catch (error) {
+    if (BODY_SLUG !== slug) return;
+    BODY_POLL_MISSES += 1;
+    if (BODY_POLL_MISSES < 8) {
+      $('#body-progress-line').textContent =
+        'Lost contact with the local backend \u2014 retrying (' + BODY_POLL_MISSES + '/8)\u2026';
+      BODY_WATCH = setTimeout(() => pollBody(expectedJobId), 1500);
+      return;
+    }
+    BODY_WATCH = null;
+    failBodyProgress('Lost contact with the local backend. The job may still be running \u2014 reopen this studio to reattach to it.');
+    setBodyBusy(false);
+    return;
+  }
   if (BODY_SLUG !== slug) return;
   const job = response.job || {}, progress = job.progress || {};
   if (expectedJobId && job.id && job.id !== expectedJobId) expectedJobId = job.id;
   const value = Math.max(0, Math.min(1, Number(progress.value) || 0));
   const percent = Math.round(value * 100);
-  $('#body-stage').textContent = job.error ? 'Generation failed' : progress.label || job.phase || 'Working';
-  $('#body-percent').textContent = percent + '%';
-  $('#body-progress-bar').style.width = percent + '%';
+  const finished = Boolean(job.done);
+  if (job.kind) BODY_JOB_KIND = normaliseJobKind(job.kind);
+  if (!BODY_JOB_START) { BODY_JOB_START = Date.now(); BODY_ELAPSED_PREFIX = '+'; }
+  const shown = finished && !job.error ? 100 : percent;
+  $('#body-stage').textContent = job.error ? 'Generation failed'
+    : finished ? 'Finished' : progress.label || job.phase || 'Working';
+  $('#body-percent').textContent = shown + '%';
+  $('#body-progress-bar').style.width = shown + '%';
+  $('#body-progress-track').setAttribute('aria-valuenow', String(shown));
+  $('#body-progress-track').classList.toggle('indeterminate', !finished && shown <= 0);
   $('#body-progress-line').textContent = job.error || (job.log || []).slice(-1)[0] || '';
-  if (!job.done) {
+  if (!finished) {
     BODY_WATCH = setTimeout(() => pollBody(expectedJobId), 1100);
     return;
   }
+  endBodyProgress(Boolean(job.error));
   BODY_WATCH = null;
   BODY_STATE = await api('/api/avatar/body?slug=' + encodeURIComponent(slug));
   if (BODY_SLUG !== slug) return;
