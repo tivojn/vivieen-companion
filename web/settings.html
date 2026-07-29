@@ -82,8 +82,10 @@ button.btn.danger{color:#d9705f}
 .job-stage{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   color:var(--ink);font-weight:600}.job-pct{margin-left:auto;color:var(--dim);
   font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace}
+/* Gate rejections land here ("failed quality gates after 2 candidates: ...")
+   and the reason is the actionable part - wrap, never truncate. */
 .job-line{margin-top:7px;color:var(--dim);font:10.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  white-space:normal;overflow-wrap:anywhere}
 .jobbox .bar{height:3px;background:#1e1e23;border-radius:2px;overflow:hidden;margin-top:8px}
 .jobbox .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .35s}
 .jobbox.ok .bar i{background:var(--ok)}
@@ -258,8 +260,11 @@ button.btn.danger{color:#d9705f}
   border-radius:4px;overflow:hidden}
 .body-progress .bar i{display:block;height:100%;width:0;border-radius:4px;
   background:linear-gradient(90deg,#e2483a,#ff9264);transition:width .45s cubic-bezier(.4,0,.2,1)}
-#body-progress-line{margin:9px 0 0;color:var(--dim);white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis;font:10.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+/* Errors land here ("provider is not supported...") - the reader needs every
+   word, so wrap instead of truncating. Routine progress lines are short and
+   sit on one line either way. */
+#body-progress-line{margin:9px 0 0;color:var(--dim);white-space:normal;
+  overflow-wrap:anywhere;font:10.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
 .body-progress-hint{display:flex;gap:8px;align-items:flex-start;margin:11px 0 0;padding:9px 10px;
   border:1px solid rgba(201,144,58,.28);border-radius:9px;background:rgba(201,144,58,.075);
   color:#d3ab6c;font-size:11.5px;line-height:1.5}
