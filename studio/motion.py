@@ -1659,6 +1659,13 @@ def _pose_cycle_metrics(poses, start, end, profile="office-gait"):
         }
 
     reasons = []
+    # Wrist height is a taste rule, not an artifact gate: a hand at navel or
+    # rib height loops fine, and the power style's own prompt asks for arm
+    # drive the old hard ceiling rejected (every 2026-07-29 power candidate
+    # lost windows to "hand rises above the waist"). Taste never vetoes
+    # physics - the excess becomes a selection penalty instead, so windows
+    # with lower hands still win whenever the footage offers both.
+    style_penalty = 0.0
     foot_lift = _foot_lift_metrics(poses, start, end)
     if not foot_lift["available"]:
         reasons.append("foot lift tracking unavailable")
@@ -1672,12 +1679,11 @@ def _pose_cycle_metrics(poses, start, end, profile="office-gait"):
                 metrics["arm_excursion"] < limits["arm_excursion"] or
                 metrics["arm_crossings"] < 2):
             reasons.append(f"{side} arm swing does not complete")
-        if not metrics["wrist_height_available"]:
-            reasons.append(f"{side} wrist height unavailable")
-        elif (
-                metrics["wrist_elevation_p90"] > limits["wrist_p90"] or
-                metrics["wrist_elevation_max"] > limits["wrist_max"]):
-            reasons.append(f"{side} hand rises above the waist")
+        if metrics["wrist_height_available"]:
+            style_penalty += max(
+                0.0, metrics["wrist_elevation_p90"] - limits["wrist_p90"])
+            style_penalty += max(
+                0.0, metrics["wrist_elevation_max"] - limits["wrist_max"])
         if not metrics["leg_available"]:
             reasons.append(f"{side} leg tracking unavailable")
         elif metrics["leg_crossings"] < 2:
@@ -1716,6 +1722,7 @@ def _pose_cycle_metrics(poses, start, end, profile="office-gait"):
             if reasons else
             "both sides complete one contralateral gait cycle"
         ),
+        "style_penalty": round(style_penalty, 4),
         "tracked_joints": len(closure_errors),
         "closure_error": round(closure_error, 4),
         "velocity_error": round(velocity_error, 4),
@@ -1884,7 +1891,10 @@ def _select_loop(
                 pose_available = True
                 pose_penalty = (
                     quality["closure_error"] * 0.08
-                    + quality["velocity_error"] * 0.04)
+                    + quality["velocity_error"] * 0.04
+                    # Taste preference, demoted from a hard veto: prefer the
+                    # window with lower hands, never reject a clip over it.
+                    + quality["style_penalty"] * 0.5)
             # Weighted so a below-floor pair loses to any above-floor pair in
             # practice (a 0.03 shortfall costs more than typical differences
             # in the other terms), while ranking still works when every pair

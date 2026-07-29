@@ -559,6 +559,9 @@ class MotionPipelineTests(unittest.TestCase):
         self.assertFalse(quality["valid"])
         self.assertIn("swing foot lifts too high", quality["reason"])
 
+        # Wrist height is taste, not physics: raised hands never invalidate a
+        # window, they only cost a style penalty so lower-handed windows win
+        # when the footage offers both.
         raised_hands = [
             self._synthetic_pose(50 + index * 4, -math.pi / 2 + 2 * math.pi * index / 24)
             for index in range(25)
@@ -567,8 +570,9 @@ class MotionPipelineTests(unittest.TestCase):
             pose["joints"]["left_wrist"]["y"] = 55
             pose["joints"]["right_wrist"]["y"] = 55
         quality = motion._pose_cycle_metrics(raised_hands, 0, 24)
-        self.assertFalse(quality["valid"])
-        self.assertIn("hand rises above the waist", quality["reason"])
+        self.assertTrue(quality["valid"], quality)
+        self.assertGreater(quality["style_penalty"], 0)
+        self.assertEqual(0, motion._pose_cycle_metrics(complete, 0, 24)["style_penalty"])
 
         one_sided = [
             self._synthetic_pose(50 + index * 4, -math.pi / 2 + 2 * math.pi * index / 24)
