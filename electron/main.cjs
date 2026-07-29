@@ -933,10 +933,18 @@ function guardNavigation(window, kind) {
       if (targetUrl.protocol === 'https:') shell.openExternal(target).catch(() => {});
       return;
     }
-    if (kind === 'main' && targetUrl.pathname === '/settings') {
-      event.preventDefault();
-      openSettings();
+    if (kind === 'main') {
+      if (targetUrl.pathname === '/settings') {
+        event.preventDefault();
+        openSettings();
+      }
+      return;
     }
+    // Character Studio and the appearance popover are single documents. Any
+    // in-place navigation replaces the entire UI with whatever was linked - a
+    // stray <a href> to a .mp4 once swapped the studio for a bare video player
+    // with no way back. Nothing in these windows may leave its own page.
+    if (targetUrl.pathname !== `/${kind}`) event.preventDefault();
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
     let targetUrl;

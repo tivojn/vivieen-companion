@@ -6,30 +6,107 @@ fight the model's frontal prior.  Prep now measures the pose up front, crops a
 face-centred square at the resolution the mouth actually needs, and reports
 whether the source is frontal enough to build from.
 """
-import os, json
+import os, json, tempfile
 import numpy as np, cv2
-from . import face
+from . import cutout, face
 
 KEY_SIZE = 1024          # gpt-image-2 native square - max mouth pixels
 FACE_FRAC = 0.46         # face width as a fraction of the keyframe
 EYE_LINE = 0.40          # eye line this far down the keyframe
+CROWN_CLEARANCE = 0.055  # empty band the hair must keep above it, as a fraction
+                         # of the keyframe.  The runtime nods the head about a
+                         # neck pivot below the frame, so the crown travels
+                         # ~1.5x the eye line: a plate that merely touches the
+                         # top edge clips on every idle breath.
+HAIR_ABOVE_EYES = 1.05   # eye line to top of hair, in face-oval widths.  Only a
+                         # fallback, used when no silhouette is available.
 
 
-def square_crop(img, lm):
-    """Face-centred square crop box (x0, y0, size), clamped to the image."""
-    H, W = img.shape[:2]
+def silhouette_top(img, lm, log=None):
+    """Topmost head row of the person silhouette, or None if unavailable.
+
+    The face oval stops at the hairline, so landmarks cannot say where a
+    bouffant, a bun or a high ponytail ends.  macOS Vision segments the whole
+    person, which is the only local signal that knows about hair volume.
+    """
+    handle, source = tempfile.mkstemp(suffix=".png")
+    os.close(handle)
+    handle, mask = tempfile.mkstemp(suffix=".png")
+    os.close(handle)
+    try:
+        if not cv2.imwrite(source, img):
+            return None
+        if cutout.render(source, mask, log=log or (lambda *_: None)) is None:
+            return None
+        rgba = cv2.imread(mask, cv2.IMREAD_UNCHANGED)
+        if rgba is None or rgba.ndim != 3 or rgba.shape[2] != 4:
+            return None
+        oval = lm[face.FACE_OVAL]
+        fw = float(oval[:, 0].max() - oval[:, 0].min())
+        cx = float(oval[:, 0].mean())
+        # Only the column band around the head: a raised arm or a bystander at
+        # the edge of the frame must never pass for a hairline.
+        left = max(0, int(round(cx - fw)))
+        right = min(rgba.shape[1], int(round(cx + fw)) + 1)
+        rows = np.where((rgba[:, left:right, 3] > 8).any(axis=1))[0]
+        return float(rows.min()) if rows.size else None
+    finally:
+        for path in (source, mask):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
+def _border_colour(img):
+    """Median colour of the image border - the backdrop, in practice."""
+    edges = np.concatenate([img[:2].reshape(-1, 3), img[-2:].reshape(-1, 3),
+                            img[:, :2].reshape(-1, 3), img[:, -2:].reshape(-1, 3)])
+    return tuple(float(value) for value in np.median(edges, axis=0))
+
+
+def square_crop(img, lm, crown_y=None):
+    """Face-centred square crop box (x0, y0, size).
+
+    Two things used to cut the crown off.  The eye line alone decided the top
+    edge, which leaves only 0.87 face-widths above the eyes - fine for a crop
+    cut, nowhere near enough for hair volume.  And the box was then clamped
+    into the image, so a window that did reach high enough silently slid back
+    DOWN instead of overhanging.  The crown left the frame with no warning
+    either way.  Now the hair sets the ceiling and the caller pads, so the
+    framing the geometry asked for is the framing that ships.
+    """
     oval = lm[face.FACE_OVAL]
     fw = float(oval[:, 0].max() - oval[:, 0].min())
     cx = float(oval[:, 0].mean())
     eye_y = float((lm[face.EYE_L_OUT][1] + lm[face.EYE_R_OUT][1]) / 2)
 
     size = int(round(fw / FACE_FRAC))
-    size = min(size, H, W)
-    x0 = int(round(cx - size / 2))
-    y0 = int(round(eye_y - size * EYE_LINE))
-    x0 = max(0, min(x0, W - size))
-    y0 = max(0, min(y0, H - size))
-    return x0, y0, size
+    if crown_y is None:
+        crown_y = eye_y - fw * HAIR_ABOVE_EYES
+    # The crown, not the eye line, owns the top edge whenever the hair is tall.
+    top = min(eye_y - size * EYE_LINE, crown_y - size * CROWN_CLEARANCE)
+    return int(round(cx - size / 2)), int(round(top)), size
+
+
+def take_square(img, x0, y0, size, top_fill=None):
+    """Crop, extending the source wherever the box overhangs it.
+
+    Sides and bottom replicate the edge, which is seamless on the plain
+    backdrops these portraits use.  The top can be told to fill with a flat
+    colour instead: when the photo itself already cuts the hair, replicating
+    that row would smear hair upward and hand the cut-out a fake crown.
+    """
+    H, W = img.shape[:2]
+    left, top = max(0, -x0), max(0, -y0)
+    right, bottom = max(0, x0 + size - W), max(0, y0 + size - H)
+    if left or top or right or bottom:
+        img = cv2.copyMakeBorder(img, top, bottom, left, right,
+                                 cv2.BORDER_REPLICATE)
+        if top and top_fill is not None:
+            img[:top] = top_fill
+        x0, y0 = x0 + left, y0 + top
+    return img[y0:y0 + size, x0:x0 + size]
 
 
 def build_keyframe(src_path, out_path, diag_dir=None):
@@ -40,8 +117,11 @@ def build_keyframe(src_path, out_path, diag_dir=None):
     if lm is None:
         raise ValueError("no face detected in the uploaded image")
 
-    x0, y0, size = square_crop(img, lm)
-    crop = img[y0:y0 + size, x0:x0 + size]
+    crown_y = silhouette_top(img, lm)
+    x0, y0, size = square_crop(img, lm, crown_y)
+    clipped = crown_y is not None and crown_y <= 1
+    crop = take_square(img, x0, y0, size,
+                       _border_colour(img) if clipped else None)
     interp = cv2.INTER_AREA if size > KEY_SIZE else cv2.INTER_LANCZOS4
     key = cv2.resize(crop, (KEY_SIZE, KEY_SIZE), interpolation=interp)
     cv2.imwrite(out_path, key, [cv2.IMWRITE_PNG_COMPRESSION, 3])
@@ -54,6 +134,10 @@ def build_keyframe(src_path, out_path, diag_dir=None):
     lip = klm[face.OUTER_LIP]
     m["mouth_width_px"] = float(lip[:, 0].max() - lip[:, 0].min())
     m["crop"] = dict(x0=x0, y0=y0, size=size, source=[int(img.shape[1]), int(img.shape[0])])
+    key_crown = silhouette_top(key, klm)
+    m["source_crown_y"] = None if crown_y is None else float(crown_y)
+    m["crown_clearance"] = (None if key_crown is None
+                            else round(float(key_crown) / KEY_SIZE, 4))
     m["warnings"] = warnings_for(m)
 
     if diag_dir:
@@ -85,4 +169,11 @@ def warnings_for(m):
         w.append(f"mouth is foreshortened (ratio {m['foreshortening']:.2f}, frontal is 1.00)")
     if m["mouth_width_px"] < 120:
         w.append(f"mouth is only {m['mouth_width_px']:.0f}px wide - crop tighter on the face")
+    if m.get("source_crown_y") is not None and m["source_crown_y"] <= 1:
+        w.append("the photo itself cuts the top of the hair - the crown cannot "
+                 "be recovered, use a shot with space above the head")
+    clearance = m.get("crown_clearance")
+    if clearance is not None and clearance < CROWN_CLEARANCE * 0.5:
+        w.append(f"only {clearance * 100:.1f}% headroom above the hair - the "
+                 f"crown will clip as soon as the head moves")
     return w

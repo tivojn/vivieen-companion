@@ -115,6 +115,10 @@ button.btn.danger{color:#d9705f}
 .rig-close{margin-left:auto;border:0;background:none;color:var(--dim);font-size:24px;
   line-height:1;cursor:pointer;padding:5px 8px}.rig-close:hover{color:var(--ink)}
 .rig-loading{padding:80px 24px;text-align:center;color:var(--dim)}
+.preview-dialog{max-width:960px;min-height:0}
+.preview-stage{padding:18px;background:#0b0b0e}
+.preview-stage video{display:block;width:100%;max-height:calc(100vh - 190px);
+  border-radius:12px;background:#000}
 .rig-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,.72fr);
   min-height:660px}
 .rig-visual{padding:20px;border-right:1px solid var(--line);min-width:0}
@@ -426,6 +430,20 @@ button.btn.danger{color:#d9705f}
   </div>
 </section>
 </main>
+
+<div class="rig-shell" id="preview-modal" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+  <div class="rig-dialog preview-dialog">
+    <div class="rig-head">
+      <div>
+        <h3 id="preview-title">Preview</h3>
+        <p id="preview-subtitle">The built viseme set, played locally.</p>
+      </div>
+      <span class="pill ok">local file</span>
+      <button class="rig-close" id="preview-close" aria-label="Close preview">×</button>
+    </div>
+    <div class="preview-stage"><video id="preview-video" controls loop playsinline></video></div>
+  </div>
+</div>
 
 <div class="rig-shell" id="rig-modal" role="dialog" aria-modal="true" aria-labelledby="rig-title">
   <div class="rig-dialog">
@@ -1079,7 +1097,7 @@ function card(a) {
              <button class="btn sm" data-act="calibrate" ${busy ? 'disabled' : ''}>${busy ? 'Calibrating…' : 'Rebuild'}</button>
              <button class="btn sm" data-act="body" ${busy ? 'disabled' : ''}>${a.body ? 'Edit full body' : 'Create full body'}</button>`
       : `<button class="btn sm pri" data-act="build" ${busy ? 'disabled' : ''}>${busy ? 'Building…' : 'Build avatar'}</button>`}
-        ${a.preview ? `<a class="btn sm" href="/files/${a.slug}/preview.mp4">Preview</a>` : ''}
+        ${a.preview ? `<button class="btn sm" data-act="preview">Preview</button>` : ''}
         <button class="btn sm danger" data-act="delete" ${on ? 'disabled' : ''}>Delete</button>
       </div>
       <div class="jobbox ${busy ? 'on' : ''}">
@@ -1215,6 +1233,7 @@ function markAvatarBusy(slug, kind) {
 async function act(what, slug, btn) {
   if (what === 'calibrate') { openRig(slug); return; }
   if (what === 'body') { openBody(slug); return; }
+  if (what === 'preview') { openPreview(slug); return; }
   if (what === 'delete' && !confirm('Delete ' + slug + ' and everything built from it?')) return;
   btn.disabled = true;
   const r = await api('/api/avatar/' + what, {
@@ -2346,8 +2365,30 @@ $('#rig-preset').onchange = event => {
 });
 $('#rig-close').onclick = $('#rig-cancel').onclick = closeRig;
 $('#rig-apply').onclick = applyRig;
+// Preview used to be a plain link straight at preview.mp4.  Same origin, so
+// the navigation guard waved it through and the settings window replaced
+// Character Studio with Chromium's own player - no chrome, no way back.  It
+// plays in a modal now, and the shell refuses in-place navigation as backup.
+function openPreview(slug) {
+  const video = $('#preview-video');
+  $('#preview-subtitle').textContent = slug + ' - built viseme set, played locally.';
+  video.src = '/files/' + encodeURIComponent(slug) + '/preview.mp4?t=' + Date.now();
+  $('#preview-modal').classList.add('on');
+  video.play().catch(() => {});
+}
+function closePreview() {
+  const video = $('#preview-video');
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  $('#preview-modal').classList.remove('on');
+}
+$('#preview-close').onclick = closePreview;
+$('#preview-modal').onclick = event => { if (event.target === $('#preview-modal')) closePreview(); };
+
 $('#rig-modal').onclick = event => { if (event.target === $('#rig-modal')) closeRig(); };
 document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && $('#preview-modal').classList.contains('on')) closePreview();
   if (event.key === 'Escape' && $('#rig-modal').classList.contains('on')) closeRig();
 });
 

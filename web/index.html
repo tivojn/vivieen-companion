@@ -1159,6 +1159,14 @@ function viewCrop(meta,width,height){
   else if(view==='bust')crop={x:fx-fw*.72,y:fy-fh*.48,w:fw*2.44,h:fh*2.85};
   else if(view==='face')crop={x:fx-fw*.27,y:fy-fh*.25,w:fw*1.54,h:fh*1.48};
   else crop={x:fx-fw*.52,y:fy-fh*.42,w:fw*2.04,h:fh*2.10};
+  /* Hair volume varies far more than skull geometry does, so on any frame that
+     claims to show the whole head the SILHOUETTE top - not the face box - owns
+     the top edge.  A face box sits at the hairline: 0.42 face-heights above it
+     covers a flat crop and decapitates a blow-dry. */
+  if(view==='bust'||view==='head'||!['full','three-quarter','half','face'].includes(view)){
+    const crown=by-Math.max(4,crop.h*.03);
+    if(crop.y>crown){crop.h+=crop.y-crown;crop.y=crown;}
+  }
   return clampCrop(crop,width,height);
 }
 function petCamera(meta,width,height){
