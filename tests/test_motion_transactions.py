@@ -591,5 +591,33 @@ class MotionServerTransactionTests(unittest.TestCase):
         self.assertIn("BODY_STATE = await api('/api/avatar/body?slug='", settings)
 
 
+
+
+class WalkCycleContractTests(unittest.TestCase):
+    # The loop gate needs two hip-line crossings per limb, i.e. a full two-step
+    # cycle. These lock the generation prompt to what the validator accepts.
+
+    def test_every_gait_style_demands_a_two_step_cycle(self):
+        for style_id, preset in motion.WALK_STYLE_PRESETS.items():
+            if preset["validation"] == "traversal":
+                continue
+            with self.subTest(style=style_id):
+                prompt = motion._walk_video_prompt(style_id)
+                self.assertIn("TWO-STEP GAIT CYCLE", prompt)
+                self.assertIn("one step is not a loop", prompt)
+                self.assertIn("BEHIND the hip", prompt)
+
+    def test_traversal_styles_do_not_get_the_gait_contract(self):
+        prompt = motion._walk_video_prompt("cartwheel")
+        self.assertNotIn("TWO-STEP GAIT CYCLE", prompt)
+
+    def test_office_loop_window_can_hold_the_prompted_cadence(self):
+        # the office prompt asks for 108-114 steps per minute, so a two-step
+        # cycle lasts 60/114*2 = 1.05s to 60/108*2 = 1.11s; the loop search has
+        # to be able to select that window or every candidate is rejected.
+        loop = motion.WALK_STYLE_PRESETS["office"]["loop"]
+        self.assertLessEqual(loop["minimum"], 1.05)
+        self.assertGreaterEqual(loop["maximum"], 1.11)
+
 if __name__ == "__main__":
     unittest.main()

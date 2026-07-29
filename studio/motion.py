@@ -355,7 +355,20 @@ Editable wardrobe receipt, subordinate to the visual references: {outfit}"""
 
 def _walk_video_prompt(walk_style=None):
     walk_style = resolve_walk_style(walk_style)
-    return f"""{walk_style['video']}
+    # The loop gate requires two hip-line crossings per arm and per leg, i.e. a full
+    # two-step cycle. "One gait cycle" reads as "one step" to the video model, which
+    # renders the forward arm swing only and can never close the loop. Say two steps.
+    cycle_contract = (
+        ""
+        if walk_style["validation"] == "traversal" else
+        "\n\nPRIORITY 0 — COMPLETE TWO-STEP GAIT CYCLE: one step is not a loop. Walk TWO "
+        "full steps — the left foot passes the right foot, then the right foot passes the "
+        "left foot, and the body returns to the identical starting pose. Both arms must "
+        "complete the matching swing: each hand passes IN FRONT OF the hip and then "
+        "BEHIND the hip. A clip that ends while the near hand is still in front of the "
+        "hip is unusable. Hold one steady cadence so the two steps fill the clip evenly."
+    )
+    return f"""{walk_style['video']}{cycle_contract}
 
 PRIORITY 1 — IDENTITY, HAIR, AND WARDROBE: preserve the exact selected person's face, apparent age, body proportions, skin tone, hairline, hairstyle, outfit, materials, colors, accessories, and both complete shoes from the input keyframe in every frame. Never restyle, beautify, de-age, change clothes, change footwear, or invent a different person.
 
