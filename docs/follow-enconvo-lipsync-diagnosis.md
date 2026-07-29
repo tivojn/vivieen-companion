@@ -160,3 +160,35 @@ also feeds packets at 25 ms spacing, which the helper does not actually deliver.
    floor — e.g. ">= 60% of proposed changes reach the face" and "no frozen-mouth
    interval > 400 ms while active". Without a responsiveness assertion the gate will
    drift tight again.
+
+---
+
+## Fix shipped (2026-07-29, branch `lipsync-median-vote`)
+
+Two of the fixes above landed, plus the missing test:
+
+- **Fix 1** — `byExternalEnergy()` no longer gates viseme identity on
+  amplitude; shapes come from spectral ratios alone and loudness keeps
+  driving jaw opening through `lvl` in `jawFor()`. Measured alone:
+  rendered changes 39 → 56, worst freeze 2,432 ms → 800 ms.
+- **Fix 2 (variant)** — instead of EMA'd scores, `stabiliseExternalViseme()`
+  now keeps the last 5 candidate packets and renders the **majority vote
+  centred two packets back** (~64 ms of mouth lag, under the ~125 ms
+  video-late threshold). Dither runs of 1–2 packets lose the vote; real
+  syllables (~4 packets) always pass. The consecutive-sample counter,
+  hold and confirm timers are gone. Ties go to the centre packet. The
+  tail self-flushes because inactive packets keep voting `sil`.
+- **Fix 7** — `qa/enconvo_replay_qa.js` replays the real capture through
+  the *shipped* classifier and stabiliser (extracted verbatim from
+  `web/index.html`) and asserts ≥6 mouth changes/s, ≥40% of proposals
+  rendered, and no mid-speech freeze over 800 ms. It runs in `npm test`.
+  `qa/enconvo_monitor_qa.js` now feeds 32 ms packets and asserts that a
+  3-packet syllable always reaches the face.
+
+Measured on `qa/proof/enconvo-driven-voice.wav`, both fixes combined:
+**39 → 141 rendered changes (7.9/s against 7.8 syllables/s spoken), 17% →
+55% of proposals, worst freeze 2,432 ms → 448 ms.**
+
+Deliberately not fixed here: `PP FF TH DD nn` are still never proposed —
+bilabial closure needs richer bands or text alignment (fixes 5/6), and
+the 25 ms tap throttle (fix 4) is untouched. Those remain open.
