@@ -97,34 +97,38 @@ function testExternalVisemeStability() {
   const { resetExternalViseme, stabiliseExternalViseme, EXTERNAL_XFADE } = context.qa;
   assert.equal(EXTERNAL_XFADE, 0.065);
 
+  /* Native packets land every ~32ms (the tap's 25ms timer quantises to
+     buffer boundaries). The vote must reject single-packet jitter AND let
+     real articulation through - the old test only asserted the first, so an
+     unreachable gate read as a pass. */
   resetExternalViseme(0);
   assert.equal(stabiliseExternalViseme('aa', 0, true), 'sil');
-  assert.equal(stabiliseExternalViseme('aa', 25, true), 'sil');
-  assert.equal(stabiliseExternalViseme('aa', 50, true), 'aa');
+  assert.equal(stabiliseExternalViseme('aa', 32, true), 'sil');
+  assert.equal(stabiliseExternalViseme('aa', 64, true), 'aa',
+    'an utterance onset reaches the face two packets (~64ms) after it starts');
 
-  assert.equal(stabiliseExternalViseme('CH', 75, true), 'aa');
-  assert.equal(stabiliseExternalViseme('CH', 75, true), 'aa',
-    're-reading one packet on render frames cannot confirm a pose');
-  assert.equal(stabiliseExternalViseme('E', 100, true), 'aa');
-  assert.equal(stabiliseExternalViseme('aa', 125, true), 'aa',
-    'single-packet spectrum changes do not flip the mouth');
+  assert.equal(stabiliseExternalViseme('CH', 96, true), 'aa');
+  assert.equal(stabiliseExternalViseme('CH', 96, true), 'aa',
+    're-reading one packet on render frames cannot flip the mouth');
+  assert.equal(stabiliseExternalViseme('aa', 128, true), 'aa',
+    'single-packet spectrum jitter does not flip the mouth');
 
-  assert.equal(stabiliseExternalViseme('E', 150, true), 'aa');
-  assert.equal(stabiliseExternalViseme('E', 175, true), 'aa');
-  assert.equal(stabiliseExternalViseme('E', 200, true), 'aa');
-  assert.equal(stabiliseExternalViseme('E', 225, true), 'E');
+  assert.equal(stabiliseExternalViseme('E', 160, true), 'aa');
+  assert.equal(stabiliseExternalViseme('E', 192, true), 'aa',
+    'a split vote holds the current shape instead of guessing');
+  assert.equal(stabiliseExternalViseme('E', 224, true), 'E',
+    'a real syllable (3+ packets) always reaches the face - articulation is never vetoed');
   assert.equal(stabiliseExternalViseme('CH', 220, true), 'E',
     'out-of-order packets cannot rewind articulation');
 
-  assert.equal(stabiliseExternalViseme('aa', 250, true), 'E');
-  assert.equal(stabiliseExternalViseme('aa', 275, true), 'E');
-  assert.equal(stabiliseExternalViseme('aa', 300, true), 'E');
-  assert.equal(stabiliseExternalViseme('aa', 325, true), 'E');
-  assert.equal(stabiliseExternalViseme('aa', 350, true), 'aa');
-  assert.equal(stabiliseExternalViseme('sil', 375, false), 'aa');
-  assert.equal(stabiliseExternalViseme('sil', 400, false), 'aa');
-  assert.equal(stabiliseExternalViseme('sil', 425, false), 'aa');
-  assert.equal(stabiliseExternalViseme('sil', 450, false), 'sil');
+  assert.equal(stabiliseExternalViseme('sil', 256, false), 'E');
+  assert.equal(stabiliseExternalViseme('sil', 288, false), 'E');
+  assert.equal(stabiliseExternalViseme('sil', 320, false), 'sil',
+    'the buffered tail flushes to silence at end of utterance instead of hanging open');
+
+  resetExternalViseme(1000);
+  assert.equal(stabiliseExternalViseme('oh', 1000, true), 'sil',
+    'reset clears the vote window so stale votes cannot leak into the next utterance');
 }
 
 function testNoDropPollingFallback() {
