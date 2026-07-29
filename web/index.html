@@ -777,6 +777,65 @@ function gazeFor(now,h,lever){
   return {x:-VOR_X*h.x-VOR_T*cant+mx, y:-VOR_Y*h.y+my};
 }
 
+/* ---- cursor gaze -----------------------------------------------------------
+   The lens lock above is her resting behaviour; a person also glances at
+   nearby motion. When the cursor MOVES, attention eases toward it and the
+   iris slides in its direction, saturating at the baked grid's extremes; when
+   the cursor goes still the attention decays and the lens lock returns. She
+   never tracks while speaking - an anchor holds the camera - and the offsets
+   stay inside the grid, so this can never paint an unbaked eye state. */
+let cursorFeed=null,cursorMovedAt=0,gazeAttn=0;
+const cursorEye={x:0,y:0};
+function noteCursor(x,y){
+  const now=performance.now();
+  if(!cursorFeed||Math.abs(x-cursorFeed.x)>1||Math.abs(y-cursorFeed.y)>1)cursorMovedAt=now;
+  cursorFeed={x,y,at:now};
+}
+function faceAnchorCss(){
+  if(!ready)return null;
+  const hasBody=Boolean(BODY&&HEADMASK&&M.body);
+  const source=hasBody?BODY:faceSurface;
+  if(!source)return null;
+  const width=source.width,height=source.height;
+  const fallback={bounds:(M.cutout&&M.cutout.bounds)||[0,0,width,height],
+    alignment:{face_bounds:[width*.20,height*.10,width*.60,height*.62]}};
+  const camera=petCamera(hasBody?M.body:fallback,width,height);
+  let ex,ey;
+  if(M.gaze&&M.gaze.l&&M.gaze.r){
+    const mid=box=>[box[0]+box[2]/2,box[1]+box[3]/2];
+    const l=mid(M.gaze.l.box),r=mid(M.gaze.r.box);
+    ex=(l[0]+r[0])/2;ey=(l[1]+r[1])/2;
+  }else{
+    const N=M.neck||{x:width/2,ref:height*0.3};
+    ex=N.x;ey=N.ref;
+  }
+  const matrix=hasBody?M.body.face_transform:null;
+  if(matrix&&matrix.length===2){
+    const bx=matrix[0][0]*ex+matrix[0][1]*ey+matrix[0][2];
+    const by=matrix[1][0]*ex+matrix[1][1]*ey+matrix[1][2];
+    ex=bx;ey=by;
+  }
+  const ratio=devicePixelRatio||1;
+  return {x:(ex*camera.scale+camera.x)/ratio,
+          y:(ey*camera.scale+camera.y)/ratio};
+}
+function cursorGazeFor(now){
+  let target=0,dx=0,dy=0;
+  const anchor=cursorFeed&&now-cursorFeed.at<400?faceAnchorCss():null;
+  if(anchor){
+    dx=cursorFeed.x-anchor.x;dy=cursorFeed.y-anchor.y;
+    if(!speaking&&(petHit||now-cursorMovedAt<2600))target=1;
+  }
+  gazeAttn+=(target-gazeAttn)*(target>gazeAttn?0.10:0.03);
+  if(gazeAttn<0.02)return null;
+  const rangeX=M.gaze?Math.max(...M.gaze.dxs.map(Math.abs)):1.5;
+  const rangeY=M.gaze?Math.max(...M.gaze.dys.map(Math.abs)):0.75;
+  const gx=Math.tanh(dx/150)*rangeX,gy=Math.tanh(dy/210)*rangeY;
+  cursorEye.x+=(gx-cursorEye.x)*0.30;   // saccade-quick, but never a teleport
+  cursorEye.y+=(gy-cursorEye.y)*0.30;
+  return {x:cursorEye.x,y:cursorEye.y,w:gazeAttn};
+}
+
 /* ---- head on neck ----------------------------------------------------------
    The first version translated the WHOLE FRAME - head, shoulders, jacket and
    backdrop as one block. That is not a head moving, it is a camera moving, and
@@ -1298,6 +1357,8 @@ function loop(now){
   const N=M.neck||{ref:406,pivot:985,x:512};
   const lever=N.pivot-N.ref;               // eyes to neck pivot, in keyframe px
   const gv=gazeFor(now,h,lever);           // eyes hold the lens while that moves
+  const cg=cursorGazeFor(now);             // ...unless your cursor is moving nearby
+  if(cg){gv.x+=(cg.x-gv.x)*cg.w;gv.y+=(cg.y-gv.y)*cg.w;}
 
   const lids={l:lidFor(now,'l'),r:lidFor(now,'r')};
   const bv={l:browFor(now,'l',lids.l),r:browFor(now,'r',lids.r)};
@@ -1480,10 +1541,20 @@ function closePetChat(){
   updatePetHit(true);
 }
 if(HAS_GLOBAL_PET_POINTER)SHELL.onPetPointer(point=>{
-  if(dragging||!point)return;
-  pointer={x:Number(point.x),y:Number(point.y)};
+  if(!point)return;
+  noteCursor(Number(point.x),Number(point.y));
+  if(dragging)return;
+  // Off-window coordinates feed the gaze only; hit testing keeps its
+  // in-window sentinel so click-through behaviour is unchanged.
+  const inside=point.inside!==undefined
+    ?Boolean(point.inside)
+    :point.x>=0&&point.y>=0;
+  pointer=inside?{x:Number(point.x),y:Number(point.y)}:{x:-1,y:-1};
   updatePetHit();
 });
+addEventListener('pointermove',event=>{
+  if(!HAS_GLOBAL_PET_POINTER)noteCursor(event.clientX,event.clientY);
+},{passive:true});
 cv.addEventListener('pointermove',event=>{
   if(!HAS_GLOBAL_PET_POINTER)pointer={x:event.clientX,y:event.clientY};
   if(dragging){SHELL.movePetDrag({screenX:event.screenX,screenY:event.screenY});return;}
