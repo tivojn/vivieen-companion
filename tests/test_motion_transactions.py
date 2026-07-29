@@ -18,6 +18,21 @@ ROOT = Path(__file__).resolve().parents[1]
 server_app = importlib.import_module("server.app")
 
 
+def _selected_kinds(arguments, default=("walk", "idle")):
+    """The kinds tuple a studio.motion generator was called with.
+
+    The fakes below stand in for functions whose signatures keep gaining
+    trailing parameters, so the tuple cannot be found by position: when
+    _generate_videos gained walk_frame, arguments[-1] silently stopped being
+    the kinds tuple and every partial build looked like a full one. Match it by
+    shape instead, since it is the only argument that is a tuple of clip kinds.
+    """
+    for argument in reversed(arguments):
+        if isinstance(argument, tuple) and set(argument) <= set(default):
+            return argument
+    return default
+
+
 class FakeRegistry:
     def __init__(self, directory, manifest):
         self.directory = directory
@@ -48,7 +63,7 @@ class MotionBuildTransactionTests(unittest.TestCase):
             directory = os.path.join(cache, "keyframes")
             os.makedirs(directory, exist_ok=True)
             outputs = {}
-            selected = arguments[-1] if isinstance(arguments[-1], tuple) else ("walk", "idle")
+            selected = _selected_kinds(arguments)
             for kind in selected:
                 destination = os.path.join(directory, f"{kind}.png")
                 if not os.path.exists(destination):
@@ -60,7 +75,7 @@ class MotionBuildTransactionTests(unittest.TestCase):
             directory = os.path.join(cache, "videos")
             os.makedirs(directory, exist_ok=True)
             outputs = {}
-            selected = arguments[-1] if isinstance(arguments[-1], tuple) else ("walk", "idle")
+            selected = _selected_kinds(arguments)
             for kind in selected:
                 destination = os.path.join(directory, f"{kind}.mp4")
                 if not os.path.exists(destination):

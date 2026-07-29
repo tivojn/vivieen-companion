@@ -19,9 +19,9 @@ from . import body, cutout
 
 
 ENCONVO = body.ENCONVO
-MOTION_VERSION = 8
-TARGET_WIDTH = 256
-TARGET_HEIGHT = 384
+MOTION_VERSION = 9
+TARGET_WIDTH = 512
+TARGET_HEIGHT = 768
 WALK_FPS = 24
 IDLE_FPS = 12
 MAX_SHEET_FRAMES = 32
@@ -175,27 +175,39 @@ WALK_STYLE_PRESETS = {
     },
     "cartwheel": {
         "label": "Cartwheel",
-        "description": "One clean lateral cartwheel; experimental with tailored wardrobes.",
+        "description": "Repeating lateral cartwheels; experimental with tailored wardrobes.",
         "validation": "traversal",
         "loop": {"target": 2.8, "minimum": 1.7, "maximum": 5.2},
+        # The keyframe seeds frame 0, so for a traversal style it must BE the loop
+        # anchor, not the launch pose. This used to ask for both arms lengthened
+        # diagonally overhead, which also contradicted the video contract's "begin
+        # standing fully upright, arms lowered". The model obeyed the keyframe, so
+        # every clip opened in a pose it never returned to and no window could close.
         "keyframe": (
-            "right-facing three-quarter preparation for one lateral cartwheel traveling "
-            "to the right. Place the leading foot forward, lengthen both arms diagonally "
-            "overhead, keep the torso engaged, and show both complete hands and shoes. "
+            "right-facing neutral upright standing rest pose, the resting beat between "
+            "two lateral cartwheels traveling to the right. Stand tall and balanced with "
+            "both feet flat and together on the floor, both arms hanging relaxed at the "
+            "sides, shoulders level, torso quiet, and both complete hands and shoes "
+            "visible. This is a still upright stance, not a launch, lunge, windup, or "
+            "reach: do not raise the arms overhead and do not stride the feet apart. "
             "Preserve the outfit's coverage and tailoring exactly; do not redesign it as "
             "sportswear or expose underwear."
         ),
         "video": (
-            "Animate exactly one clean lateral cartwheel from camera-left to camera-right. "
-            "Begin upright, place each hand on the floor in sequence, pass through a clear "
-            "inverted split-leg position, land one foot then the other, and finish upright "
-            "in a matching composed stance. Keep forward travel smooth and continuous. "
-            "Preserve full wardrobe coverage, both hands, both shoes, and the exact person "
-            "throughout the inversion."
+            "Animate repeated clean lateral cartwheels traveling from camera-left to "
+            "camera-right, each one separated by a clear upright standing beat. Each "
+            "cartwheel begins from that upright stance, places each hand on the floor in "
+            "sequence, passes through a clear inverted split-leg position, lands one foot "
+            "then the other, and rises back to the identical upright stance before the "
+            "next one begins. Keep forward travel smooth and evenly paced. Preserve full "
+            "wardrobe coverage, both hands, both shoes, and the exact person throughout "
+            "the inversion."
         ),
         "reject": (
-            "Reject flips, aerials, handspring rebounds, tumbling chains, floor sliding, "
-            "wardrobe exposure, missing hands or shoes, or a finish facing the wrong way."
+            "Reject flips, aerials, handspring rebounds, floor sliding, wardrobe exposure, "
+            "missing hands or shoes, a finish facing the wrong way, a single cartwheel "
+            "followed by standing still, or nonstop tumbling that never returns to an "
+            "upright stance."
         ),
     },
 }
@@ -285,6 +297,59 @@ def _walk_style_receipt(style):
     }
 
 
+# The walk plate is a traversal runway: the subject starts near the left edge and
+# crosses to the right so the source trajectory can be measured. The provider caps
+# output at 720p, and 720p means the SHORT side, so a landscape plate only ever
+# has 720 rows to spend on the body while a portrait plate has 1088. Portrait
+# therefore buys real subject detail, but it pays in runway, so each frame carries
+# its own geometry and its own crossing contract rather than sharing constants.
+WALK_FRAME_PRESETS = {
+    "landscape": {
+        "label": "Landscape runway",
+        "aspect_ratio": "16:9",
+        "width": 1280,
+        "height": 720,
+        "floor": 679,
+        "guides": (320, 640, 960),
+        "subject_height": 620,
+        "subject_width": 250,
+        "start_x": 190,
+        "crossing": (15, 85),
+    },
+    "portrait": {
+        "label": "Portrait runway",
+        "aspect_ratio": "2:3",
+        "width": 720,
+        "height": 1088,
+        "floor": 1040,
+        "guides": (180, 360, 540),
+        "subject_height": 940,
+        "subject_width": 340,
+        "start_x": 190,
+        "crossing": (26, 74),
+    },
+}
+DEFAULT_WALK_FRAME = "landscape"
+
+
+def resolve_walk_frame(frame_id=None):
+    if isinstance(frame_id, dict):
+        frame_id = frame_id.get("id")
+    frame_id = _clean(frame_id, 40) or DEFAULT_WALK_FRAME
+    preset = WALK_FRAME_PRESETS.get(frame_id)
+    if not preset:
+        raise ValueError(f"unknown Horizon Walk frame: {frame_id}")
+    return {"id": frame_id, **preset}
+
+
+def _walk_frame_receipt(frame):
+    frame = resolve_walk_frame(frame)
+    return {
+        key: frame[key]
+        for key in ("id", "label", "aspect_ratio", "width", "height")
+    }
+
+
 def resolve_idle_pose(pose_id=None, custom_prompt=""):
     if isinstance(pose_id, dict):
         custom_prompt = pose_id.get("prompt", custom_prompt)
@@ -304,6 +369,109 @@ def resolve_idle_pose(pose_id=None, custom_prompt=""):
     if not preset:
         raise ValueError(f"unknown edge-idle pose: {pose_id}")
     return {"id": pose_id, **preset}
+
+
+def recorded_motion_settings(avatar_dir):
+    """Walk style and idle pose that produced the motion currently shipped.
+
+    Re-cutting an approved take has to reuse the direction that take was
+    generated from, otherwise the rebuilt manifest would advertise a pose or
+    style the footage never performed.
+    """
+    manifest = os.path.join(avatar_dir, "motion", "motion.json")
+    if not os.path.isfile(manifest):
+        return {}
+    try:
+        with open(manifest, encoding="utf-8") as handle:
+            metadata = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    settings = {}
+    walk_style = metadata.get("walk_style")
+    if isinstance(walk_style, dict) and walk_style.get("id"):
+        settings["walk_style"] = walk_style["id"]
+    walk_frame = metadata.get("walk_frame")
+    if isinstance(walk_frame, dict) and walk_frame.get("id"):
+        settings["walk_frame"] = walk_frame["id"]
+    idle_pose = metadata.get("idle_pose")
+    if isinstance(idle_pose, dict) and idle_pose.get("id"):
+        settings["idle_pose"] = idle_pose
+    return settings
+
+
+def approved_source(avatar_dir, kind):
+    """Archived provider footage that produced the clip currently shipped."""
+    path = os.path.join(avatar_dir, "motion", "raw", f"{kind}-source.mp4")
+    return path if os.path.isfile(path) else None
+
+
+def approved_direction_conflict(
+        avatar_dir, kinds, walk_style=None, idle_pose=None, walk_frame=None):
+    """Why approved footage cannot be re-cut under a different direction.
+
+    The archived takes performed the direction recorded in the manifest. Re-
+    cutting them under another style or pose would ship metadata describing
+    motion the footage never performed, so the caller has to either keep the
+    recorded direction or generate fresh footage. Returns an explanation, or
+    None when re-cutting is safe.
+    """
+    recorded = recorded_motion_settings(avatar_dir)
+    if "walk" in kinds and recorded.get("walk_frame"):
+        # The archived clip physically IS landscape or portrait, so a frame
+        # switch cannot be honoured by re-cutting; it needs new footage.
+        wanted_frame = resolve_walk_frame(walk_frame)["id"]
+        if wanted_frame != recorded["walk_frame"]:
+            return (
+                f"approved walk footage was shot on the "
+                f"'{recorded['walk_frame']}' runway, not '{wanted_frame}'; "
+                f"drop --reuse-approved to shoot a '{wanted_frame}' walk"
+            )
+    if "walk" in kinds and recorded.get("walk_style"):
+        wanted = resolve_walk_style(walk_style)["id"]
+        if wanted != recorded["walk_style"]:
+            return (
+                f"approved walk footage performs '{recorded['walk_style']}', "
+                f"not '{wanted}'; drop --reuse-approved to generate a "
+                f"'{wanted}' walk")
+    if "idle" in kinds and recorded.get("idle_pose"):
+        wanted = resolve_idle_pose(idle_pose)
+        current = recorded["idle_pose"]
+        if (wanted["id"] != current.get("id")
+                or wanted.get("prompt") != current.get("prompt")):
+            return (
+                f"approved idle footage performs '{current.get('id')}', not "
+                f"'{wanted['id']}'; drop --reuse-approved to generate a "
+                f"'{wanted['id']}' idle")
+    return None
+
+
+def seed_approved_sources(
+        avatar_dir, kinds, pose_reference=None, idle_pose=None,
+        walk_style=None, log=None, walk_frame=None):
+    """Prime the video cache with footage that was already approved.
+
+    A successful build deletes its own cache, so a later rebuild would ask the
+    provider for fresh footage and land a different performance. The takes
+    under motion/raw are the ones that actually passed review, so copying them
+    back into the cache lets a rebuild re-cut that same performance onto the
+    current canvas without spending a generation.
+    """
+    context = _build_context(
+        avatar_dir, pose_reference, idle_pose, walk_style, walk_frame)
+    video_dir = os.path.join(context["cache"], "videos")
+    os.makedirs(video_dir, mode=0o700, exist_ok=True)
+    seeded = []
+    for kind in kinds:
+        source = approved_source(avatar_dir, kind)
+        if not source:
+            raise RuntimeError(
+                f"no approved {kind} footage to reuse; "
+                f"expected motion/raw/{kind}-source.mp4")
+        shutil.copy2(source, os.path.join(video_dir, f"{kind}.mp4"))
+        seeded.append(kind)
+        if log:
+            log(f"reusing approved {kind} footage: {os.path.basename(source)}")
+    return seeded
 
 
 def _sha256(path):
@@ -353,13 +521,28 @@ COMPOSITION — one person only, full figure centered on a vertical 2:3 canvas w
 Editable wardrobe receipt, subordinate to the visual references: {outfit}"""
 
 
-def _walk_video_prompt(walk_style=None):
+def _walk_video_prompt(walk_style=None, walk_frame=None):
     walk_style = resolve_walk_style(walk_style)
+    walk_frame = resolve_walk_frame(walk_frame)
+    enters, exits = walk_frame["crossing"]
     # The loop gate requires two hip-line crossings per arm and per leg, i.e. a full
     # two-step cycle. "One gait cycle" reads as "one step" to the video model, which
     # renders the forward arm swing only and can never close the loop. Say two steps.
+    # Traversal styles first had no loop contract at all, so the model performed the
+    # move once and stood still; no window could close because the opening pose never
+    # returned. Demanding a continuous back-to-back chain then overcorrected into an
+    # unbroken tumble with no upright frame anywhere, which also cannot close. The
+    # loop needs a repeated ANCHOR pose, so ask for the upright beat explicitly.
     cycle_contract = (
-        ""
+        "\n\nPRIORITY 0 — REPEATING TRAVERSAL LOOP WITH AN UPRIGHT ANCHOR: perform the "
+        "move at least twice, separated by a clearly upright standing beat. Begin the "
+        "clip standing fully upright, feet together on the floor, arms lowered. Perform "
+        "the move once, return to that exact same upright standing beat and hold it "
+        "briefly, then perform the identical move again and return to it once more. The "
+        "upright beat must be unmistakable and identical every time, because it is the "
+        "frame the loop cuts on. Keep every repetition the same speed, the same shape, "
+        "and the same facing. Do not tumble continuously without ever standing up, and "
+        "do not perform the move once and then stand still for the rest of the clip."
         if walk_style["validation"] == "traversal" else
         "\n\nPRIORITY 0 — COMPLETE TWO-STEP GAIT CYCLE: one step is not a loop. Walk TWO "
         "full steps — the left foot passes the right foot, then the right foot passes the "
@@ -372,7 +555,7 @@ def _walk_video_prompt(walk_style=None):
 
 PRIORITY 1 — IDENTITY, HAIR, AND WARDROBE: preserve the exact selected person's face, apparent age, body proportions, skin tone, hairline, hairstyle, outfit, materials, colors, accessories, and both complete shoes from the input keyframe in every frame. Never restyle, beautify, de-age, change clothes, change footwear, or invent a different person.
 
-CAMERA AND PLATE: the three darker-green vertical registration lines and floor line remain exactly stationary. Camera scale, exposure, and color remain constant. The entire background and floor stay saturated chroma-key green with no scenery, shadows, reflections, text, props, gray, white, or green spill. Keep her complete full body and both shoes inside frame while she crosses from roughly 15% to 85% at constant speed.
+CAMERA AND PLATE: the three darker-green vertical registration lines and floor line remain exactly stationary. Camera scale, exposure, and color remain constant. The entire background and floor stay saturated chroma-key green with no scenery, shadows, reflections, text, props, gray, white, or green spill. Keep her complete full body and both shoes inside frame while she crosses from roughly {enters}% to {exits}% at constant speed.
 
 STYLE-SPECIFIC REJECTIONS — {walk_style['reject']}
 
@@ -424,18 +607,23 @@ def _image_command(provider, references, output_dir, file_name, prompt):
     return command
 
 
-def _video_command(provider, keyframe, output_dir, file_name, prompt):
+def _video_command(
+        provider, keyframe, output_dir, file_name, prompt, aspect_ratio=None):
     normalized = provider["name"].replace("-enconvo", "")
     if normalized != "x_ai":
         raise RuntimeError(
             f"EnConvo's selected video provider is not supported for Pet motion yet: {provider['name']}")
+    if not aspect_ratio:
+        aspect_ratio = "16:9" if file_name.startswith("walk") else "2:3"
     command = [
         ENCONVO, "video_create", "features", "x_ai/create",
         "--prompt", prompt,
         "--mode", "image-to-video",
         "--image", keyframe,
         "--duration", "6",
-        "--aspect_ratio", "16:9" if file_name.startswith("walk") else "2:3",
+        "--aspect_ratio", aspect_ratio,
+        # The provider only offers 720p and 480p, and 720p sizes the SHORT side.
+        # Subject detail is therefore bought with aspect ratio, not this flag.
         "--resolution", "720p",
         "--output_dir", output_dir,
         "--file_name", file_name,
@@ -510,7 +698,8 @@ def _standard_image(source, destination):
     return destination
 
 
-def _wide_walk_keyframe(source, destination, log):
+def _wide_walk_keyframe(source, destination, log, walk_frame=None):
+    walk_frame = resolve_walk_frame(walk_frame)
     source_image = cv2.imread(source, cv2.IMREAD_COLOR)
     if source_image is None:
         raise RuntimeError("could not decode the walk traversal keyframe")
@@ -527,18 +716,30 @@ def _wide_walk_keyframe(source, destination, log):
         raise RuntimeError("walk traversal keyframe has no person")
     x, y, width, height = cv2.boundingRect(points)
     person = rgba[y:y + height, x:x + width]
-    scale = min(620 / height, 250 / width)
+    scale = min(
+        walk_frame["subject_height"] / height,
+        walk_frame["subject_width"] / width,
+    )
     person = cv2.resize(
         person,
         (round(width * scale), round(height * scale)),
         interpolation=cv2.INTER_AREA,
     )
-    canvas = np.full((720, 1280, 3), (0, 220, 0), dtype=np.uint8)
-    for panel_x in (320, 640, 960):
-        cv2.line(canvas, (panel_x, 0), (panel_x, 678), (0, 182, 0), 2)
-    cv2.line(canvas, (0, 679), (1280, 679), (0, 168, 0), 2)
-    left = 190 - person.shape[1] // 2
-    top = 678 - person.shape[0]
+    plate_width = walk_frame["width"]
+    plate_height = walk_frame["height"]
+    floor = walk_frame["floor"]
+    canvas = np.full(
+        (plate_height, plate_width, 3), (0, 220, 0), dtype=np.uint8)
+    for panel_x in walk_frame["guides"]:
+        cv2.line(canvas, (panel_x, 0), (panel_x, floor - 1), (0, 182, 0), 2)
+    cv2.line(canvas, (0, floor), (plate_width, floor), (0, 168, 0), 2)
+    # A narrow plate can start the subject far enough left that half the body
+    # falls outside the frame, so keep the placement inside the runway.
+    left = min(
+        max(0, walk_frame["start_x"] - person.shape[1] // 2),
+        max(0, plate_width - person.shape[1]),
+    )
+    top = max(0, floor - 1 - person.shape[0])
     region = canvas[top:top + person.shape[0], left:left + person.shape[1]]
     alpha = person[:, :, 3:4].astype(np.float32) / 255
     region[:] = (person[:, :, :3] * alpha + region * (1 - alpha)).astype(np.uint8)
@@ -585,7 +786,8 @@ def _generate_keyframes(
 
 def _generate_videos(
         cache, video_provider, keyframes, prompts, log,
-        kinds=("walk", "idle")):
+        kinds=("walk", "idle"), walk_frame=None):
+    walk_frame = resolve_walk_frame(walk_frame)
     video_dir = os.path.join(cache, "videos")
     os.makedirs(video_dir, mode=0o700, exist_ok=True)
 
@@ -595,12 +797,19 @@ def _generate_videos(
             return destination
         output_dir = os.path.join(video_dir, f"{kind}-provider")
         source_keyframe = keyframes[kind]
+        aspect_ratio = None
         if kind == "walk":
             source_keyframe = _wide_walk_keyframe(
-                source_keyframe, os.path.join(video_dir, "walk-traversal-keyframe.png"), log)
+                source_keyframe,
+                os.path.join(video_dir, "walk-traversal-keyframe.png"),
+                log,
+                walk_frame,
+            )
+            aspect_ratio = walk_frame["aspect_ratio"]
         generated = _run(
             _video_command(
-                video_provider, source_keyframe, output_dir, f"{kind}-source", prompts[kind]),
+                video_provider, source_keyframe, output_dir, f"{kind}-source",
+                prompts[kind], aspect_ratio),
             output_dir,
             {".mp4", ".mov", ".webm", ".m4v"},
         )
@@ -1042,9 +1251,15 @@ def _segment_frames(frames, workspace, log):
     def segment(index):
         destination = os.path.join(alpha_dir, f"{index:04d}.png")
         pose_destination = os.path.join(pose_dir, f"{index:04d}.json")
-        if not cutout.render(
-                sources[index], destination, log=lambda _message: None, tight=True,
-                pose_destination=pose_destination):
+        rendered = cutout.render(
+            sources[index], destination, log=lambda _message: None, tight=True,
+            pose_destination=pose_destination)
+        # On a green-screen clip the Vision mask is discarded in favour of the
+        # chroma key below, so an empty mask must not fail the build. Vision
+        # returns nothing for inverted or non-human subjects (cartwheels,
+        # creature avatars) that the chroma key mattes perfectly well. The pose
+        # metadata check further down still guards what we actually consume.
+        if not rendered and not green_screen:
             raise RuntimeError(f"local person segmentation failed on frame {index + 1}")
         image = (
             _chroma_key_frame(frames[index])
@@ -1478,7 +1693,33 @@ def _pose_cycle_metrics(poses, start, end, profile="office-gait"):
     }
 
 
+# A tracked hand or heel counts as missing when it sits further than this many
+# probe radii from any opaque pixel, or when its probe disc is emptier than this.
+# Measured healthy samples: offset <= 0.16 radii, fill >= 0.16.
+# Measured genuine holes:   offset >= 0.55 radii, fill <= 0.088.
+EXTREMITY_OFFSET_LIMIT = 0.35
+EXTREMITY_FILL_MINIMUM = 0.12
+
+
 def _extremity_integrity(frames, poses, start, end):
+    """Check that every tracked hand and heel is actually drawn.
+
+    This used to compare a per-frame opaque-pixel COUNT against the median count
+    across the loop. The probe radius scales with the tracked pose height, so it
+    changes frame to frame; whenever pose height collapsed, the sampled disc
+    shrank quadratically and a completely solid limb was reported as missing. A
+    measured cartwheel was rejected on a frame whose ankle discs were 119/119 and
+    121/121 opaque - a 100% solid limb called a disappearing heel.
+
+    Both replacement measures are scale-invariant:
+
+      offset - how far the joint sits from the nearest opaque pixel, in multiples
+               of its own probe radius. Across measured clips every healthy sample
+               sat within 0.16 radii of the body and every genuine hole was 0.55
+               radii or further, so this separates cleanly.
+      fill   - how much of the probe disc is opaque, which still catches a hollow
+               extremity that happens to sit next to the body.
+    """
     unavailable = {
         "available": False,
         "valid": False,
@@ -1499,6 +1740,15 @@ def _extremity_integrity(frames, poses, start, end):
         if height is None:
             continue
         alpha = frames[index][:, :, 3]
+        # Distance from every pixel to the nearest opaque pixel, computed once per
+        # frame so each joint lookup is O(1).
+        background = (alpha < 24).astype(np.uint8)
+        if not background.any():
+            offsets = np.zeros(alpha.shape, dtype=np.float32)
+        elif background.all():
+            offsets = np.full(alpha.shape, float(max(alpha.shape)), dtype=np.float32)
+        else:
+            offsets = cv2.distanceTransform(background, cv2.DIST_L2, 3)
         for joint, (radius_fraction, lower_half) in specifications.items():
             point = _pose_point(pose, joint, 0.20)
             if point is None:
@@ -1512,22 +1762,38 @@ def _extremity_integrity(frames, poses, start, end):
             region = ((columns - point[0]) ** 2 + (rows - point[1]) ** 2) <= radius ** 2
             if lower_half:
                 region &= rows >= point[1] - radius * 0.15
-            samples[joint].append(int(np.sum((alpha[y0:y1, x0:x1] >= 24) & region)))
+            area = int(np.sum(region))
+            pixels = int(np.sum((alpha[y0:y1, x0:x1] >= 24) & region))
+            column = int(round(point[0]))
+            row = int(round(point[1]))
+            if 0 <= row < offsets.shape[0] and 0 <= column < offsets.shape[1]:
+                offset = float(offsets[row, column])
+            else:
+                offset = float(max(alpha.shape))
+            samples[joint].append({
+                "pixels": pixels,
+                "fill": pixels / max(1, area),
+                "offset_ratio": offset / max(1, radius),
+            })
 
     minimum_tracking = max(4, math.ceil((end - start) * 0.60))
     per_joint = {}
     for joint, values in samples.items():
         if len(values) < minimum_tracking:
             continue
-        median = float(np.median(values))
-        threshold = max(3, median * 0.18)
-        missing = sum(value < threshold for value in values)
+        fills = [value["fill"] for value in values]
+        offset_ratios = [value["offset_ratio"] for value in values]
+        missing = sum(
+            value["offset_ratio"] > EXTREMITY_OFFSET_LIMIT
+            or value["fill"] < EXTREMITY_FILL_MINIMUM
+            for value in values)
         per_joint[joint] = {
             "tracked_frames": len(values),
             "missing_frames": missing,
-            "minimum_pixels": min(values),
-            "median_pixels": round(median, 1),
-            "minimum_ratio": round(min(values) / max(1, median), 3),
+            "minimum_fill": round(min(fills), 3),
+            "median_fill": round(float(np.median(fills)), 3),
+            "maximum_offset_ratio": round(max(offset_ratios), 3),
+            "minimum_pixels": min(value["pixels"] for value in values),
         }
     if len(per_joint) < 3:
         return unavailable
@@ -1540,6 +1806,8 @@ def _extremity_integrity(frames, poses, start, end):
         if valid else "a hand or heel disappears during the loop",
         "tracked_extremities": len(per_joint),
         "missing_frames": missing_total,
+        "offset_limit": EXTREMITY_OFFSET_LIMIT,
+        "fill_minimum": EXTREMITY_FILL_MINIMUM,
         "joints": per_joint,
     }
 
@@ -2003,6 +2271,100 @@ def _encode_alpha_preview(frames, fps, destination):
         return None
 
 
+# Measured on the alpha channel of normalised loop frames. Whole-body overlap
+# alone cannot separate the two failure modes: a drifting idle that never stops
+# lowering its head scores 0.827, which is HIGHER than the approved production
+# walk at 0.794, because swinging legs legitimately move more than a slipping
+# head. Upper-third overlap does separate them, since a walk keeps its head and
+# shoulders steady while its legs cycle:
+#
+#   good  production walk 0.941 | production idle 0.938
+#         creature idle   0.974 | creature idle   0.963
+#   bad   drifting idle   0.884 | one-shot cartwheel 0.000
+#
+# So the body floor only guards against gross failure and the upper-body floor
+# carries the real pose-drift decision.
+LOOP_CLOSURE_BODY_MINIMUM = 0.60
+LOOP_CLOSURE_UPPER_MINIMUM = 0.91
+
+
+def _silhouette_closure_quality(
+        frames,
+        body_minimum=LOOP_CLOSURE_BODY_MINIMUM,
+        upper_minimum=LOOP_CLOSURE_UPPER_MINIMUM):
+    """Reject a loop whose last frame never returns to its opening silhouette.
+
+    Contact, extremity and trajectory gates all pass happily on a clip that
+    performs an action once and stops, because every individual frame is fine.
+    Only comparing the two endpoints catches the pop that such a clip produces
+    on every repeat.
+    """
+    if len(frames) < 2:
+        return {
+            "available": False, "valid": False,
+            "reason": "loop is too short to compare endpoints",
+        }
+
+    def mask(frame):
+        if frame.ndim != 3 or frame.shape[2] != 4:
+            return None
+        return (frame[:, :, 3] > 12).astype(np.uint8)
+
+    first, last = mask(frames[0]), mask(frames[-1])
+    if first is None or last is None:
+        return {
+            "available": False, "valid": False,
+            "reason": "loop frames carry no alpha channel to compare",
+        }
+
+    def overlap(a, b):
+        union = int((a | b).sum())
+        return None if not union else float((a & b).sum()) / union
+
+    body = overlap(first, last)
+    if body is None:
+        return {
+            "available": False, "valid": False,
+            "reason": "loop endpoints are empty",
+        }
+    # Frames arrive normalised onto a common canvas, so a fixed upper third is
+    # a stable stand-in for head and shoulders across avatars.
+    cut = max(1, first.shape[0] // 3)
+    upper = overlap(first[:cut], last[:cut])
+    # An empty band at BOTH endpoints is agreement, not drift. A loop cut at an
+    # inverted moment - mid-cartwheel, say - legitimately leaves the head band
+    # empty in both frames, and coercing that to 0.0 scored perfect agreement as
+    # total failure. Only a band occupied at one endpoint and not the other is
+    # real drift, and that case still scores 0.0 through a non-empty union.
+    upper_available = upper is not None
+
+    body_ok = body >= body_minimum
+    upper_ok = not upper_available or upper >= upper_minimum
+    if body_ok and upper_ok:
+        reason = (
+            "loop returns to its opening silhouette" if upper_available else
+            "loop returns to its opening silhouette; "
+            "the head band is empty at both endpoints")
+    elif not body_ok:
+        reason = (
+            f"loop ends on a different pose than it started "
+            f"({body:.2f} body overlap, needs {body_minimum:.2f})")
+    else:
+        reason = (
+            f"head and shoulders drift across the loop "
+            f"({upper:.2f} upper-body overlap, needs {upper_minimum:.2f})")
+    return {
+        "available": True,
+        "valid": body_ok and upper_ok,
+        "body_overlap": round(body, 4),
+        "upper_overlap": None if upper is None else round(upper, 4),
+        "upper_available": upper_available,
+        "body_minimum": body_minimum,
+        "upper_minimum": upper_minimum,
+        "reason": reason,
+    }
+
+
 def _process_clip(
         kind, video, fps, stage, log, idle_validation="back-heel",
         walk_style=None):
@@ -2039,7 +2401,8 @@ def _process_clip(
             {
                 "available": True,
                 "valid": True,
-                "reason": "traversal closure validated without gait-cycle constraints",
+                "reason": "traversal style skips gait-cycle constraints; "
+                          "loop closure is checked separately",
             }
         )
     else:
@@ -2077,6 +2440,10 @@ def _process_clip(
         if not wall_contact_quality["valid"]:
             detail = wall_contact_quality.get("reason") or "wall contact is unstable"
             raise RuntimeError(f"edge-idle pose failed contact validation: {detail}")
+    closure_quality = _silhouette_closure_quality(normalised)
+    if not closure_quality["valid"]:
+        raise RuntimeError(
+            f"{kind} loop does not close: {closure_quality['reason']}")
     sheets = _pack_sheets(normalised, stage, kind)
     poster = f"{kind}-poster.png"
     cv2.imwrite(os.path.join(stage, poster), normalised[0], [cv2.IMWRITE_PNG_COMPRESSION, 9])
@@ -2093,12 +2460,14 @@ def _process_clip(
         metrics = _gait_metrics(normalised, fps, bounds, trajectory)
         metrics["walk_style"] = _walk_style_receipt(walk_style)
         metrics["pose_quality"] = pose_quality
+        metrics["loop_closure_quality"] = closure_quality
         metrics["extremity_quality"] = extremity_quality
         metrics["color_fidelity_quality"] = color_quality
     else:
         metrics = {
             "edge_anchors": _edge_anchors(normalised, bounds),
             "wall_contact_quality": wall_contact_quality,
+            "loop_closure_quality": closure_quality,
             "extremity_quality": extremity_quality,
             "color_fidelity_quality": color_quality,
         }
@@ -2140,9 +2509,11 @@ def _body_view_source(body_dir, body_manifest, view):
 
 
 def _build_context(
-        avatar_dir, pose_reference, idle_pose=None, walk_style=None):
+        avatar_dir, pose_reference, idle_pose=None, walk_style=None,
+        walk_frame=None):
     idle_pose = resolve_idle_pose(idle_pose)
     walk_style = resolve_walk_style(walk_style)
+    walk_frame = resolve_walk_frame(walk_frame)
     body_dir = os.path.join(avatar_dir, "body")
     body_manifest_path = os.path.join(body_dir, "body.json")
     if not os.path.isfile(body_manifest_path):
@@ -2169,7 +2540,7 @@ def _build_context(
         "walk_keyframe": _walk_keyframe_prompt(outfit, walk_style),
         "idle_keyframe": _idle_keyframe_prompt(
             outfit, bool(pose_reference), idle_pose),
-        "walk_video": _walk_video_prompt(walk_style),
+        "walk_video": _walk_video_prompt(walk_style, walk_frame),
         "idle_video": _idle_video_prompt(idle_pose),
     }
     signature_source = "\n".join((
@@ -2179,6 +2550,7 @@ def _build_context(
         _sha256(pose_reference) if pose_reference else "text-pose",
         json.dumps(idle_pose, sort_keys=True),
         json.dumps(_walk_style_receipt(walk_style), sort_keys=True),
+        json.dumps(_walk_frame_receipt(walk_frame), sort_keys=True),
         image_provider["command_key"], str(image_provider.get("model")),
         video_provider["command_key"], str(video_provider.get("model")),
         *prompts.values(),
@@ -2199,6 +2571,7 @@ def _build_context(
         "video_provider": video_provider,
         "idle_pose": idle_pose,
         "walk_style": walk_style,
+        "walk_frame": walk_frame,
         "prompts": prompts,
         "signature": signature,
         "cache_root": cache_root,
@@ -2384,14 +2757,14 @@ def reprocess_approved_walk(
 
 def preview_keyframes(
         avatar_dir, pose_reference=None, idle_pose=None,
-        walk_style=None, kinds=None, log=print):
+        walk_style=None, kinds=None, log=print, walk_frame=None):
     requested_kinds = tuple(dict.fromkeys(kinds or ("walk", "idle")))
     unknown_kinds = sorted(set(requested_kinds) - {"walk", "idle"})
     if not requested_kinds or unknown_kinds:
         detail = ", ".join(unknown_kinds) if unknown_kinds else "none"
         raise ValueError(f"unknown motion clip selection: {detail}")
     context = _build_context(
-        avatar_dir, pose_reference, idle_pose, walk_style)
+        avatar_dir, pose_reference, idle_pose, walk_style, walk_frame)
     prompts = context["prompts"]
     keyframes = _generate_keyframes(
         context["cache"], context["image_provider"], context["body_sources"],
@@ -2482,14 +2855,15 @@ def _remove_clip_assets(directory, kind):
 
 def build(
         avatar_dir, pose_reference=None, log=print, progress=None,
-        keep_previous=False, idle_pose=None, kinds=None, walk_style=None):
+        keep_previous=False, idle_pose=None, kinds=None, walk_style=None,
+        walk_frame=None):
     requested_kinds = tuple(dict.fromkeys(kinds or ("walk", "idle")))
     unknown_kinds = sorted(set(requested_kinds) - {"walk", "idle"})
     if not requested_kinds or unknown_kinds:
         detail = ", ".join(unknown_kinds) if unknown_kinds else "none"
         raise ValueError(f"unknown motion clip selection: {detail}")
     context = _build_context(
-        avatar_dir, pose_reference, idle_pose, walk_style)
+        avatar_dir, pose_reference, idle_pose, walk_style, walk_frame)
     body_sources = context.get("body_sources") or {
         "walk": context["body_source"],
         "idle": context["body_source"],
@@ -2502,6 +2876,8 @@ def build(
     idle_pose = resolve_idle_pose(context.get("idle_pose"))
     walk_style = resolve_walk_style(
         context.get("walk_style") or walk_style)
+    walk_frame = resolve_walk_frame(
+        context.get("walk_frame") or walk_frame)
     prompts = context["prompts"]
     signature = context["signature"]
     cache_root = context["cache_root"]
@@ -2544,7 +2920,8 @@ def build(
         videos = _generate_videos(
             cache, video_provider, keyframes,
             {"walk": prompts["walk_video"],
-             "idle": prompts["idle_video"]}, log, requested_kinds)
+             "idle": prompts["idle_video"]}, log, requested_kinds,
+            walk_frame)
 
         stage = tempfile.mkdtemp(prefix=".motion-stage-", dir=avatar_dir)
         if os.path.isdir(destination):
@@ -2633,6 +3010,7 @@ def build(
                 metadata[kind] = clips[kind]
             if "walk" in requested_kinds:
                 metadata["walk_style"] = _walk_style_receipt(walk_style)
+                metadata["walk_frame"] = _walk_frame_receipt(walk_frame)
             if "idle" in requested_kinds:
                 metadata["idle_pose"] = idle_pose
                 metadata["reference"] = {

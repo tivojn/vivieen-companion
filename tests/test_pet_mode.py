@@ -235,7 +235,7 @@ class MotionPipelineTests(unittest.TestCase):
         self.assertIn("color flicker", video)
         self.assertIn("chroma-key green", keyframe)
         self.assertIn("chroma-key green", video)
-        self.assertEqual(motion.MOTION_VERSION, 8)
+        self.assertEqual(motion.MOTION_VERSION, 9)
 
     def test_walk_style_presets_change_generation_and_validation(self):
         self.assertEqual(
@@ -255,8 +255,14 @@ class MotionPipelineTests(unittest.TestCase):
         self.assertNotEqual(office_keyframe, runway_keyframe)
         self.assertIn("Runway catwalk", runway_keyframe)
         self.assertIn("narrow crossover track", runway_keyframe)
-        self.assertIn("exactly one clean lateral cartwheel", cartwheel_video)
-        self.assertIn("finish upright", cartwheel_video)
+        # Assert the loop contract, not the prose. Two failure modes have already
+        # been observed and both are unloopable: one cartwheel then standing still,
+        # and nonstop tumbling that never stands up. A traversal clip therefore
+        # needs repetition AND a repeated upright anchor to cut the loop on.
+        self.assertIn("lateral cartwheel", cartwheel_video)
+        self.assertIn("REPEATING TRAVERSAL LOOP", cartwheel_video)
+        self.assertIn("upright", cartwheel_video)
+        self.assertIn("twice", cartwheel_video)
         with self.assertRaisesRegex(ValueError, "unknown Horizon Walk style"):
             motion.resolve_walk_style("moonwalk")
 
