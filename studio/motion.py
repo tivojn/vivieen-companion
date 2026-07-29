@@ -329,7 +329,11 @@ WALK_FRAME_PRESETS = {
         "crossing": (26, 74),
     },
 }
-DEFAULT_WALK_FRAME = "landscape"
+# Portrait spends the provider's 720p short-side budget on the subject
+# (940px of body instead of 620px), which is the same reason the edge idle
+# reads sharper than the walk did. Landscape remains available for styles
+# that need the longer runway.
+DEFAULT_WALK_FRAME = "portrait"
 
 
 def resolve_walk_frame(frame_id=None):

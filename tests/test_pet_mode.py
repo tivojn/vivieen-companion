@@ -231,7 +231,12 @@ class MotionPipelineTests(unittest.TestCase):
         self.assertIn("Each wrist stays continuously between the hip seam and mid-thigh", video)
         self.assertIn("one-sided partial cycles", video)
         self.assertIn("same-side arm-and-leg motion", video)
-        self.assertIn("15% to 85% at constant speed", video)
+        # The crossing contract must match the default runway frame - portrait
+        # by default, so the provider's 720p short side lands on the subject.
+        default_frame = motion.resolve_walk_frame()
+        self.assertEqual("portrait", default_frame["id"])
+        crossing = "{}% to {}% at constant speed".format(*default_frame["crossing"])
+        self.assertIn(crossing, video)
         self.assertIn("color flicker", video)
         self.assertIn("chroma-key green", keyframe)
         self.assertIn("chroma-key green", video)
