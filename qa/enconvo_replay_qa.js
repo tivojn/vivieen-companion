@@ -21,6 +21,13 @@ const root = path.resolve(__dirname, '..');
 const WAV = path.join(root, 'qa', 'proof', 'enconvo-driven-voice.wav');
 const BASELINE = process.env.VV_BASELINE === '1';
 
+/* qa/proof/ is gitignored, so the capture only exists on machines that made
+   one - skip (don't fail) where it is absent, e.g. CI. */
+if (!fs.existsSync(WAV)) {
+  console.log('enconvo replay QA skipped: qa/proof/enconvo-driven-voice.wav not present (local-only capture)');
+  process.exit(0);
+}
+
 /* ---------------- wav (PCM16 mono, as captured) ---------------- */
 function readWav(file) {
   const b = fs.readFileSync(file);
