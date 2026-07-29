@@ -345,17 +345,23 @@ def _body_thread(slug, options):
             progress={"stage": "provider", "value": .03,
                       "label": "Reading EnConvo image provider"})
     try:
-        from studio import body, motion
+        from studio import body, library, motion
         _job_progress(slug, "generation", .12, "Generating front, side, and back bodies")
         metadata = body.build(
             reg().adir(slug), options, log=w,
             progress=lambda stage, value, label:
                 _job_progress(slug, stage, value, label))
         motion.remove(reg().adir(slug))
+        for slot in ("walk", "idle"):
+            library.clear_active(reg().adir(slug), slot)
         manifest = reg().read_manifest(slug) or {}
         manifest["body"] = metadata
         manifest.pop("motion", None)
         reg().write_manifest(slug, manifest)
+        try:
+            library.archive_body(reg().adir(slug))
+        except Exception as archive_error:
+            w(f"could not archive the body set: {archive_error}")
         _job_progress(slug, "runtime", .86, "Publishing transparent companion")
         _publish_runtime_atomic(slug, log=w)
         _job_progress(slug, "done", 1.0, "Three full-body views ready")
@@ -412,6 +418,12 @@ def _motion_thread(
         _publish_runtime_atomic(slug, log=writer)
         runtime_published = True
         motion.commit_pending_build(reg().adir(slug))
+        try:
+            from studio import library
+            for archived_kind in tuple(kinds or ("walk", "idle")):
+                library.archive_motion(reg().adir(slug), archived_kind)
+        except Exception as archive_error:
+            writer(f"could not archive the motion set: {archive_error}")
         selected = tuple(kinds or ("walk", "idle"))
         label = (
             "Horizon Walk and Edge Idle"
@@ -540,6 +552,20 @@ class MotionRequest(BaseModel):
 class MotionRemoveRequest(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
     kind: str = Field(default="both", pattern=r"^(walk|idle|both)$")
+
+
+SET_ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,80}$"
+
+
+class MotionSetRequest(BaseModel):
+    slug: str = Field(pattern=SLUG_PATTERN)
+    kind: str = Field(pattern=r"^(walk|idle)$")
+    set_id: str = Field(pattern=SET_ID_PATTERN)
+
+
+class BodySetRequest(BaseModel):
+    slug: str = Field(pattern=SLUG_PATTERN)
+    set_id: str = Field(pattern=SET_ID_PATTERN)
 
 
 def _motion_asset_catalog(slug, directory, motion_metadata):
@@ -770,6 +796,13 @@ async def api_body(slug: str = Query(pattern=SLUG_PATTERN)):
 
     has_walk = has_motion_clip("walk")
     has_idle = has_motion_clip("idle")
+    from studio import library
+    try:
+        # Adopt pre-library avatars: their canonical body and motion become
+        # the first archived set. Content digests keep this idempotent.
+        library.sync_canonical(directory)
+    except Exception as sync_error:
+        print(f"[avatar:{slug}] library sync failed: {sync_error}", flush=True)
     with _jlock:
         job = _jobs.get(slug)
         job = dict(job) if job and (
@@ -782,6 +815,11 @@ async def api_body(slug: str = Query(pattern=SLUG_PATTERN)):
         "motion": manifest.get("motion"),
         "motion_assets": _motion_asset_catalog(
             slug, directory, motion_metadata),
+        "motion_sets": {
+            kind: library.list_motion_sets(directory, kind)
+            for kind in ("walk", "idle")
+        },
+        "body_sets": library.list_body_sets(directory),
         "has_body": os.path.isfile(os.path.join(directory, "body", "body.json")),
         "has_turnaround": has_turnaround,
         "has_motion": has_walk or has_idle,
@@ -926,8 +964,10 @@ async def api_motion_remove(request: MotionRemoveRequest):
         raise HTTPException(409, "avatar generation is still running")
     failure = ""
     try:
-        from studio import motion
+        from studio import library, motion
         metadata = motion.remove(reg().adir(request.slug), kind)
+        for slot in ("walk", "idle") if kind == "both" else (kind,):
+            library.clear_active(reg().adir(request.slug), slot)
         if metadata:
             manifest["motion"] = metadata
         else:
@@ -943,6 +983,161 @@ async def api_motion_remove(request: MotionRemoveRequest):
         _finish_job(request.slug, job_id, failure)
 
 
+def _apply_motion_metadata(manifest, metadata):
+    if metadata:
+        manifest["motion"] = metadata
+    else:
+        manifest.pop("motion", None)
+
+
+@app.post("/api/avatar/motion/set/activate")
+async def api_motion_set_activate(request: MotionSetRequest):
+    manifest = reg().read_manifest(request.slug)
+    if not manifest:
+        raise HTTPException(404, "avatar not found")
+    title = "Horizon Walk" if request.kind == "walk" else "Edge Idle"
+    job_id = _reserve_job(
+        request.slug, "motion-set", f"Switching {title} set")
+    if not job_id:
+        raise HTTPException(409, "avatar generation is still running")
+    failure = ""
+    try:
+        from studio import library
+        directory = reg().adir(request.slug)
+        sets = {record["id"]: record
+                for record in library.list_motion_sets(directory, request.kind)}
+        record = sets.get(request.set_id)
+        if not record:
+            raise HTTPException(404, f"unknown {request.kind} set")
+        if not record["compatible"]:
+            raise HTTPException(
+                409, f"this {title} set was generated for a different body set")
+        metadata = library.activate_motion(
+            directory, request.kind, request.set_id)
+        _apply_motion_metadata(manifest, metadata)
+        reg().write_manifest(request.slug, manifest)
+        _publish_runtime_atomic(
+            request.slug, log=jlog(request.slug, f"switching {title.lower()}"))
+        return {"activated": True, "slug": request.slug,
+                "kind": request.kind, "set_id": request.set_id}
+    except Exception as error:
+        failure = getattr(error, "detail", None) or str(error)
+        raise
+    finally:
+        _finish_job(request.slug, job_id, failure)
+
+
+@app.post("/api/avatar/motion/set/remove")
+async def api_motion_set_remove(request: MotionSetRequest):
+    manifest = reg().read_manifest(request.slug)
+    if not manifest:
+        raise HTTPException(404, "avatar not found")
+    title = "Horizon Walk" if request.kind == "walk" else "Edge Idle"
+    job_id = _reserve_job(
+        request.slug, "motion-set", f"Deleting a {title} set")
+    if not job_id:
+        raise HTTPException(409, "avatar generation is still running")
+    failure = ""
+    try:
+        from studio import library
+        directory = reg().adir(request.slug)
+        try:
+            was_active = library.remove_motion_set(
+                directory, request.kind, request.set_id)
+        except ValueError as error:
+            raise HTTPException(404, str(error))
+        if was_active:
+            metadata = library.strip_canonical_motion(directory, request.kind)
+            fallback = library.newest_compatible_motion_set(
+                directory, request.kind)
+            if fallback:
+                metadata = library.activate_motion(
+                    directory, request.kind, fallback)
+            _apply_motion_metadata(manifest, metadata)
+            reg().write_manifest(request.slug, manifest)
+            _publish_runtime_atomic(
+                request.slug,
+                log=jlog(request.slug, f"deleting a {title.lower()} set"))
+        return {"removed": True, "slug": request.slug, "kind": request.kind,
+                "set_id": request.set_id, "was_active": was_active}
+    except Exception as error:
+        failure = getattr(error, "detail", None) or str(error)
+        raise
+    finally:
+        _finish_job(request.slug, job_id, failure)
+
+
+@app.post("/api/avatar/body/set/activate")
+async def api_body_set_activate(request: BodySetRequest):
+    manifest = reg().read_manifest(request.slug)
+    if not manifest:
+        raise HTTPException(404, "avatar not found")
+    job_id = _reserve_job(request.slug, "body-set", "Switching body set")
+    if not job_id:
+        raise HTTPException(409, "avatar generation is still running")
+    failure = ""
+    try:
+        from studio import library
+        directory = reg().adir(request.slug)
+        try:
+            manifest["body"] = library.activate_body(directory, request.set_id)
+        except ValueError as error:
+            raise HTTPException(404, str(error))
+        _apply_motion_metadata(
+            manifest, library.reconcile_motion_with_body(directory))
+        reg().write_manifest(request.slug, manifest)
+        _publish_runtime_atomic(
+            request.slug, log=jlog(request.slug, "switching body set"))
+        return {"activated": True, "slug": request.slug,
+                "set_id": request.set_id}
+    except Exception as error:
+        failure = getattr(error, "detail", None) or str(error)
+        raise
+    finally:
+        _finish_job(request.slug, job_id, failure)
+
+
+@app.post("/api/avatar/body/set/remove")
+async def api_body_set_remove(request: BodySetRequest):
+    manifest = reg().read_manifest(request.slug)
+    if not manifest:
+        raise HTTPException(404, "avatar not found")
+    job_id = _reserve_job(request.slug, "body-set", "Deleting a body set")
+    if not job_id:
+        raise HTTPException(409, "avatar generation is still running")
+    failure = ""
+    try:
+        from studio import body, library, motion
+        directory = reg().adir(request.slug)
+        try:
+            was_active = library.remove_body_set(directory, request.set_id)
+        except ValueError as error:
+            raise HTTPException(404, str(error))
+        if was_active:
+            fallback = library.newest_body_set(directory)
+            if fallback:
+                manifest["body"] = library.activate_body(directory, fallback)
+                _apply_motion_metadata(
+                    manifest, library.reconcile_motion_with_body(directory))
+            else:
+                body.remove(directory)
+                motion.remove(directory)
+                for slot in ("walk", "idle"):
+                    library.clear_active(directory, slot)
+                manifest.pop("body", None)
+                manifest.pop("motion", None)
+            reg().write_manifest(request.slug, manifest)
+            _publish_runtime_atomic(
+                request.slug, log=jlog(request.slug, "deleting a body set"))
+        return {"removed": True, "slug": request.slug,
+                "set_id": request.set_id, "was_active": was_active}
+    except Exception as error:
+        failure = getattr(error, "detail", None) or str(error)
+        raise
+    finally:
+        _finish_job(request.slug, job_id, failure)
+
+
 @app.post("/api/avatar/body/remove")
 async def api_body_remove(request: Slug):
     manifest = reg().read_manifest(request.slug)
@@ -953,9 +1148,11 @@ async def api_body_remove(request: Slug):
         raise HTTPException(409, "avatar generation is still running")
     failure = ""
     try:
-        from studio import body, motion
+        from studio import body, library, motion
         body.remove(reg().adir(request.slug))
         motion.remove(reg().adir(request.slug))
+        for slot in ("walk", "idle", "body"):
+            library.clear_active(reg().adir(request.slug), slot)
         manifest.pop("body", None)
         manifest.pop("motion", None)
         reg().write_manifest(request.slug, manifest)

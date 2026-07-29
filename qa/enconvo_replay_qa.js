@@ -98,6 +98,25 @@ function analyse(y, rate, buf = 256) {
   return packets;
 }
 
+/* The pipeline only needs a viseme list. Avatars are local, deletable data,
+   so read it from whichever published runtime exists and fall back to the
+   canonical order on a machine with no built avatars at all. */
+function fixtureVisemes() {
+  const avatarsRoot = path.join(root, 'avatars');
+  const slugs = fs.existsSync(avatarsRoot) ? fs.readdirSync(avatarsRoot) : [];
+  for (const slug of slugs) {
+    const manifestPath = path.join(avatarsRoot, slug, 'runtime', 'manifest.json');
+    try {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      if (Array.isArray(manifest.visemes) && manifest.visemes.length) {
+        return manifest.visemes;
+      }
+    } catch { /* not a published avatar */ }
+  }
+  return ['sil', 'PP', 'FF', 'TH', 'DD', 'kk', 'CH', 'SS',
+          'nn', 'RR', 'aa', 'E', 'ih', 'oh', 'ou'];
+}
+
 /* ---------------- the real shipped pipeline ---------------- */
 function shippedPipeline() {
   const html = fs.readFileSync(path.join(root, 'web', 'index.html'), 'utf8');
@@ -107,11 +126,9 @@ function shippedPipeline() {
     assert.ok(start >= 0 && end > start, `found source between ${from} and ${to}`);
     return html.slice(start, end);
   };
-  const manifest = JSON.parse(fs.readFileSync(
-    path.join(root, 'avatars', 'dario-ref', 'runtime', 'manifest.json'), 'utf8'));
   const context = {
     Date, performance: { now: () => 0 },
-    M: { visemes: manifest.visemes },
+    M: { visemes: fixtureVisemes() },
     externalAudio: { rms: 0, peak: 0, low: 0, mid: 0, high: 0, zcr: 0, active: false },
   };
   vm.runInNewContext(
