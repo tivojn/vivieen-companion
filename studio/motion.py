@@ -35,7 +35,7 @@ WALK_STYLE_PRESETS = {
         "label": "Office walk",
         "description": "Natural workplace pace with compact steps and arm swing.",
         "validation": "office-gait",
-        "loop": {"target": 1.05, "minimum": 0.85, "maximum": 2.25},
+        "loop": {"target": 1.05, "minimum": 0.85, "maximum": 3.4},
         "keyframe": (
             "right-facing 25–30 degree three-quarter view in one frozen frame of a "
             "NORMAL charming office-floor walk, moving purposefully in a straight line "
@@ -94,7 +94,7 @@ WALK_STYLE_PRESETS = {
         "label": "Runway catwalk",
         "description": "Confident, sensual runway rhythm with controlled crossover steps.",
         "validation": "stylized-gait",
-        "loop": {"target": 1.2, "minimum": 0.9, "maximum": 2.6},
+        "loop": {"target": 1.2, "minimum": 0.9, "maximum": 3.5},
         "keyframe": (
             "right-facing 25–30 degree three-quarter view in one poised frame of a "
             "sophisticated runway catwalk. Use a clean moderate stride on a narrow "
@@ -121,7 +121,7 @@ WALK_STYLE_PRESETS = {
         "label": "Relaxed stroll",
         "description": "Easy unhurried steps with a soft, casual rhythm.",
         "validation": "stylized-gait",
-        "loop": {"target": 1.35, "minimum": 1.0, "maximum": 2.8},
+        "loop": {"target": 1.35, "minimum": 1.0, "maximum": 3.6},
         "keyframe": (
             "right-facing three-quarter view in one natural frame of an easy relaxed "
             "stroll. Use a short comfortable step, loose shoulders, gentle contralateral "
@@ -140,7 +140,7 @@ WALK_STYLE_PRESETS = {
         "label": "Brisk power walk",
         "description": "Fast, purposeful cadence with stronger grounded momentum.",
         "validation": "stylized-gait",
-        "loop": {"target": 0.95, "minimum": 0.72, "maximum": 2.1},
+        "loop": {"target": 0.95, "minimum": 0.72, "maximum": 3.2},
         "keyframe": (
             "right-facing three-quarter view in one grounded frame of a brisk purposeful "
             "power walk. Use a moderately longer step, slight forward intent from the "
@@ -160,7 +160,7 @@ WALK_STYLE_PRESETS = {
         "label": "Elegant promenade",
         "description": "Graceful measured steps with composed formal carriage.",
         "validation": "stylized-gait",
-        "loop": {"target": 1.45, "minimum": 1.05, "maximum": 3.0},
+        "loop": {"target": 1.45, "minimum": 1.05, "maximum": 3.7},
         "keyframe": (
             "right-facing three-quarter view in one graceful frame of an elegant formal "
             "promenade. Use a measured medium step, elongated posture, softly narrow "
@@ -1578,7 +1578,82 @@ def _zero_crossings(values):
     return int(np.sum(signs[1:] * signs[:-1] < 0))
 
 
-def _pose_cycle_metrics(poses, start, end, profile="office-gait"):
+def _smooth_signal(values, width=5):
+    if values is None or len(values) < width:
+        return values
+    kernel = np.ones(width) / width
+    return np.convolve(values, kernel, mode="same")
+
+
+def _robust_range(values):
+    if values is None or not len(values):
+        return None
+    return float(np.percentile(values, 95) - np.percentile(values, 5))
+
+
+# A window can show two zero crossings, close at the seam, and still hold only
+# half a gait cycle: mid-stance to mid-stance, arms neutral -> forward ->
+# neutral, never reaching behind. Measured on a shipped half-cycle
+# (2026-07-29): the 26-frame window covered 18-47% of the stride range the
+# source actually performed, while its true cycle lasted ~72 frames. The only
+# reliable definition of a full cycle is the source's own dominant period plus
+# the requirement that the window covers the stride's full travel.
+GAIT_PERIOD_MIN_CONFIDENCE = 0.30
+GAIT_PERIOD_FIT = 0.85
+GAIT_COVERAGE_MINIMUM = 0.60
+GAIT_COVERAGE_FLOOR = 0.04
+
+
+def _source_gait_profile(poses):
+    """Dominant gait period and stride ranges of the whole source take.
+
+    The period comes from the autocorrelation of the signed ankle-separation
+    signal (one full period per two steps). The near-zero-lag ridge is skipped
+    by searching only past the first negative dip, so a slow stately walk is
+    not mistaken for a fast one. Returns None when no usable leg signal
+    exists; period is None when the take holds fewer than ~2 cycles.
+    """
+    if not poses or len(poses) < 16:
+        return None
+    count = len(poses)
+    separation = _pose_signal(poses, 0, count, "left_ankle", "right_ankle")
+    arm_ranges = {}
+    for side in ("left", "right"):
+        arm = _pose_signal(
+            poses, 0, count, f"{side}_wrist", f"{side}_shoulder")
+        arm_ranges[side] = _robust_range(arm)
+    if separation is None:
+        return None
+    period = None
+    confidence = None
+    smoothed = _smooth_signal(separation)
+    centered = smoothed - np.mean(smoothed)
+    if float(np.std(centered)) > 1e-6:
+        correlation = np.correlate(centered, centered, "full")[count - 1:]
+        # Unbiased per-lag normalisation: without it a long period (under two
+        # cycles in the take) shrinks with its overlap and slips beneath the
+        # confidence floor, which is exactly the slow footage that needs it.
+        correlation /= np.maximum(1, count - np.arange(count))
+        correlation /= correlation[0]
+        negative = np.flatnonzero(correlation < 0)
+        search_end = count * 2 // 3
+        if negative.size and negative[0] + 1 < search_end:
+            search_start = int(negative[0]) + 1
+            lag = search_start + int(
+                np.argmax(correlation[search_start:search_end]))
+            if correlation[lag] >= GAIT_PERIOD_MIN_CONFIDENCE and lag >= 10:
+                period = int(lag)
+                confidence = round(float(correlation[lag]), 4)
+    return {
+        "period": period,
+        "period_confidence": confidence,
+        "leg_range": _robust_range(separation),
+        "arm_range": arm_ranges,
+    }
+
+
+def _pose_cycle_metrics(
+        poses, start, end, profile="office-gait", source_gait=None):
     profiles = {
         "office-gait": {
             "foot_p90": 0.16, "foot_max": 0.22,
@@ -1604,6 +1679,8 @@ def _pose_cycle_metrics(poses, start, end, profile="office-gait"):
     }
     if not poses or start < 0 or end >= len(poses) or end - start < 8:
         return unavailable
+    if source_gait is None:
+        source_gait = _source_gait_profile(poses)
 
     closure_errors = []
     velocity_errors = []
@@ -1637,6 +1714,13 @@ def _pose_cycle_metrics(poses, start, end, profile="office-gait"):
                 arm is not None and leg is not None and
                 np.std(arm) > 0.005 and np.std(leg) > 0.005):
             correlation = float(np.corrcoef(arm, leg)[0, 1])
+        arm_coverage = None
+        source_arm_range = (source_gait or {}).get("arm_range", {}).get(side)
+        if (
+                arm is not None and source_arm_range and
+                source_arm_range >= GAIT_COVERAGE_FLOOR):
+            arm_coverage = round(
+                (_robust_range(arm) or 0.0) / source_arm_range, 4)
         wrist_height = _wrist_height_metrics(poses, start, end, side)
         side_metrics[side] = {
             "arm_available": arm is not None,
@@ -1648,6 +1732,7 @@ def _pose_cycle_metrics(poses, start, end, profile="office-gait"):
             if arm is not None else None,
             "arm_crossings": _zero_crossings(arm)
             if arm is not None else None,
+            "arm_coverage": arm_coverage,
             "leg_crossings": _zero_crossings(leg)
             if leg is not None else None,
             "closure_error": round(max(joint_closures), 4)
@@ -1672,13 +1757,42 @@ def _pose_cycle_metrics(poses, start, end, profile="office-gait"):
     elif (foot_lift["lift_p90"] > limits["foot_p90"] or
           foot_lift["lift_max"] > limits["foot_max"]):
         reasons.append("swing foot lifts too high")
+    gait_period = (source_gait or {}).get("period")
+    length = end - start
+    cycle_coverage = (
+        round(length / gait_period, 4) if gait_period else None)
+    if gait_period and length < GAIT_PERIOD_FIT * gait_period:
+        reasons.append(
+            f"loop window holds {length} frames but one full gait cycle "
+            f"takes ~{gait_period}")
+    stride_coverage = None
+    source_leg_range = (source_gait or {}).get("leg_range")
+    if source_leg_range and source_leg_range >= GAIT_COVERAGE_FLOOR:
+        separation = _pose_signal(
+            poses, start, end, "left_ankle", "right_ankle")
+        if separation is not None:
+            stride_coverage = round(
+                (_robust_range(separation) or 0.0) / source_leg_range, 4)
+            if stride_coverage < GAIT_COVERAGE_MINIMUM:
+                reasons.append(
+                    "loop window covers only part of the source stride")
+    # A verified full period can still show a single median crossing when the
+    # window starts exactly at one, so the crossing floor relaxes to 1 once
+    # the period fit has proven the cycle is complete.
+    required_crossings = (
+        1 if gait_period and length >= GAIT_PERIOD_FIT * gait_period else 2)
     for side, metrics in side_metrics.items():
         if not metrics["arm_available"]:
             reasons.append(f"{side} arm tracking unavailable")
         elif (
                 metrics["arm_excursion"] < limits["arm_excursion"] or
-                metrics["arm_crossings"] < 2):
+                metrics["arm_crossings"] < required_crossings):
             reasons.append(f"{side} arm swing does not complete")
+        elif (
+                metrics["arm_coverage"] is not None and
+                metrics["arm_coverage"] < GAIT_COVERAGE_MINIMUM):
+            reasons.append(
+                f"{side} arm swing covers only part of the source swing")
         if metrics["wrist_height_available"]:
             style_penalty += max(
                 0.0, metrics["wrist_elevation_p90"] - limits["wrist_p90"])
@@ -1686,7 +1800,7 @@ def _pose_cycle_metrics(poses, start, end, profile="office-gait"):
                 0.0, metrics["wrist_elevation_max"] - limits["wrist_max"])
         if not metrics["leg_available"]:
             reasons.append(f"{side} leg tracking unavailable")
-        elif metrics["leg_crossings"] < 2:
+        elif metrics["leg_crossings"] < required_crossings:
             reasons.append(f"{side} leg cycle does not complete")
         if (
                 metrics["closure_error"] is None or
@@ -1722,6 +1836,11 @@ def _pose_cycle_metrics(poses, start, end, profile="office-gait"):
             if reasons else
             "both sides complete one contralateral gait cycle"
         ),
+        "gait_period": gait_period,
+        "gait_period_confidence": (source_gait or {}).get(
+            "period_confidence"),
+        "cycle_coverage": cycle_coverage,
+        "stride_coverage": stride_coverage,
         "style_penalty": round(style_penalty, 4),
         "tracked_joints": len(closure_errors),
         "closure_error": round(closure_error, 4),
@@ -1875,6 +1994,18 @@ def _select_loop(
     best_pose_cycle = None
     pose_available = False
     pool = []
+    source_gait = _source_gait_profile(poses) if poses else None
+    gait_period = (source_gait or {}).get("period")
+    if gait_period:
+        # Aim the duration preference at a whole number of gait cycles rather
+        # than the style's nominal cadence: when the provider walks slower
+        # than asked, the nominal target would drag the window toward a
+        # half-cycle sliver that no seam test can distinguish from a loop.
+        cycles = max(1, round(minimum / gait_period))
+        while cycles * gait_period < minimum:
+            cycles += 1
+        if cycles * gait_period <= maximum:
+            target = cycles * gait_period
     for start in range(0, len(frames) - minimum, 2):
         for length in range(minimum, maximum + 1, 2):
             end = start + length
@@ -1883,7 +2014,9 @@ def _select_loop(
             difference = float(np.mean(np.abs(features[start] - features[end])))
             duration_penalty = abs(length - target) / max(1, target) * 0.055
             quality = (
-                _pose_cycle_metrics(poses, start, end, profile=pose_profile)
+                _pose_cycle_metrics(
+                    poses, start, end, profile=pose_profile,
+                    source_gait=source_gait)
                 if poses else None
             )
             pose_penalty = 0.0
@@ -1917,6 +2050,11 @@ def _select_loop(
         elif not pose_available:
             raise RuntimeError(
                 "macOS Vision could not track enough body joints to validate the walk loop")
+        elif gait_period and GAIT_PERIOD_FIT * gait_period > maximum:
+            raise RuntimeError(
+                f"walk cadence is too slow: one full gait cycle takes "
+                f"~{gait_period / fps:.1f}s but the loop window allows at "
+                f"most {maximum / fps:.1f}s; regenerate it")
         else:
             raise RuntimeError(
                 "walk video did not contain a complete arm-and-leg gait cycle; regenerate it")
