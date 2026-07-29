@@ -156,13 +156,16 @@ class MotionBuildTransactionTests(unittest.TestCase):
                 calls.append(kind)
                 raise RuntimeError("walk gait did not close")
 
+            attempts = motion.MAX_CANDIDATE_ATTEMPTS
             with self.assertRaisesRegex(
-                    RuntimeError, "failed quality gates after 2 candidates"):
+                    RuntimeError,
+                    f"failed quality gates after {attempts} candidates"):
                 self._build(avatar_dir, reject_walk)
 
-            self.assertEqual(["walk", "walk"], calls)
+            self.assertEqual(["walk"] * attempts, calls)
             self.assertEqual(
-                2, len(os.listdir(os.path.join(avatar_dir, ".motion-rejected"))))
+                attempts,
+                len(os.listdir(os.path.join(avatar_dir, ".motion-rejected"))))
             self.assertEqual(
                 "last good", Path(avatar_dir, "motion", "original.txt").read_text())
             self.assertFalse(os.path.exists(os.path.join(avatar_dir, "motion.previous")))
