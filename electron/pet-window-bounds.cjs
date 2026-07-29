@@ -50,10 +50,38 @@ function roamSizeForZoom(baseSize, minimumSize, zoom) {
   return petZoomSize(baseSize, minimumSize, zoom);
 }
 
+// A runaway pinch can leave the window larger than the screen, and the saved
+// zoom then restores the same unreachable size on the next launch. Shrink the
+// zoom until the window fits inside the work area (minus the margin) so the
+// companion always comes back somewhere the pointer can reach it.
+function fitPetZoomToArea(baseSize, minimumSize, zoom, area, margin = 0) {
+  const value = Number(zoom);
+  const safe = Number.isFinite(value) && value > 0 ? value : 1;
+  const availableWidth = Math.max(minimumSize.width, area.width - margin * 2);
+  const availableHeight = Math.max(minimumSize.height, area.height - margin * 2);
+  const limit = Math.min(
+    availableWidth / baseSize.width, availableHeight / baseSize.height);
+  if (!Number.isFinite(limit) || limit <= 0) return safe;
+  return Math.min(safe, limit);
+}
+
+// Bottom-right corner of the work area, which macOS already trims to exclude
+// the Dock and the menu bar — the companion lands above the Dock, not under it.
+function dockedPetBounds(size, area, margin = 0) {
+  return {
+    x: Math.round(area.x + area.width - size.width - margin),
+    y: Math.round(area.y + area.height - size.height - margin),
+    width: size.width,
+    height: size.height,
+  };
+}
+
 module.exports = {
   boundsForPetZoom,
   boundsForPetZoomAtAnchor,
   clampPetZoom,
+  dockedPetBounds,
+  fitPetZoomToArea,
   petZoomAnchor,
   petZoomSize,
   roamSizeForZoom,

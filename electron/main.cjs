@@ -25,7 +25,10 @@ const {
   boundsForPetZoom,
   boundsForPetZoomAtAnchor,
   clampPetZoom,
+  dockedPetBounds,
+  fitPetZoomToArea,
   petZoomAnchor,
+  petZoomSize,
   roamSizeForZoom,
 } = require('./pet-window-bounds.cjs');
 
@@ -74,6 +77,7 @@ const PET_VIEWS = new Set(['full', 'three-quarter', 'half', 'bust', 'head', 'fac
 const PET_BASE_SIZE = Object.freeze({ width: 560, height: 760 });
 const PET_NORMAL_MINIMUM = Object.freeze({ width: 140, height: 190 });
 const PET_ZOOM_RANGE = Object.freeze({ min: 0.25, max: 4 });
+const PET_DOCK_MARGIN = 28;
 const PET_ROAM_SIZE = Object.freeze({ width: 250, height: 340 });
 const PET_ROAM_MINIMUM = Object.freeze({ width: 96, height: 130 });
 const PET_ROAM_ZOOM_RANGE = Object.freeze({ min: 0.5, max: 3 });
@@ -1122,8 +1126,23 @@ function triggerEnconvoVoiceCommand() {
   });
 }
 
+// Every launch starts from the bottom-right corner of the work area, at a
+// zoom that fits on screen. A pinch once left the companion larger than the
+// display and pinned under the Dock; restoring the saved corner would bring
+// that stuck state back, so the saved x/y is deliberately ignored here.
+function startupPetBounds() {
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  state.petZoom = clampPetZoom(
+    fitPetZoomToArea(
+      PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom, area, PET_DOCK_MARGIN),
+    PET_ZOOM_RANGE);
+  const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);
+  return dockedPetBounds(size, area, PET_DOCK_MARGIN);
+}
+
 function createMainWindow() {
-  const bounds = visibleBounds(state.bounds);
+  const bounds = startupPetBounds();
+  state.bounds = { ...bounds };
   mainWindow = new BrowserWindow({
     ...bounds,
     minWidth: PET_NORMAL_MINIMUM.width,
@@ -1194,6 +1213,9 @@ function showMain() {
 
 function recoverCompanion() {
   if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
+  // Reset the zoom before anything re-applies it: keeping the current size
+  // once "recovered" a pinch-blown window to a spot still off every edge.
+  state.petZoom = 1;
   if (state.petRoam) {
     state.petRoam = false;
     stopPetRoamMotion(true);
@@ -1204,13 +1226,9 @@ function recoverCompanion() {
   state.petLocked = false;
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const area = display.workArea;
-  const bounds = mainWindow.getBounds();
-  mainWindow.setBounds({
-    x: Math.round(area.x + area.width - bounds.width - 28),
-    y: Math.round(area.y + area.height - bounds.height - 28),
-    width: bounds.width,
-    height: bounds.height,
-  });
+  const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);
+  mainWindow.setBounds(dockedPetBounds(size, area, PET_DOCK_MARGIN));
+  state.bounds = mainWindow.getBounds();
   mainWindow.setOpacity(0.5);
   mainWindow.setIgnoreMouseEvents(false);
   mainWindow.show();

@@ -5,7 +5,10 @@ const {
   boundsForPetZoom,
   boundsForPetZoomAtAnchor,
   clampPetZoom,
+  dockedPetBounds,
+  fitPetZoomToArea,
   petZoomAnchor,
+  petZoomSize,
   roamSizeForZoom,
 } = require('../electron/pet-window-bounds.cjs');
 
@@ -60,5 +63,32 @@ assert.equal(clampPetZoom(9, roamRange), 3);
 assert.equal(clampPetZoom(0.1, roamRange), 0.5);
 assert.equal(clampPetZoom('nope', roamRange), 1);
 assert.equal(clampPetZoom(1.33, { min: 0.25, max: 4 }), 1.33);
+
+// The stuck-companion scenario: a 4x pinch left the window at 2240x3040 on a
+// 1512x944 work area, unreachable under the Dock. The fitted zoom must bring
+// the window back inside the work area, and the docked bounds must sit fully
+// on screen at the bottom-right corner.
+const area = { x: 0, y: 38, width: 1512, height: 944 };
+const margin = 28;
+const fitted = fitPetZoomToArea(base, minimum, 4, area, margin);
+assert.ok(fitted < 4);
+const fittedSize = petZoomSize(base, minimum, fitted);
+assert.ok(fittedSize.width <= area.width - margin * 2);
+assert.ok(fittedSize.height <= area.height - margin * 2);
+
+// A zoom that already fits passes through untouched.
+assert.equal(fitPetZoomToArea(base, minimum, 1, area, margin), 1);
+assert.equal(fitPetZoomToArea(base, minimum, 'nope', area, margin), 1);
+
+const docked = dockedPetBounds(fittedSize, area, margin);
+assert.equal(docked.x + docked.width, area.x + area.width - margin);
+assert.equal(docked.y + docked.height, area.y + area.height - margin);
+assert.ok(docked.x >= area.x);
+assert.ok(docked.y >= area.y);
+
+// Secondary display offsets carry through to the docked corner.
+const shifted = dockedPetBounds({ width: 560, height: 760 },
+  { x: 1512, y: 200, width: 1920, height: 1055 }, margin);
+assert.deepEqual(shifted, { x: 2844, y: 467, width: 560, height: 760 });
 
 console.log('pet window bounds QA passed');
