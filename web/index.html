@@ -1557,6 +1557,12 @@ addEventListener('pointermove',event=>{
 },{passive:true});
 cv.addEventListener('pointermove',event=>{
   if(!HAS_GLOBAL_PET_POINTER)pointer={x:event.clientX,y:event.clientY};
+  if(gesture&&!dragging&&!gesture.ptt&&
+     Math.hypot(event.clientX-gesture.x0,event.clientY-gesture.y0)>TAP_SLOP_PX){
+    if(gesture.timer){clearTimeout(gesture.timer);gesture.timer=0;}
+    dragging=true;document.documentElement.classList.add('dragging');
+    SHELL.beginPetDrag({screenX:gesture.sx,screenY:gesture.sy});
+  }
   if(dragging){SHELL.movePetDrag({screenX:event.screenX,screenY:event.screenY});return;}
   if(!HAS_GLOBAL_PET_POINTER)updatePetHit();
 });
@@ -1570,16 +1576,106 @@ function confirmPetEventHit(event){
   updatePetHit(true);
   return petHit;
 }
+
+/* ---- pet gestures ----------------------------------------------------------
+   One mouse button carries three verbs, so pointerdown only ARMS a gesture:
+   move past the slop and it is a drag (origin at the press point, so nothing
+   jumps); hold the HEAD still and it is push-to-talk, released to send; a
+   quick release is a tap and she acknowledges it. The head is resolved
+   pixel-exactly by drawing the real head mask through the same camera and
+   face transforms as the visible scene and sampling one pixel - no hit boxes,
+   so a hand in front of the chest still counts as body. */
+let gesture=null,petHitCanvas=null,petHitCtx=null,lastTapAt=0;
+const TAP_SLOP_PX=4,HEAD_HOLD_MS=200,TAP_MS=350;
+function pointerOnHead(x,y){
+  if(!ready||!(BODY&&HEADMASK&&M.body))return false;
+  const matrix=M.body.face_transform;
+  if(!matrix||matrix.length!==2)return false;
+  const ratio=devicePixelRatio||1;
+  const px=Math.floor(x*ratio),py=Math.floor(y*ratio);
+  if(px<0||py<0||px>=cv.width||py>=cv.height)return false;
+  if(!petHitCanvas){
+    petHitCanvas=document.createElement('canvas');
+    petHitCtx=petHitCanvas.getContext('2d',{willReadFrequently:true});
+  }
+  petHitCanvas.width=cv.width;petHitCanvas.height=cv.height;
+  const width=BODY.width,height=BODY.height;
+  const camera=petCamera(M.body,width,height);
+  const motion=bodyAt(performance.now(),width,height);
+  const bounds=M.body.bounds||[0,0,width,height];
+  const pivotX=bounds[0]+bounds[2]/2,pivotY=bounds[1]+bounds[3];
+  petHitCtx.setTransform(camera.scale,0,0,camera.scale,camera.x,camera.y);
+  petHitCtx.translate(pivotX+motion.x,pivotY+motion.y);
+  petHitCtx.rotate(motion.r);petHitCtx.scale(motion.sx,motion.sy);
+  petHitCtx.translate(-pivotX,-pivotY);
+  petHitCtx.transform(matrix[0][0],matrix[1][0],matrix[0][1],matrix[1][1],matrix[0][2],matrix[1][2]);
+  petHitCtx.drawImage(HEADMASK,0,0,headSurface.width,headSurface.height);
+  try{return petHitCtx.getImageData(px,py,1,1).data[3]>40;}catch(error){return false;}
+}
+function startPetTalk(){
+  if(recording||monitorEnabled)return;
+  startRec();
+  if(SHELL&&SHELL.isElectron&&typeof SHELL.showSpeechBubble==='function'){
+    SHELL.showSpeechBubble('🎙 Listening… release to send');
+  }
+}
+function stopPetTalk(){
+  if(SHELL&&SHELL.isElectron&&typeof SHELL.showSpeechBubble==='function'){
+    SHELL.showSpeechBubble('');
+  }
+  stopRec();
+}
+function petTapReaction(onHead){
+  const now=performance.now();
+  if(now-lastTapAt<700)return;
+  lastTapAt=now;
+  // A deliberate acknowledging nod through the real head rig: stronger than
+  // ambient nods, one beat, slightly bigger for a head tap.
+  nods.push({t0:now,a:onHead?7.6:5.6,d:onHead?460:400,n:1});
+  nextNod=now+2400+Math.random()*2000;
+}
+function clearGesture(){
+  if(gesture&&gesture.timer)clearTimeout(gesture.timer);
+  gesture=null;
+}
 cv.addEventListener('pointerdown',event=>{
   if(!SHELL||!PET.enabled||event.button!==0||PET.locked||PET.roam||!confirmPetEventHit(event))return;
-  dragging=true;document.documentElement.classList.add('dragging');
+  clearGesture();
+  gesture={x0:event.clientX,y0:event.clientY,
+    sx:event.screenX,sy:event.screenY,
+    t0:performance.now(),ptt:false,
+    head:pointerOnHead(event.clientX,event.clientY)};
   cv.setPointerCapture(event.pointerId);
-  SHELL.beginPetDrag({screenX:event.screenX,screenY:event.screenY});
+  if(gesture.head&&!monitorEnabled&&!recording&&!ptt.disabled){
+    gesture.timer=setTimeout(()=>{
+      if(!gesture||dragging)return;
+      gesture.timer=0;gesture.ptt=true;
+      startPetTalk();
+    },HEAD_HOLD_MS);
+  }
 });
 cv.addEventListener('pointerup',event=>{
-  if(!dragging)return;dragging=false;document.documentElement.classList.remove('dragging');
+  const active=gesture;
+  clearGesture();
   try{cv.releasePointerCapture(event.pointerId);}catch(error){}
-  SHELL.endPetDrag();updatePetHit(true);
+  if(dragging){
+    dragging=false;document.documentElement.classList.remove('dragging');
+    SHELL.endPetDrag();updatePetHit(true);
+    return;
+  }
+  if(!active)return;
+  if(active.ptt){stopPetTalk();return;}
+  if(performance.now()-active.t0<=TAP_MS)petTapReaction(active.head);
+});
+cv.addEventListener('pointercancel',event=>{
+  const active=gesture;
+  clearGesture();
+  try{cv.releasePointerCapture(event.pointerId);}catch(error){}
+  if(dragging){
+    dragging=false;document.documentElement.classList.remove('dragging');
+    SHELL.endPetDrag();updatePetHit(true);
+  }
+  if(active&&active.ptt)stopPetTalk();
 });
 cv.addEventListener('contextmenu',event=>{
   if(!SHELL||!PET.enabled||!confirmPetEventHit(event))return;
