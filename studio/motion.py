@@ -32,6 +32,16 @@ DEFAULT_WALK_STYLE = "office"
 DEFAULT_IDLE_POSE = "back-heel"
 WALK_STYLE_PRESETS = {
     "office": {
+        "loop_video": (
+            "Animate the exact selected person performing a NORMAL charming office "
+            "walk IN PLACE, as if on an invisible treadmill, at an ordinary 108\u2013114 "
+            "steps per minute. Use ordinary shoe-length steps that glide back under "
+            "the body, low toe clearance, soft heel-to-toe contact, almost level "
+            "hips, and steady head height. Elbows stay softly bent and close to the "
+            "ribs; each wrist travels only a small distance just ahead of and behind "
+            "its hip with correct contralateral coordination: right leg forward with "
+            "LEFT arm forward, left leg forward with RIGHT arm forward."
+        ),
         "label": "Office walk",
         "description": "Natural workplace pace with compact steps and arm swing.",
         "validation": "office-gait",
@@ -91,6 +101,13 @@ WALK_STYLE_PRESETS = {
         ),
     },
     "runway": {
+        "loop_video": (
+            "Animate a polished luxury-runway catwalk performed IN PLACE, as if on an "
+            "invisible treadmill, at a confident 104\u2013112 steps per minute. Use a "
+            "narrow controlled crossover footpath, smooth heel-to-toe placement, "
+            "restrained hip rotation, level shoulders, a steady editorial gaze, and "
+            "elegant compact contralateral arm swing below the waist."
+        ),
         "label": "Runway catwalk",
         "description": "Confident, sensual runway rhythm with controlled crossover steps.",
         "validation": "stylized-gait",
@@ -118,6 +135,12 @@ WALK_STYLE_PRESETS = {
         ),
     },
     "stroll": {
+        "loop_video": (
+            "Animate an unhurried relaxed stroll performed IN PLACE, as if on an "
+            "invisible treadmill, at 88\u201398 steps per minute. Use short comfortable "
+            "heel-to-toe steps gliding back under the body, gentle contralateral arm "
+            "swing, soft shoulders, low foot lift, and a calm level head."
+        ),
         "label": "Relaxed stroll",
         "description": "Easy unhurried steps with a soft, casual rhythm.",
         "validation": "stylized-gait",
@@ -137,6 +160,13 @@ WALK_STYLE_PRESETS = {
         "reject": "Reject shuffling, dragging feet, slouching, waving, bouncing, or stopping.",
     },
     "power": {
+        "loop_video": (
+            "Animate a brisk purposeful power walk performed IN PLACE, as if on an "
+            "invisible treadmill, at 124\u2013134 steps per minute. Use grounded moderate "
+            "strides gliding back under a stable torso, compact stronger contralateral "
+            "arm drive with both hands below the lower ribs, and low swing-foot "
+            "clearance."
+        ),
         "label": "Brisk power walk",
         "description": "Fast, purposeful cadence with stronger grounded momentum.",
         "validation": "stylized-gait",
@@ -157,6 +187,12 @@ WALK_STYLE_PRESETS = {
         "reject": "Reject jogging, running, high knees, pumping fists at chest height, or camera shake.",
     },
     "promenade": {
+        "loop_video": (
+            "Animate an elegant measured promenade performed IN PLACE, as if on an "
+            "invisible treadmill, at 92\u2013102 steps per minute. Use fluid medium "
+            "heel-to-toe steps gliding back under the body, composed upright carriage, "
+            "restrained hip motion, and small symmetrical contralateral arm swing."
+        ),
         "label": "Elegant promenade",
         "description": "Graceful measured steps with composed formal carriage.",
         "validation": "stylized-gait",
@@ -299,6 +335,19 @@ def _walk_style_receipt(style):
     }
 
 
+def walk_mode(style):
+    """How this style's footage is shot and cut.
+
+    Gait styles are generated as authored in-place loops: the keyframe is the
+    exact first and final frame, the subject walks on an invisible treadmill,
+    and the whole portrait frame budget goes to the subject. Traversal styles
+    (cartwheel) still cross the runway, because a lateral pass cannot loop in
+    place and the crossing itself is the move.
+    """
+    style = resolve_walk_style(style)
+    return "traversal" if style["validation"] == "traversal" else "loop"
+
+
 # The walk plate is a traversal runway: the subject starts near the left edge and
 # crosses to the right so the source trajectory can be measured. The provider caps
 # output at 720p, and 720p means the SHORT side, so a landscape plate only ever
@@ -398,6 +447,11 @@ def recorded_motion_settings(avatar_dir):
     walk_style = metadata.get("walk_style")
     if isinstance(walk_style, dict) and walk_style.get("id"):
         settings["walk_style"] = walk_style["id"]
+    walk_clip = metadata.get("walk")
+    if isinstance(walk_clip, dict):
+        # Takes shot before loop mode existed carry no receipt; they are
+        # traversal footage by construction.
+        settings["walk_mode"] = walk_clip.get("walk_mode") or "traversal"
     walk_frame = metadata.get("walk_frame")
     if isinstance(walk_frame, dict) and walk_frame.get("id"):
         settings["walk_frame"] = walk_frame["id"]
@@ -424,6 +478,14 @@ def approved_direction_conflict(
     None when re-cutting is safe.
     """
     recorded = recorded_motion_settings(avatar_dir)
+    if "walk" in kinds and recorded.get("walk_mode"):
+        wanted_mode = walk_mode(walk_style)
+        if wanted_mode != recorded["walk_mode"]:
+            return (
+                f"approved walk footage is a {recorded['walk_mode']} take, "
+                f"but this style now shoots {wanted_mode} footage; drop "
+                "--reuse-approved to generate fresh footage"
+            )
     if "walk" in kinds and recorded.get("walk_frame"):
         # The archived clip physically IS landscape or portrait, so a frame
         # switch cannot be honoured by re-cutting; it needs new footage.
@@ -529,8 +591,29 @@ COMPOSITION — one person only, full figure centered on a vertical 2:3 canvas w
 Editable wardrobe receipt, subordinate to the visual references: {outfit}"""
 
 
+def _loop_walk_video_prompt(walk_style):
+    """In-place treadmill loop contract, seeded by the proven first-equals-
+    last-frame approach: the authored seam replaces the traversal pipeline's
+    loop-window search."""
+    return f"""{walk_style['loop_video']}
+
+PRIORITY 0 — SEAMLESS IN-PLACE LOOP: the supplied image is the EXACT first frame and the EXACT final frame. The character stays fixed at the same screen position for the entire clip: no forward travel, no sideways drift, no scale change. Motion eases smoothly away from the supplied starting pose and returns precisely to that identical supplied pose at the end.
+
+PRIORITY 0.5 — COMPLETE TWO-STEP GAIT CYCLES: one step is not a cycle. In every cycle the left foot passes the right foot, then the right foot passes the left foot, and each hand passes IN FRONT OF its hip and then BEHIND its hip. Hold one steady cadence and repeat identical cycles continuously so the whole clip is walking; never pause, stand still, or change speed.
+
+PRIORITY 1 — IDENTITY, HAIR, AND WARDROBE: preserve the exact selected person's face, apparent age, body proportions, skin tone, hairline, hairstyle, outfit, materials, colors, accessories, and both complete shoes from the input keyframe in every frame. Never restyle, beautify, de-age, change clothes, change footwear, or invent a different person.
+
+CAMERA AND PLATE: locked camera with constant scale, exposure, and color; no camera motion, zoom, reframing, or cuts. The entire background and floor stay saturated chroma-key green with no scenery, shadows, reflections, text, props, gray, white, or green spill. The subject's complete full body and both shoes stay inside the frame at all times.
+
+STYLE-SPECIFIC REJECTIONS — {walk_style['reject']}
+
+GLOBAL REJECTIONS — reject forward travel across the frame, root drift, treadmill speed changes, bounce, camera movement, cuts, body-part disappearance, extra fingers, warped shoes, color flicker, hairstyle drift, identity drift, or wardrobe drift."""
+
+
 def _walk_video_prompt(walk_style=None, walk_frame=None):
     walk_style = resolve_walk_style(walk_style)
+    if walk_mode(walk_style) == "loop":
+        return _loop_walk_video_prompt(walk_style)
     walk_frame = resolve_walk_frame(walk_frame)
     enters, exits = walk_frame["crossing"]
     # The loop gate requires two hip-line crossings per arm and per leg, i.e. a full
@@ -706,24 +789,66 @@ def _standard_image(source, destination):
     return destination
 
 
-def _wide_walk_keyframe(source, destination, log, walk_frame=None):
-    walk_frame = resolve_walk_frame(walk_frame)
+def _keyframe_person(source, destination, log, label):
+    """The keyframe's subject as a tightly-cropped RGBA cutout."""
     source_image = cv2.imread(source, cv2.IMREAD_COLOR)
     if source_image is None:
-        raise RuntimeError("could not decode the walk traversal keyframe")
+        raise RuntimeError(f"could not decode the {label} keyframe")
     if _green_screen_purity(source_image) >= 0.62:
         rgba = _chroma_key_frame(source_image)
     else:
         alpha_path = os.path.splitext(destination)[0] + "-alpha.png"
         if not cutout.render(source, alpha_path, log=log, tight=True):
-            raise RuntimeError("could not alpha-cut the walk traversal keyframe")
+            raise RuntimeError(f"could not alpha-cut the {label} keyframe")
         rgba = cv2.imread(alpha_path, cv2.IMREAD_UNCHANGED)
         os.remove(alpha_path)
     points = cv2.findNonZero((rgba[:, :, 3] > 16).astype(np.uint8))
     if points is None:
-        raise RuntimeError("walk traversal keyframe has no person")
+        raise RuntimeError(f"{label} keyframe has no person")
     x, y, width, height = cv2.boundingRect(points)
-    person = rgba[y:y + height, x:x + width]
+    return rgba[y:y + height, x:x + width]
+
+
+# The in-place loop spends the provider's 720p short side entirely on the
+# subject: a 2:3 portrait plate with the figure at ~86% of frame height,
+# leaving margin for arm swing and hair. No registration lines: the loop
+# contract keeps the camera and root locked, so there is nothing to measure
+# against them, and a pure plate matches the proven reference clip.
+LOOP_WALK_PLATE = {
+    "width": 720, "height": 1088,
+    "subject_height": 940, "subject_width": 560, "floor": 1054,
+    "aspect_ratio": "2:3",
+}
+
+
+def _loop_walk_keyframe(source, destination, log):
+    person = _keyframe_person(source, destination, log, "walk loop")
+    plate = LOOP_WALK_PLATE
+    scale = min(
+        plate["subject_height"] / person.shape[0],
+        plate["subject_width"] / person.shape[1],
+    )
+    person = cv2.resize(
+        person,
+        (round(person.shape[1] * scale), round(person.shape[0] * scale)),
+        interpolation=cv2.INTER_AREA,
+    )
+    canvas = np.full(
+        (plate["height"], plate["width"], 3), (0, 220, 0), dtype=np.uint8)
+    left = max(0, (plate["width"] - person.shape[1]) // 2)
+    top = max(0, plate["floor"] - person.shape[0])
+    region = canvas[top:top + person.shape[0], left:left + person.shape[1]]
+    alpha = person[:, :, 3:4].astype(np.float32) / 255
+    region[:] = (person[:, :, :3] * alpha + region * (1 - alpha)).astype(np.uint8)
+    if not cv2.imwrite(destination, canvas, [cv2.IMWRITE_PNG_COMPRESSION, 5]):
+        raise RuntimeError("could not save the walk loop keyframe")
+    return destination
+
+
+def _wide_walk_keyframe(source, destination, log, walk_frame=None):
+    walk_frame = resolve_walk_frame(walk_frame)
+    person = _keyframe_person(source, destination, log, "walk traversal")
+    height, width = person.shape[:2]
     scale = min(
         walk_frame["subject_height"] / height,
         walk_frame["subject_width"] / width,
@@ -794,8 +919,10 @@ def _generate_keyframes(
 
 def _generate_videos(
         cache, video_provider, keyframes, prompts, log,
-        kinds=("walk", "idle"), walk_frame=None):
+        kinds=("walk", "idle"), walk_frame=None, walk_style=None):
     walk_frame = resolve_walk_frame(walk_frame)
+    loop_walk = (
+        walk_mode(walk_style) == "loop" if walk_style is not None else False)
     video_dir = os.path.join(cache, "videos")
     os.makedirs(video_dir, mode=0o700, exist_ok=True)
 
@@ -806,7 +933,14 @@ def _generate_videos(
         output_dir = os.path.join(video_dir, f"{kind}-provider")
         source_keyframe = keyframes[kind]
         aspect_ratio = None
-        if kind == "walk":
+        if kind == "walk" and loop_walk:
+            source_keyframe = _loop_walk_keyframe(
+                source_keyframe,
+                os.path.join(video_dir, "walk-loop-keyframe.png"),
+                log,
+            )
+            aspect_ratio = LOOP_WALK_PLATE["aspect_ratio"]
+        elif kind == "walk":
             source_keyframe = _wide_walk_keyframe(
                 source_keyframe,
                 os.path.join(video_dir, "walk-traversal-keyframe.png"),
@@ -1444,6 +1578,67 @@ def _trajectory_profile(anchors, start, end, fps, scale):
     return {
         "speed_method": "source-root-trajectory",
         "trajectory_r2": round(r_squared, 4),
+        "cycle_distance": round(cycle_distance, 2),
+        "ground_speed": round(cycle_distance / cycle_seconds, 2),
+        "travel_offsets": [round(float(value), 2) for value in offsets],
+        "continuous_source_frames": True,
+    }
+
+
+def _inplace_drift(frames, start, end):
+    """Horizontal root travel across the selected loop, in source pixels."""
+    anchors = [
+        _torso_anchor(frame) for frame in frames[start:end]
+    ]
+    anchors = [anchor for anchor in anchors if anchor is not None]
+    if len(anchors) < max(8, (end - start) * 0.8):
+        return None
+    return float(max(anchors) - min(anchors))
+
+
+def _inplace_trajectory(poses, start, end, fps, scale):
+    """Ground speed of an in-place loop, measured from stance-foot slide.
+
+    On an invisible treadmill the planted foot slides backward under the body
+    at exactly the ground speed the walk represents. Per frame the more
+    negative of the two ankle velocities (relative to the root) is the stance
+    foot's slide; the median of that backward cluster is the speed. Returns
+    None when the take reads as marching rather than treadmill walking, so
+    the caller can fall back to the stride heuristic.
+    """
+    series = {}
+    for side in ("left", "right"):
+        values = []
+        for pose in poses[start:end]:
+            ankle = _pose_point(pose, f"{side}_ankle")
+            root = _pose_point(pose, "root")
+            values.append(
+                ankle[0] - root[0]
+                if ankle is not None and root is not None else np.nan)
+        values = np.asarray(values, dtype=np.float64)
+        valid = np.isfinite(values)
+        if valid.sum() < max(8, math.ceil(len(values) * 0.85)):
+            return None
+        indices = np.arange(len(values))
+        values[~valid] = np.interp(
+            indices[~valid], indices[valid], values[valid])
+        series[side] = _smooth_signal(values, 3)
+    stance_velocity = np.minimum(
+        np.diff(series["left"]), np.diff(series["right"]))
+    backward = stance_velocity[stance_velocity < 0]
+    if backward.size < stance_velocity.size * 0.5:
+        return None
+    slide = float(-np.median(backward))
+    cycle_frames = end - start
+    cycle_seconds = cycle_frames / max(1, fps)
+    cycle_distance = slide * cycle_frames * scale
+    if cycle_distance < 12:
+        return None
+    offsets = np.linspace(
+        0.0, cycle_distance * (cycle_frames - 1) / cycle_frames, cycle_frames)
+    return {
+        "speed_method": "in-place-stance-slide",
+        "stance_slide_px_per_frame": round(slide, 3),
         "cycle_distance": round(cycle_distance, 2),
         "ground_speed": round(cycle_distance / cycle_seconds, 2),
         "travel_offsets": [round(float(value), 2) for value in offsets],
@@ -2603,7 +2798,14 @@ def _process_clip(
     anchors = None
     pose_quality = None
     if kind == "walk":
-        recentered, anchors = _recenter_walk_frames(alpha_frames)
+        mode = walk_mode(walk_style)
+        if mode == "loop":
+            # Authored in-place loop: the footage never travels, so there is
+            # no root motion to remove and the whole frame sequence is
+            # candidate loop material as shot.
+            recentered = alpha_frames
+        else:
+            recentered, anchors = _recenter_walk_frames(alpha_frames)
         loop = walk_style["loop"]
         gait_validation = walk_style["validation"] != "traversal"
         selected, loop_start, loop_end, loop_alternates = _select_loop(
@@ -2613,6 +2815,17 @@ def _process_clip(
             pose_profile=walk_style["validation"],
             return_candidates=True,
         )
+        if mode == "loop":
+            drift = _inplace_drift(alpha_frames, loop_start, loop_end)
+            if drift is None:
+                raise RuntimeError(
+                    "could not track the walk loop's root position")
+            drift_limit = alpha_frames[0].shape[1] * 0.08
+            if drift > drift_limit:
+                raise RuntimeError(
+                    f"walk loop drifts {round(drift)}px across the frame "
+                    f"(limit {round(drift_limit)}px); the character must "
+                    "walk in place; regenerate it")
         # The provider only gets MAX_CANDIDATE_ATTEMPTS videos, so before a
         # near-miss can reject this footage, test the other well-ranked cuts
         # of the same clip against the real gates - a slightly different
@@ -2691,14 +2904,26 @@ def _process_clip(
     alpha_name = f"{kind}-alpha.mov"
     alpha_path = _encode_alpha_preview(normalised, fps, os.path.join(stage, alpha_name))
     if kind == "walk":
-        trajectory = _trajectory_profile(anchors, loop_start, loop_end, fps, scale)
-        if not trajectory:
-            raise RuntimeError(
-                "walk video did not contain a steady left-to-right root trajectory; regenerate it rather than estimating desktop speed")
-        if walk_style["validation"] != "traversal":
-            trajectory = _stance_calibrated_trajectory(
-                normalised, bounds, trajectory)
+        if walk_mode(walk_style) == "loop":
+            trajectory = _inplace_trajectory(
+                poses, loop_start, loop_end, fps, scale)
+            if trajectory:
+                log(
+                    "walk speed from stance-foot slide: "
+                    f"{trajectory['ground_speed']}px/s")
+            else:
+                log("stance slide unreadable; using stride-heuristic walk speed")
+        else:
+            trajectory = _trajectory_profile(
+                anchors, loop_start, loop_end, fps, scale)
+            if not trajectory:
+                raise RuntimeError(
+                    "walk video did not contain a steady left-to-right root trajectory; regenerate it rather than estimating desktop speed")
+            if walk_style["validation"] != "traversal":
+                trajectory = _stance_calibrated_trajectory(
+                    normalised, bounds, trajectory)
         metrics = _gait_metrics(normalised, fps, bounds, trajectory)
+        metrics["walk_mode"] = walk_mode(walk_style)
         metrics["walk_style"] = _walk_style_receipt(walk_style)
         metrics["pose_quality"] = pose_quality
         metrics["loop_closure_quality"] = closure_quality
@@ -2855,7 +3080,11 @@ def _process_approved_original_walk(
         original_poses,
         validation_frames=original_segmented,
     )
-    recentered, anchors = _recenter_walk_frames(authoritative)
+    approved_mode = previous_walk.get("walk_mode") or "traversal"
+    if approved_mode == "loop":
+        recentered, anchors = authoritative, None
+    else:
+        recentered, anchors = _recenter_walk_frames(authoritative)
     frame_count = end - start
     selected = recentered[:frame_count]
     strict_pose_quality = _pose_cycle_metrics(original_poses, 0, frame_count)
@@ -2866,11 +3095,16 @@ def _process_approved_original_walk(
             extremity_quality.get("reason") or "approved walk lost an extremity")
 
     normalised, bounds, scale = _normalise_frames(selected, include_scale=True)
-    trajectory = _trajectory_profile(anchors, 0, frame_count, WALK_FPS, scale)
-    if not trajectory:
-        raise RuntimeError("approved walk lost its steady source-root trajectory")
-    trajectory = _stance_calibrated_trajectory(normalised, bounds, trajectory)
+    if approved_mode == "loop":
+        trajectory = _inplace_trajectory(
+            original_poses, 0, frame_count, WALK_FPS, scale)
+    else:
+        trajectory = _trajectory_profile(anchors, 0, frame_count, WALK_FPS, scale)
+        if not trajectory:
+            raise RuntimeError("approved walk lost its steady source-root trajectory")
+        trajectory = _stance_calibrated_trajectory(normalised, bounds, trajectory)
     gait = _gait_metrics(normalised, WALK_FPS, bounds, trajectory)
+    gait["walk_mode"] = approved_mode
     sheets = _pack_sheets(normalised, stage, "walk")
     poster = "walk-poster.png"
     cv2.imwrite(
@@ -3162,7 +3396,7 @@ def build(
             cache, video_provider, keyframes,
             {"walk": prompts["walk_video"],
              "idle": prompts["idle_video"]}, log, requested_kinds,
-            walk_frame)
+            walk_frame, walk_style)
 
         stage = tempfile.mkdtemp(prefix=".motion-stage-", dir=avatar_dir)
         if os.path.isdir(destination):
@@ -3251,7 +3485,12 @@ def build(
                 metadata[kind] = clips[kind]
             if "walk" in requested_kinds:
                 metadata["walk_style"] = _walk_style_receipt(walk_style)
-                metadata["walk_frame"] = _walk_frame_receipt(walk_frame)
+                if walk_mode(walk_style) == "traversal":
+                    metadata["walk_frame"] = _walk_frame_receipt(walk_frame)
+                else:
+                    # In-place loops have no runway; a stale runway receipt
+                    # would advertise geometry the footage never used.
+                    metadata.pop("walk_frame", None)
             if "idle" in requested_kinds:
                 metadata["idle_pose"] = idle_pose
                 metadata["reference"] = {

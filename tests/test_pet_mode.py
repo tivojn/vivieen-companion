@@ -223,20 +223,23 @@ class MotionPipelineTests(unittest.TestCase):
         self.assertIn("narrow green-screen gap around each wrist", keyframe)
         self.assertIn("canonical RIGHT-SIDE full-body plate", keyframe)
         self.assertIn("canonical HD head", keyframe)
-        self.assertIn("Use correct contralateral coordination", video)
-        self.assertIn("both shoulders, sleeves, elbows, wrists, and hands remain naturally readable", video)
-        self.assertIn("forward → back → return", video)
+        # The office style now ships as an authored in-place loop: the
+        # keyframe is the exact first and final frame, and the treadmill
+        # contract replaces the runway crossing.
+        self.assertIn("correct contralateral coordination", video)
+        self.assertIn("IN PLACE", video)
+        self.assertIn("EXACT first frame and the EXACT final frame", video)
         self.assertIn("input keyframe in every frame", video)
-        self.assertIn("NORMAL, charming office walk", video)
-        self.assertIn("Each wrist stays continuously between the hip seam and mid-thigh", video)
+        self.assertIn("NORMAL charming office walk", video)
         self.assertIn("one-sided partial cycles", video)
         self.assertIn("same-side arm-and-leg motion", video)
-        # The crossing contract must match the default runway frame - landscape,
-        # because measured portrait runs walk in place and yield no traversal.
+        self.assertNotIn("camera-left to camera-right", video)
+        # The runway frame remains landscape for traversal styles, because
+        # measured portrait traversal runs walk in place and cannot be paced.
         default_frame = motion.resolve_walk_frame()
         self.assertEqual("landscape", default_frame["id"])
         crossing = "{}% to {}% at constant speed".format(*default_frame["crossing"])
-        self.assertIn(crossing, video)
+        self.assertNotIn(crossing, video)
         self.assertIn("color flicker", video)
         self.assertIn("chroma-key green", keyframe)
         self.assertIn("chroma-key green", video)
