@@ -38,6 +38,23 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("hitConfidence", renderer)
         self.assertIn("ctx.getImageData", renderer)
 
+    def test_pet_gestures_share_one_button_without_conflicts(self):
+        # pointerdown only ARMS a gesture: drag starts after the slop (from
+        # the press point, so nothing jumps), a held HEAD press becomes
+        # push-to-talk, and a quick release is an acknowledged tap. The head
+        # is resolved by sampling the real head mask through the scene
+        # transforms, never a hit box.
+        renderer = (ROOT / "web" / "index.html").read_text()
+        self.assertIn("function pointerOnHead", renderer)
+        self.assertIn("petHitCtx.drawImage(HEADMASK,0,0", renderer)
+        self.assertIn("const TAP_SLOP_PX=4,HEAD_HOLD_MS=200,TAP_MS=350;", renderer)
+        self.assertIn("SHELL.beginPetDrag({screenX:gesture.sx,screenY:gesture.sy});", renderer)
+        self.assertIn("function startPetTalk", renderer)
+        self.assertIn("function petTapReaction", renderer)
+        self.assertIn("cv.addEventListener('pointercancel'", renderer)
+        # Drag must never start once push-to-talk is live.
+        self.assertIn("if(gesture&&!dragging&&!gesture.ptt&&", renderer)
+
     def test_continuous_size_expands_native_alpha_window(self):
         main = (ROOT / "electron" / "main.cjs").read_text()
         renderer = (ROOT / "web" / "index.html").read_text()
