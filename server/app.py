@@ -10,7 +10,7 @@ runtime bundle at avatars/<slug>/runtime/, and /assets/* resolves through the
 active slug on every request. Activating a face is therefore one atomic write
 to active.json, and no file is ever copied over another.
 """
-import os, sys, io, json, base64, tempfile, threading, time, shutil, subprocess, secrets
+import os, sys, io, json, base64, tempfile, threading, time, shutil, subprocess, secrets, asyncio
 from contextlib import asynccontextmanager
 os.environ["PATH"] = os.pathsep.join(filter(None, (
     os.path.expanduser("~/.config/enconvo/bin"), "/opt/homebrew/bin",
@@ -524,6 +524,11 @@ class BodyRequest(BaseModel):
     profile: BodyProfileInput
 
 
+class BodyPromptRequest(BaseModel):
+    slug: str = Field(pattern=SLUG_PATTERN)
+    refresh: bool = False
+
+
 class MotionRequest(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
     kind: str = Field(default="both", pattern=r"^(walk|idle|both)$")
@@ -770,6 +775,8 @@ async def api_body(slug: str = Query(pattern=SLUG_PATTERN)):
         job = dict(job) if job and (
             job.get("kind") == "body" or
             str(job.get("kind") or "").startswith("motion")) else None
+    from studio import wardrobe
+    cached_prompt = wardrobe.cached_prompt(directory)
     return {
         "body": manifest.get("body"),
         "motion": manifest.get("motion"),
@@ -784,8 +791,32 @@ async def api_body(slug: str = Query(pattern=SLUG_PATTERN)):
         "provider_error": provider_error,
         "video_provider": video_provider,
         "video_provider_error": video_provider_error,
-        "default_prompt": body.DEFAULT_BODY_PROMPT,
+        "default_prompt": (cached_prompt or {}).get(
+            "prompt") or wardrobe.preset_prompt(),
+        "prompt_source": (cached_prompt or {}).get("source") or "preset",
+        "prompt_traits": (cached_prompt or {}).get("traits") or {},
         "job": job,
+    }
+
+
+@app.post("/api/avatar/body/prompt")
+async def api_body_prompt(request: BodyPromptRequest):
+    """Compose art direction from the uploaded portrait itself.
+
+    Kept off the status route because it calls a vision model: the modal opens
+    on the cached or preset text immediately and upgrades in place.
+    """
+    if not reg().read_manifest(request.slug):
+        raise HTTPException(404, "avatar not found")
+    from studio import wardrobe
+    directory = reg().adir(request.slug)
+    result = await asyncio.to_thread(
+        wardrobe.tailored_prompt, directory, request.refresh)
+    return {
+        "prompt": result.get("prompt") or wardrobe.preset_prompt(),
+        "source": result.get("source") or "preset",
+        "traits": result.get("traits") or {},
+        "error": result.get("error") or "",
     }
 
 

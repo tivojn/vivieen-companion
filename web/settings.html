@@ -495,10 +495,21 @@ button.btn.danger{color:#d9705f}
         <div class="f" style="margin-top:13px"><label for="body-prompt">Editable full-body prompt</label>
           <textarea id="body-prompt" maxlength="2400" style="min-height:190px" placeholder="Describe wardrobe, silhouette, palette, materials, accessories, and styling…"></textarea>
           <div class="body-actions" style="margin-top:8px">
-            <p class="note" style="margin:0">The tasteful fashion preset is loaded as editable text for every generation and regeneration.</p>
+            <p class="note" id="body-prompt-note" style="margin:0" aria-live="polite">Written for this portrait, and editable before every generation.</p>
             <div class="grow"></div>
-            <button class="btn sm" id="body-prompt-reset" type="button">Reset preset</button>
+            <button class="btn sm" id="body-prompt-reset" type="button">Rewrite for this portrait</button>
           </div>
+        </div>
+        <div class="body-progress hidden" id="body-progress">
+          <div class="jobhead"><span id="body-stage">Preparing</span><span id="body-percent">0%</span></div>
+          <div class="bar"><i id="body-progress-bar" style="width:0%"></i></div>
+          <div class="note" id="body-progress-line"></div>
+        </div>
+        <div class="body-actions">
+          <button class="btn danger hidden" id="body-remove">Remove body</button>
+          <div class="grow"></div>
+          <button class="btn" id="body-cancel">Cancel</button>
+          <button class="btn pri" id="body-generate">Generate 3 full-body views</button>
         </div>
         <div class="body-identity"><b>Identity Lock is always on.</b><br>The original 1024px animated face remains the runtime face at every zoom level. The provider never replaces the lip-sync rig.</div>
         <h4>Desktop motion</h4>
@@ -571,17 +582,6 @@ button.btn.danger{color:#d9705f}
             <p class="note" id="body-idle-status" style="margin-top:10px">Generate a full body first.</p>
           </section>
         </div>
-        <div class="body-progress hidden" id="body-progress">
-          <div class="jobhead"><span id="body-stage">Preparing</span><span id="body-percent">0%</span></div>
-          <div class="bar"><i id="body-progress-bar" style="width:0%"></i></div>
-          <div class="note" id="body-progress-line"></div>
-        </div>
-        <div class="body-actions">
-          <button class="btn danger hidden" id="body-remove">Remove body</button>
-          <div class="grow"></div>
-          <button class="btn" id="body-cancel">Cancel</button>
-          <button class="btn pri" id="body-generate">Generate 3 full-body views</button>
-        </div>
       </aside>
     </div>
   </div>
@@ -606,6 +606,7 @@ const WALK_STYLE_LABELS = {
 };
 const IDLE_POSE_IDS = new Set(['back-heel', 'tailored-cross', 'pocket-lean', 'heel-up', 'folded-cross', 'side-cross', 'custom']);
 let BODY_SLUG = null, BODY_STATE = null, BODY_WATCH = null, BODY_VIEW = 'front';
+let BODY_PROMPT_FILLED = '', BODY_PROMPT_BUSY = false;
 let BODY_MODE = 'body', BODY_CYCLE = null;
 let BODY_WALK_STYLE = 'office', BODY_IDLE_POSE = 'back-heel', BODY_BUSY = false;
 
@@ -1479,7 +1480,14 @@ function renderBodyStudio() {
   $('#body-style').value = options.style || 'photorealistic';
   $('#body-pose').value = options.pose || 'relaxed';
   const legacyPrompt = [options.outfit, options.notes].filter(Boolean).join(' ');
-  $('#body-prompt').value = options.prompt || legacyPrompt || BODY_STATE.default_prompt || '';
+  const filledPrompt = options.prompt || legacyPrompt || BODY_STATE.default_prompt || '';
+  $('#body-prompt').value = filledPrompt;
+  BODY_PROMPT_FILLED = filledPrompt;
+  if (!options.prompt && !legacyPrompt) {
+    setBodyPromptNote(BODY_STATE.prompt_source, BODY_STATE.prompt_traits);
+  } else {
+    setBodyPromptNote('saved', null);
+  }
   const hasBody = Boolean(BODY_STATE.has_body);
   const hasTurnaround = Boolean(BODY_STATE.has_turnaround);
   const motion = BODY_STATE.motion || {};
@@ -1526,6 +1534,65 @@ function renderBodyStudio() {
   setBodyBusy(false);
 }
 
+function setBodyPromptNote(source, traits) {
+  const note = $('#body-prompt-note');
+  if (!note) return;
+  if (source === 'working') {
+    note.textContent = 'Reading the portrait and writing art direction for this subject…';
+    return;
+  }
+  if (source === 'saved') {
+    note.textContent = 'The prompt saved with this body. Editable before every regeneration.';
+    return;
+  }
+  if (source === 'tailored') {
+    const read = [
+      (traits || {}).presentation, (traits || {}).age_band, (traits || {}).medium
+    ].filter(Boolean).join(' · ');
+    const register = (traits || {}).register;
+    note.textContent = read
+      ? `Written for this portrait — ${read}${register ? ' · ' + register : ''}.`
+      : 'Written for this portrait. Editable before every generation.';
+    return;
+  }
+  note.textContent = 'Neutral preset — no portrait reading available. Editable before every generation.';
+}
+
+// The brief is written from the portrait itself, so a game hero is not dressed
+// in the fashion preset written for a photoreal subject. It runs off the modal's
+// critical path and never overwrites text the user has already touched.
+async function tailorBodyPrompt(slug, { refresh = false, force = false } = {}) {
+  if (BODY_PROMPT_BUSY) return;
+  const field = $('#body-prompt');
+  if (!force && field.value.trim() !== BODY_PROMPT_FILLED.trim()) return;
+  BODY_PROMPT_BUSY = true;
+  $('#body-prompt-reset').disabled = true;
+  setBodyPromptNote('working', null);
+  try {
+    const result = await api('/api/avatar/body/prompt', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, refresh })
+    });
+    if (BODY_SLUG !== slug) return;
+    if (!result || !result.prompt) { setBodyPromptNote('preset', null); return; }
+    if (force || field.value.trim() === BODY_PROMPT_FILLED.trim()) {
+      field.value = result.prompt;
+      BODY_PROMPT_FILLED = result.prompt;
+    }
+    if (BODY_STATE) {
+      BODY_STATE.default_prompt = result.prompt;
+      BODY_STATE.prompt_source = result.source;
+      BODY_STATE.prompt_traits = result.traits || {};
+    }
+    setBodyPromptNote(result.source, result.traits);
+  } catch (error) {
+    if (BODY_SLUG === slug) setBodyPromptNote('preset', null);
+  } finally {
+    BODY_PROMPT_BUSY = false;
+    if (!BODY_BUSY) $('#body-prompt-reset').disabled = false;
+  }
+}
+
 async function openBody(slug) {
   BODY_SLUG = slug;
   BODY_VIEW = 'front';
@@ -1543,6 +1610,9 @@ async function openBody(slug) {
   if (BODY_SLUG !== slug) return;
   BODY_STATE = bodyState;
   renderBodyStudio();
+  if (bodyState.prompt_source !== 'tailored' && !(bodyState.body || {}).options) {
+    tailorBodyPrompt(slug);
+  }
   const job = progressState.job || { done: true };
   if (!job.done) {
     $('#body-progress').classList.remove('hidden');
@@ -1700,7 +1770,7 @@ document.querySelectorAll('[data-body-view]').forEach(button => {
   };
 });
 $('#body-prompt-reset').onclick = () => {
-  if (BODY_STATE) $('#body-prompt').value = BODY_STATE.default_prompt || '';
+  if (BODY_SLUG) tailorBodyPrompt(BODY_SLUG, { refresh: true, force: true });
 };
 $('#body-modal').addEventListener('click', event => { if (event.target === $('#body-modal')) closeBody(); });
 
