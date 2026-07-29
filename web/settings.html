@@ -209,7 +209,7 @@ button.btn.danger{color:#d9705f}
   background:rgba(255,255,255,.045);color:var(--dim);font-size:10px}
 .motion-cycle-card{display:grid;grid-template-columns:minmax(170px,42%) 1fr;gap:15px;margin-bottom:17px;
   padding:13px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.024)}
-.motion-cycle-stage,.motion-asset-preview.checker{background-color:#19191d;
+.motion-cycle-stage,.motion-asset-preview.checker,.motion-set-thumb{background-color:#19191d;
   background-image:linear-gradient(45deg,#27272d 25%,transparent 25%),linear-gradient(-45deg,#27272d 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#27272d 75%),linear-gradient(-45deg,transparent 75%,#27272d 75%);
   background-size:18px 18px;background-position:0 0,0 9px,9px -9px,-9px 0}
 .motion-cycle-stage{display:grid;place-items:center;min-height:252px;border:1px solid rgba(255,255,255,.07);
@@ -338,6 +338,26 @@ button.btn.danger{color:#d9705f}
   font-size:11px;line-height:1.25}.walk-style-card small{display:block;margin-top:3px;color:var(--dim);
   font-size:9.5px;line-height:1.25}.walk-style-card.on b{color:#ff8a7e}
 .walk-style-card[data-walk-style=cartwheel] small:after{content:" · experimental";color:#dda94f}
+.motion-set-list{display:flex;flex-direction:column;gap:8px;margin-top:11px}
+.motion-set-card{display:grid;grid-template-columns:46px minmax(0,1fr) auto;align-items:center;gap:10px;
+  padding:8px 9px;border:1px solid #26262c;border-radius:13px;background:#131317;text-align:left}
+.motion-set-card.on{border-color:rgba(226,72,58,.55);background:rgba(226,72,58,.07)}
+.motion-set-card.off{opacity:.58}
+.motion-set-thumb{width:46px;height:58px;border:1px solid rgba(255,255,255,.07);border-radius:9px;object-fit:contain}
+.motion-set-meta{min-width:0}.motion-set-meta b{display:block;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;color:var(--ink);font-size:11.5px}
+.motion-set-meta small{display:block;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--dim);font-size:9.5px;line-height:1.35}
+.motion-set-card.on .motion-set-meta small.state{color:#f48175}
+.motion-set-actions{display:flex;flex:none;align-items:center;gap:6px}
+.motion-set-use{border:1px solid rgba(226,72,58,.34);background:rgba(226,72,58,.1);color:#f48175;border-radius:8px;
+  padding:6px 10px;font:inherit;font-size:10px;font-weight:700;cursor:pointer}
+.motion-set-use:hover{background:rgba(226,72,58,.17)}
+.motion-set-use:disabled{opacity:.45;cursor:default}
+.motion-set-delete{display:grid;place-items:center;width:26px;height:26px;border:1px solid var(--line);
+  border-radius:8px;background:#1b1b20;color:var(--dim);font:inherit;font-size:13px;line-height:1;cursor:pointer}
+.motion-set-delete:hover{border-color:rgba(226,72,58,.5);color:#f48175}
+.motion-set-delete:disabled{opacity:.45;cursor:default}
 .idle-pose-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:8px}
 .idle-pose-card{position:relative;display:flex;min-width:0;min-height:132px;padding:7px 5px 9px;
   flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;border:1px solid #2b2b33;
@@ -602,6 +622,7 @@ button.btn.danger{color:#d9705f}
           <div id="body-progress-line"></div>
           <p class="body-progress-hint" id="body-progress-hint"></p>
         </div>
+        <div class="motion-set-list hidden" id="body-set-list" role="group" aria-label="Generated full-body sets"></div>
         <div class="body-actions">
           <button class="btn danger hidden" id="body-remove">Remove body</button>
           <div class="grow"></div>
@@ -657,7 +678,8 @@ button.btn.danger{color:#d9705f}
               <button class="walk-style-card" type="button" data-walk-style="cartwheel" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-cartwheel"></use></svg><span><b>Cartwheel</b><small>One lateral pass</small></span></button>
             </div>
             <p class="note">Uses the generated side body automatically. Identity, wardrobe, and facial rig remain locked; only the traversal changes.</p>
-            <div class="body-motion-actions"><button class="btn danger hidden" id="body-walk-remove">Remove walk</button><div class="grow"></div><button class="btn pri" id="body-walk-generate">Generate Horizon Walk</button></div>
+            <div class="motion-set-list hidden" id="body-walk-sets" role="group" aria-label="Generated Horizon Walk sets"></div>
+            <div class="body-motion-actions"><div class="grow"></div><button class="btn pri" id="body-walk-generate">Generate Horizon Walk</button></div>
             <p class="note" id="body-walk-status" style="margin-top:10px">Generate a full body first.</p>
           </section>
 
@@ -675,7 +697,8 @@ button.btn.danger{color:#d9705f}
             </div>
             <textarea class="idle-pose-prompt hidden" id="body-motion-prompt" maxlength="600" placeholder="Example: Rest one shoulder against the left edge, arms loosely folded, ankles crossed, gaze into the screen."></textarea>
             <p class="note">This controls Edge Idle only. It no longer regenerates or changes Horizon Walk.</p>
-            <div class="body-motion-actions"><button class="btn danger hidden" id="body-idle-remove">Remove idle</button><div class="grow"></div><button class="btn pri" id="body-idle-generate">Generate Edge Idle</button></div>
+            <div class="motion-set-list hidden" id="body-idle-sets" role="group" aria-label="Generated Edge Idle sets"></div>
+            <div class="body-motion-actions"><div class="grow"></div><button class="btn pri" id="body-idle-generate">Generate Edge Idle</button></div>
             <p class="note" id="body-idle-status" style="margin-top:10px">Generate a full body first.</p>
           </section>
         </div>
@@ -1465,10 +1488,11 @@ function setBodyBusy(busy) {
     $('#' + id).disabled = busy || !hasBody || !hasVideoProvider;
   });
   $('#body-remove').disabled = busy;
-  $('#body-walk-remove').disabled = busy;
-  $('#body-idle-remove').disabled = busy;
   document.querySelectorAll('[data-walk-style], [data-idle-pose]').forEach(button => {
     button.disabled = busy;
+  });
+  document.querySelectorAll('.motion-set-use, .motion-set-delete').forEach(button => {
+    button.disabled = busy || button.dataset.locked === '1';
   });
   $('#body-motion-prompt').disabled = busy || BODY_IDLE_POSE !== 'custom';
   ['body-style', 'body-pose', 'body-prompt', 'body-prompt-reset'].forEach(id => {
@@ -1764,11 +1788,9 @@ function renderBodyStudio() {
   $('#body-preview').classList.toggle('hidden', !hasBody);
   $('#body-empty').classList.toggle('hidden', hasBody);
   $('#body-remove').classList.toggle('hidden', !hasBody);
-  $('#body-walk-remove').classList.toggle('hidden', !hasWalk);
-  $('#body-idle-remove').classList.toggle('hidden', !hasIdle);
-  $('#body-generate').textContent = hasBody ? 'Regenerate 3 full-body views' : 'Generate 3 full-body views';
-  $('#body-walk-generate').textContent = hasWalk ? 'Regenerate Horizon Walk' : 'Generate Horizon Walk';
-  $('#body-idle-generate').textContent = hasIdle ? 'Regenerate Edge Idle' : 'Generate Edge Idle';
+  $('#body-generate').textContent = hasBody ? 'Generate a new body set' : 'Generate 3 full-body views';
+  $('#body-walk-generate').textContent = hasWalk ? 'Generate a new walk set' : 'Generate Horizon Walk';
+  $('#body-idle-generate').textContent = hasIdle ? 'Generate a new idle set' : 'Generate Edge Idle';
   const walkState = $('#body-walk-state');
   walkState.textContent = hasWalk ? 'Ready' : 'Not generated';
   walkState.className = 'pill ' + (hasWalk ? 'ok' : '');
@@ -1776,7 +1798,7 @@ function renderBodyStudio() {
   idleState.textContent = hasIdle ? 'Ready' : 'Not generated';
   idleState.className = 'pill ' + (hasIdle ? 'ok' : '');
   $('#body-walk-status').textContent = hasWalk
-    ? `Ready · ${WALK_STYLE_LABELS[BODY_WALK_STYLE] || 'Horizon Walk'} controls desktop traversal.`
+    ? `Ready · ${WALK_STYLE_LABELS[BODY_WALK_STYLE] || 'Horizon Walk'} controls desktop traversal. Generating adds a new set to the library.`
     : hasTurnaround
       ? 'Ready to generate from the dedicated side body.'
       : hasBody
@@ -1785,14 +1807,143 @@ function renderBodyStudio() {
   const idleButton = document.querySelector(`[data-idle-pose="${BODY_IDLE_POSE}"] span`);
   const idleLabel = idleButton ? idleButton.textContent : 'selected pose';
   $('#body-idle-status').textContent = hasIdle
-    ? `Ready · ${idleLabel}. Regenerating Horizon Walk will not change it.`
+    ? `Ready · ${idleLabel}. Generating adds a new set to the library.`
     : hasWalk
       ? 'Optional · plays when Horizon Walk reaches the left or right screen edge.'
       : hasBody
         ? 'Can be generated independently; it becomes visible when Horizon Walk reaches an edge.'
         : 'Generate the three full-body views first.';
+  renderSetLists();
   renderBodyPreview();
   setBodyBusy(false);
+}
+
+function formatSetDate(created) {
+  const date = new Date(created);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString(undefined, {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+  });
+}
+
+function avatarFileUrl(relative) {
+  const parts = String(relative || '').split('/').filter(Boolean);
+  return `/files/${encodeURIComponent(BODY_SLUG)}/${parts.map(encodeURIComponent).join('/')}`;
+}
+
+function motionSetCard(set) {
+  const meta = [formatSetDate(set.created)];
+  if (Number(set.frames) > 0 && Number(set.fps) > 0) {
+    meta.push(`${set.frames} frames · ${set.fps} FPS`);
+  }
+  const state = set.active ? 'In use on the desktop'
+    : set.compatible ? 'Ready to use'
+    : 'Generated for another body set';
+  const thumb = set.poster || set.preview;
+  return `
+    <article class="motion-set-card${set.active ? ' on' : ''}${set.compatible === false ? ' off' : ''}">
+      ${thumb ? `<img class="motion-set-thumb" src="${esc(avatarFileUrl(thumb))}" alt="" loading="lazy">`
+              : '<span class="motion-set-thumb"></span>'}
+      <span class="motion-set-meta">
+        <b>${esc(set.label || 'Generated set')}</b>
+        <small>${esc(meta.filter(Boolean).join(' · '))}</small>
+        <small class="state">${esc(state)}</small>
+      </span>
+      <span class="motion-set-actions">
+        ${set.active ? '' : `<button class="motion-set-use" type="button" data-set-use="${esc(set.id)}"${set.compatible === false ? ' data-locked="1" disabled title="Switch to the body set this was generated with first"' : ''}>Use</button>`}
+        <button class="motion-set-delete" type="button" data-set-delete="${esc(set.id)}" aria-label="Delete ${esc(set.label || 'this')} set" title="Delete this set">&times;</button>
+      </span>
+    </article>`;
+}
+
+function renderMotionSets(kind) {
+  const box = $(kind === 'walk' ? '#body-walk-sets' : '#body-idle-sets');
+  const sets = ((BODY_STATE || {}).motion_sets || {})[kind] || [];
+  box.classList.toggle('hidden', !sets.length);
+  box.innerHTML = sets.map(motionSetCard).join('');
+  box.querySelectorAll('[data-set-use]').forEach(button => {
+    button.onclick = () => activateMotionSet(kind, button.dataset.setUse);
+  });
+  box.querySelectorAll('[data-set-delete]').forEach(button => {
+    button.onclick = () => deleteMotionSet(kind, button.dataset.setDelete,
+      sets.find(set => set.id === button.dataset.setDelete));
+  });
+}
+
+function renderBodySets() {
+  const box = $('#body-set-list');
+  const sets = (BODY_STATE || {}).body_sets || [];
+  box.classList.toggle('hidden', !sets.length);
+  box.innerHTML = sets.map(set => motionSetCard({...set, compatible: true})).join('');
+  box.querySelectorAll('[data-set-use]').forEach(button => {
+    button.onclick = () => activateBodySet(button.dataset.setUse);
+  });
+  box.querySelectorAll('[data-set-delete]').forEach(button => {
+    button.onclick = () => deleteBodySet(button.dataset.setDelete,
+      sets.find(set => set.id === button.dataset.setDelete));
+  });
+}
+
+function renderSetLists() {
+  renderMotionSets('walk');
+  renderMotionSets('idle');
+  renderBodySets();
+}
+
+async function applySetAction(path, payload, failureLabel) {
+  const slug = BODY_SLUG;
+  setBodyBusy(true);
+  let response;
+  try {
+    response = await api(path, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({slug, ...payload})
+    });
+  } catch (error) {
+    response = {detail: 'Could not reach the local backend. Check that the Vivieen server is running, then try again.'};
+  }
+  if (BODY_SLUG !== slug) return;
+  if (response.detail) {
+    alert(`${failureLabel}: ${response.detail}`);
+    setBodyBusy(false);
+    return;
+  }
+  BODY_STATE = await api('/api/avatar/body?slug=' + encodeURIComponent(slug));
+  if (BODY_SLUG !== slug) return;
+  renderBodyStudio();
+  if (SHELL && SHELL.isElectron && slug === ACTIVE) await SHELL.avatarChanged();
+  loadAvatars();
+}
+
+function activateMotionSet(kind, setId) {
+  const label = kind === 'walk' ? 'Horizon Walk' : 'Edge Idle';
+  applySetAction('/api/avatar/motion/set/activate', {kind, set_id: setId},
+    `Could not switch the ${label} set`);
+}
+
+function deleteMotionSet(kind, setId, set) {
+  const label = (set && set.label) || (kind === 'walk' ? 'Horizon Walk' : 'Edge Idle');
+  const detail = set && set.active
+    ? ' It is currently in use; the newest compatible set takes over, or the motion is removed if none remains.'
+    : '';
+  if (!confirm(`Delete the "${label}" set?${detail}`)) return;
+  applySetAction('/api/avatar/motion/set/remove', {kind, set_id: setId},
+    'Could not delete the set');
+}
+
+function activateBodySet(setId) {
+  applySetAction('/api/avatar/body/set/activate', {set_id: setId},
+    'Could not switch the body set');
+}
+
+function deleteBodySet(setId, set) {
+  const label = (set && set.label) || 'body';
+  const detail = set && set.active
+    ? ' It is currently in use; the newest remaining set takes over, or the avatar returns to portrait mode if none remains.'
+    : '';
+  if (!confirm(`Delete the "${label}" body set?${detail}`)) return;
+  applySetAction('/api/avatar/body/set/remove', {set_id: setId},
+    'Could not delete the body set');
 }
 
 function setBodyPromptNote(source, traits) {
@@ -2011,22 +2162,6 @@ async function pollBody(expectedJobId) {
   loadAvatars();
 }
 
-async function removeMotion(kind) {
-  const label = kind === 'walk' ? 'Horizon Walk' : 'Edge Idle';
-  if (!confirm(`Remove the generated ${label}? The other motion stays unchanged.`)) return;
-  const button = $(kind === 'walk' ? '#body-walk-remove' : '#body-idle-remove');
-  button.disabled = true;
-  const response = await api('/api/avatar/motion/remove', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ slug: BODY_SLUG, kind })
-  });
-  button.disabled = false;
-  if (response.detail) { alert(response.detail); return; }
-  BODY_STATE = await api('/api/avatar/body?slug=' + encodeURIComponent(BODY_SLUG));
-  renderBodyStudio();
-  if (SHELL && SHELL.isElectron && BODY_SLUG === ACTIVE) await SHELL.avatarChanged();
-}
-
 async function removeBody() {
   if (!confirm('Remove the generated body and return this avatar to portrait mode?')) return;
   $('#body-remove').disabled = true;
@@ -2048,8 +2183,6 @@ $('#body-generate').onclick = generateBody;
 $('#body-remove').onclick = removeBody;
 $('#body-walk-generate').onclick = () => generateMotion('walk');
 $('#body-idle-generate').onclick = () => generateMotion('idle');
-$('#body-walk-remove').onclick = () => removeMotion('walk');
-$('#body-idle-remove').onclick = () => removeMotion('idle');
 document.querySelectorAll('[data-walk-style]').forEach(button => {
   button.onclick = () => selectWalkStyle(button.dataset.walkStyle);
 });
