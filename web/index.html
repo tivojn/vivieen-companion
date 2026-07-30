@@ -1612,17 +1612,28 @@ async function startRec(force=false){
   let stream;
   try{stream=await navigator.mediaDevices.getUserMedia({audio:true});}
   catch(e){
-    // The status line is hidden in pet mode, so the refusal must surface
-    // where the user is looking: the input field itself.
+    // The refusal must be unmissable: the wave just flashed and died, and a
+    // silent reset here reads as "nothing happened". In dev launches macOS
+    // attributes the microphone to the TERMINAL that spawned Electron, so
+    // name the launching app, not just Vivieen.
     document.documentElement.classList.remove('listening');
     setStatus('microphone blocked','');
-    flashPrompt('Microphone blocked · allow Vivieen in System Settings → Privacy & Security → Microphone');
+    flashPrompt('Microphone blocked · System Settings → Privacy & Security → Microphone');
+    if(SHELL&&SHELL.isElectron&&typeof SHELL.showSpeechBubble==='function'){
+      SHELL.showSpeechBubble('I could not reach the microphone. In System '
+        +'Settings → Privacy & Security → Microphone, allow Vivieen - or, if '
+        +'you launched me from a terminal, allow that terminal app - then '
+        +'hold my head again.');
+    }
     return;
   }
   if(!recWanted){
     // Released before the microphone resolved: do not start a ghost take.
+    // Bluetooth microphones can take seconds to open, so say why nothing
+    // was heard instead of resetting silently.
     stream.getTracks().forEach(t=>t.stop());
     document.documentElement.classList.remove('listening');
+    flashPrompt('Released too soon · hold while the wave pulses, speak, then release');
     return;
   }
   rec=new MediaRecorder(stream);chunks=[];
@@ -1630,12 +1641,20 @@ async function startRec(force=false){
   rec.onstop=async()=>{
     stream.getTracks().forEach(t=>t.stop());
     const blob=new Blob(chunks,{type:rec.mimeType||'audio/webm'});
-    if(blob.size<3000){setStatus('ready','on');ptt.disabled=monitorEnabled;return;}
+    if(blob.size<3000){
+      setStatus('ready','on');ptt.disabled=monitorEnabled;
+      flashPrompt('Too short · hold, speak while the wave pulses, then release');
+      return;
+    }
     ptt.disabled=true;setStatus('transcribing','busy');
     try{
       const fd2=new FormData();fd2.append('audio',blob,'a.webm');
       const r=await(await fetch('stt',{method:'POST',body:fd2})).json();
-      if(!r.text){setStatus('ready','on');ptt.disabled=monitorEnabled;return;}
+      if(!r.text){
+        setStatus('ready','on');ptt.disabled=monitorEnabled;
+        flashPrompt('I could not hear words in that · try again');
+        return;
+      }
       await turn(r.text,true);
     }catch(e){setStatus('ready','on');ptt.disabled=monitorEnabled;}
   };
