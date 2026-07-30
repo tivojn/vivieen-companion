@@ -97,6 +97,9 @@ class PetInputBridgeTests(unittest.TestCase):
         export_source = (ROOT / "studio" / "export.py").read_text()
         self.assertIn("function canvasToBody", renderer)
         self.assertIn("function petBodyPart", renderer)
+        # Portrait-mode avatars count the whole cutout as head, so
+        # hold-to-talk works before any body is generated.
+        self.assertIn("if(!(BODY&&HEADMASK&&M.body))return 'head';", renderer)
         self.assertIn("function startLimbReaction", renderer)
         self.assertIn("drawLimbReaction(now);", renderer)
         self.assertIn("petTapReaction(part);", renderer)

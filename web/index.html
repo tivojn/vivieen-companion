@@ -1699,6 +1699,9 @@ function canvasToBody(x,y){
 }
 function petBodyPart(x,y){
   if(pointerOnHead(x,y))return 'head';
+  // A portrait-mode avatar (no generated body yet) is essentially a face,
+  // so the whole cutout counts as head and hold-to-talk works from day one.
+  if(!(BODY&&HEADMASK&&M.body))return 'head';
   const joints=M.body&&M.body.pose&&M.body.pose.joints;
   const point=joints?canvasToBody(x,y):null;
   if(!point)return 'body';

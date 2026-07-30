@@ -83,31 +83,40 @@ def _body_pose(body_dir, log=print):
 
 
 def _publish_body_extras(body_dir, body_meta, destination, log):
-    """Skeleton + limb-reaction strips for the standing plate."""
+    """Skeleton + limb-reaction strips for the standing plate.
+
+    Strictly an enhancement: any failure here (a Vision miss on an unusual
+    body, a degenerate skeleton) logs and leaves a runtime without part
+    reactions rather than blocking the publish of a freshly generated body.
+    """
     for name in os.listdir(destination):
         if name.startswith("react_") and name.endswith(".png"):
             os.remove(os.path.join(destination, name))
-    pose = _body_pose(body_dir, log=log)
-    if not pose:
-        return
-    body_meta["pose"] = pose
-    plate = cv2.imread(os.path.join(destination, "body.png"),
-                       cv2.IMREAD_UNCHANGED)
-    if plate is None or plate.ndim != 3 or plate.shape[2] != 4:
-        return
-    reactions = {}
-    for name, reaction in limbs.build(plate, pose, log=log).items():
-        strip = f"react_{name}.png"
-        cv2.imwrite(os.path.join(destination, strip),
-                    np.vstack(reaction["patches"]),
-                    [cv2.IMWRITE_PNG_COMPRESSION, 9])
-        reactions[name] = {
-            "src": f"assets/{strip}",
-            "box": reaction["box"],
-            "states": len(reaction["patches"]),
-        }
-    if reactions:
-        body_meta["reactions"] = reactions
+    try:
+        pose = _body_pose(body_dir, log=log)
+        if not pose:
+            return
+        body_meta["pose"] = pose
+        plate = cv2.imread(os.path.join(destination, "body.png"),
+                           cv2.IMREAD_UNCHANGED)
+        if plate is None or plate.ndim != 3 or plate.shape[2] != 4:
+            return
+        reactions = {}
+        for name, reaction in limbs.build(plate, pose, log=log).items():
+            strip = f"react_{name}.png"
+            cv2.imwrite(os.path.join(destination, strip),
+                        np.vstack(reaction["patches"]),
+                        [cv2.IMWRITE_PNG_COMPRESSION, 9])
+            reactions[name] = {
+                "src": f"assets/{strip}",
+                "box": reaction["box"],
+                "states": len(reaction["patches"]),
+            }
+        if reactions:
+            body_meta["reactions"] = reactions
+    except Exception as error:
+        body_meta.pop("reactions", None)
+        log(f"  part reactions skipped for this publish: {error}")
 
 
 def _publish_motion(directory, destination, log):
