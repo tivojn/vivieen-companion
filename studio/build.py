@@ -184,9 +184,16 @@ def create_avatar(image_path, name=None, slug=None):
 
     d = adir(slug)
     os.makedirs(d, mode=0o700, exist_ok=True)
-    src = os.path.join(d, "source" + os.path.splitext(image_path)[1].lower())
-    if os.path.abspath(image_path) != os.path.abspath(src):
-        shutil.copyfile(image_path, src)
+    ext = os.path.splitext(image_path)[1].lower()
+    if ext in prep.HEIC_EXTENSIONS:
+        # Everything downstream reads the stored source with OpenCV, which
+        # has no HEIC codec - so the source of record becomes a PNG.
+        src = os.path.join(d, "source.png")
+        prep.decode_heic(image_path, src)
+    else:
+        src = os.path.join(d, "source" + ext)
+        if os.path.abspath(image_path) != os.path.abspath(src):
+            shutil.copyfile(image_path, src)
     os.chmod(src, 0o600)
 
     source_key = os.path.join(d, "source-keyframe.png")

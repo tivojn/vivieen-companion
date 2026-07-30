@@ -6,9 +6,45 @@ fight the model's frontal prior.  Prep now measures the pose up front, crops a
 face-centred square at the resolution the mouth actually needs, and reports
 whether the source is frontal enough to build from.
 """
-import os, json, tempfile
+import os, json, subprocess, tempfile
 import numpy as np, cv2
 from . import cutout, face
+
+# OpenCV has no HEIC/HEIF codec, but every iPhone portrait arrives as one.
+# sips ships with macOS, so the decode needs no Python imaging dependency.
+HEIC_EXTENSIONS = (".heic", ".heif")
+
+
+def decode_heic(src_path, out_path):
+    result = subprocess.run(
+        ["/usr/bin/sips", "-s", "format", "png", src_path, "--out", out_path],
+        capture_output=True, text=True, timeout=120)
+    if result.returncode or not os.path.isfile(out_path) \
+            or os.path.getsize(out_path) == 0:
+        detail = (result.stderr or result.stdout or "").strip()[-300:]
+        raise ValueError(
+            "could not decode this photo with macOS sips"
+            + (f": {detail}" if detail else ""))
+    return out_path
+
+
+def read_image_bgr(src_path):
+    """cv2.imread, with a sips fallback: iPhone photos are often HEIC even
+    when the file name claims .jpg, and OpenCV silently returns None on
+    containers it cannot parse."""
+    img = cv2.imread(src_path, cv2.IMREAD_COLOR)
+    if img is not None:
+        return img
+    descriptor, converted = tempfile.mkstemp(suffix=".png")
+    os.close(descriptor)
+    try:
+        decode_heic(src_path, converted)
+        return cv2.imread(converted, cv2.IMREAD_COLOR)
+    except ValueError:
+        return None
+    finally:
+        if os.path.exists(converted):
+            os.remove(converted)
 
 KEY_SIZE = 1024          # gpt-image-2 native square - max mouth pixels
 FACE_FRAC = 0.46         # face width as a fraction of the keyframe
@@ -110,7 +146,7 @@ def take_square(img, x0, y0, size, top_fill=None):
 
 
 def build_keyframe(src_path, out_path, diag_dir=None):
-    img = cv2.imread(src_path, cv2.IMREAD_COLOR)
+    img = read_image_bgr(src_path)
     if img is None:
         raise ValueError(f"could not read image: {src_path}")
     lm, M = face.detect(img)
