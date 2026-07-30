@@ -88,7 +88,9 @@ class PetInputBridgeTests(unittest.TestCase):
         marker = renderer.index("function startPetTalk")
         window = renderer[marker:renderer.index("function stopPetTalk")]
         self.assertIn("classList.add('chat-open')", window)
-        self.assertIn("startRec()", window)
+        # Forced: the hidden chat button's disabled flag stays latched in pet
+        # mode until a health poll lands, and the head must not wait for it.
+        self.assertIn("startRec(true)", window)
         stop = renderer[renderer.index("function stopPetTalk"):]
         stop = stop[:stop.index("function petTapReaction")]
         self.assertIn("stopRec()", stop)
