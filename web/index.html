@@ -1707,6 +1707,7 @@ function closePetChat(){
   document.documentElement.classList.remove('chat-open');
   updatePetHit(true);
 }
+let pointerWasInside=false;
 if(HAS_GLOBAL_PET_POINTER)SHELL.onPetPointer(point=>{
   if(!point)return;
   noteCursor(Number(point.x),Number(point.y));
@@ -1716,6 +1717,15 @@ if(HAS_GLOBAL_PET_POINTER)SHELL.onPetPointer(point=>{
   const inside=point.inside!==undefined
     ?Boolean(point.inside)
     :point.x>=0&&point.y>=0;
+  // The shell forces click-through whenever the cursor leaves the window.
+  // While the chat bar (or any modal state) pins petHit true, this side
+  // never notices that flip - petHit "does not change" on re-entry, so the
+  // interactive flag was never re-sent and the window stayed dead to every
+  // click, drag, keystroke, and menu. Re-assert it on each re-entry.
+  if(inside&&!pointerWasInside&&petHit&&typeof SHELL.setPetHit==='function'){
+    SHELL.setPetHit(true);
+  }
+  pointerWasInside=inside;
   pointer=inside?{x:Number(point.x),y:Number(point.y)}:{x:-1,y:-1};
   updatePetHit();
 });
