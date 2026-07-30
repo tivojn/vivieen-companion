@@ -603,11 +603,22 @@ class MotionPipelineTests(unittest.TestCase):
         self.assertIn("controls geometry only", prompt)
         self.assertIn("never identity, wardrobe, styling, age, or gender", prompt)
 
-        direction = "Lean one shoulder on the wall with crossed ankles."
+        direction = "dance an upbeat little routine for the audience"
         custom = motion.resolve_idle_pose("custom", direction)
         self.assertEqual("custom", custom["id"])
         self.assertEqual(direction, custom["prompt"])
-        self.assertIn(direction, motion._idle_video_prompt(custom))
+        # A custom act is FREE: the user's text leads, the loop contract
+        # carries the seam, and the wall-lean wrapper that drowned "dance"
+        # into a lean must never wrap it again.
+        self.assertEqual("free", custom["validation"])
+        video = motion._idle_video_prompt(custom)
+        self.assertIn(direction, video)
+        self.assertIn("EXACT first frame and the EXACT final frame", video)
+        self.assertNotIn("wall", video)
+        self.assertNotIn("living hold", video)
+        keyframe = motion._idle_keyframe_prompt("outfit", False, custom)
+        self.assertIn(direction, keyframe)
+        self.assertNotIn("LEFT-EDGE pose", keyframe)
         with self.assertRaisesRegex(ValueError, "at least 12 characters"):
             motion.resolve_idle_pose("custom", "lean")
         with self.assertRaisesRegex(ValueError, "unknown edge-idle pose"):

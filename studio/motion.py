@@ -428,11 +428,15 @@ def resolve_idle_pose(pose_id=None, custom_prompt=""):
     if pose_id == "custom":
         prompt = _clean(custom_prompt, 600)
         if len(prompt) < 12:
-            raise ValueError("describe the custom edge pose in at least 12 characters")
+            raise ValueError("describe the custom edge act in at least 12 characters")
+        # A custom act is FREE: positioned at the screen edge by the window,
+        # but the pose and movement are whatever the user describes - dance,
+        # stretch, anything - never forced into the wall-lean contract that
+        # drowned custom instructions ("dance" came out as a lean, 2026-07-30).
         return {
             "id": "custom",
-            "label": "Custom pose",
-            "validation": "edge",
+            "label": "Custom act",
+            "validation": "free",
             "prompt": prompt,
         }
     preset = IDLE_POSE_PRESETS.get(pose_id)
@@ -585,6 +589,16 @@ Editable wardrobe receipt, subordinate to the visual references: {outfit}"""
 
 def _idle_keyframe_prompt(outfit, has_pose_reference, idle_pose=None):
     idle_pose = resolve_idle_pose(idle_pose)
+    if idle_pose["validation"] == "free":
+        return f"""Create a full-body performance keyframe of the exact same adult person. Reference 1 is the generated canonical FRONT full-body plate and is the body, wardrobe, and proportion authority. Reference 2 is the canonical HD head and is the facial-identity authority.
+
+IDENTITY AND WARDROBE LOCK — preserve the exact face, apparent age, hair, body proportions, outfit, materials, colors, accessories, and footwear shown by References 1 and 2. Do not average identities, beautify, de-age, redesign, or change clothes.
+
+OPENING POSE — one natural, balanced standing frame that a performance loop can begin and end on: weight settled, both shoes on the floor, arms relaxed and readable. This frame is the resting beat of the following act, so keep it poised rather than mid-move: {idle_pose['prompt']}
+
+COMPOSITION — one person only, full figure centered on a vertical 2:3 canvas with margin for the movement, locked camera, no crop, no props, no text, no furniture, no cast shadow. Use a professional chroma-key green screen across the entire background and floor: saturated green only, evenly lit, with no gray, white, scenery, reflections, or green spill on the subject.
+
+Editable wardrobe receipt, subordinate to the visual references: {outfit}"""
     reference_note = (
         "Reference 1 is the generated canonical FRONT full-body plate and is the body, wardrobe, and proportion authority. "
         "Reference 2 is the canonical HD head and is the facial-identity authority. Reference 3 is pose geometry only: "
@@ -668,6 +682,18 @@ GLOBAL REJECTIONS — reject bounce, camera movement, cuts, body-part disappeara
 
 def _idle_video_prompt(idle_pose=None):
     idle_pose = resolve_idle_pose(idle_pose)
+    if idle_pose["validation"] == "free":
+        return f"""Create a seamless character performance loop. The supplied image is the EXACT first frame and the EXACT final frame.
+
+THE ACT — the person performs exactly this, with real energy and full movement: {idle_pose['prompt']}
+
+PRIORITY — SEAMLESS IN-PLACE LOOP: the character stays at the same screen position throughout: no walking away, no sideways travel, no scale change. Motion eases out of the supplied opening pose into the act and returns precisely to that identical supplied pose at the end.
+
+IDENTITY AND WARDROBE — preserve the exact person's face, apparent age, hair, body proportions, outfit, materials, colors, accessories, and both complete shoes from the input keyframe in every frame. Never restyle or invent a different person.
+
+CAMERA AND PLATE — locked camera, constant scale, exposure, and color; no cuts or zoom. The entire background and floor stay saturated chroma-key green with no scenery, shadows, reflections, text, props, gray, white, or green spill. The complete body and both shoes stay inside the frame at all times.
+
+Reject: identity drift, wardrobe changes, camera motion, leaving the frame, or freezing in place instead of performing."""
     contact_lock = (
         "Keep the screen-left upper-back contact and the rear tip of the raised shoe's "
         "heel pressed to the same wall on one plumb vertical line. Never let the raised "
@@ -3036,6 +3062,10 @@ def _process_clip(
     else:
         metrics = {
             "edge_anchors": _edge_anchors(normalised, bounds),
+            # A free act stands at the docked window rather than pressing a
+            # wall: the renderer centers it instead of pinning the silhouette
+            # to the screen edge, and never mirrors the performance.
+            "anchor_mode": "free" if idle_validation == "free" else "wall",
             "wall_contact_quality": wall_contact_quality,
             "loop_closure_quality": closure_quality,
             "extremity_quality": extremity_quality,
