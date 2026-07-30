@@ -536,7 +536,11 @@ async function refreshAssetsIfChanged(){
 addEventListener('focus',refreshAssetsIfChanged);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshAssetsIfChanged();});
 
-function fit(){const d=devicePixelRatio||1;cv.width=innerWidth*d;cv.height=innerHeight*d;}
+function fit(){const d=devicePixelRatio||1;cv.width=innerWidth*d;cv.height=innerHeight*d;
+  // Resizing resets context state. Animation frames are upscaled whenever the
+  // Animation Size zoom outruns the 720p source, and the default bilinear
+  // filter is what reads as "low resolution" - high quality costs nothing.
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';}
 addEventListener('resize',fit);fit();
 function setStatus(s,cls){st.textContent=s;dot.className=cls||'';}
 function routedStatus(route,fallback=''){
