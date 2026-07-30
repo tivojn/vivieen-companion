@@ -86,9 +86,25 @@ class PetInputBridgeTests(unittest.TestCase):
             expression.GAZE_DX, expression.GAZE_DX[1:])])
         self.assertGreaterEqual(max(expression.GAZE_DY), 2.0)
         server = (ROOT / "server" / "app.py").read_text()
-        self.assertIn("RUNTIME_VERSION = 10", server)
+        self.assertIn("RUNTIME_VERSION = 11", server)
         export_source = (ROOT / "studio" / "export.py").read_text()
-        self.assertIn("dict(v=10,", export_source)
+        self.assertIn("dict(v=11,", export_source)
+
+    def test_body_parts_are_classified_and_react(self):
+        # Clicks resolve to the nearest baked bone segment (head stays
+        # mask-exact); each part answers with its own baked warp reaction.
+        renderer = (ROOT / "web" / "index.html").read_text()
+        export_source = (ROOT / "studio" / "export.py").read_text()
+        self.assertIn("function canvasToBody", renderer)
+        self.assertIn("function petBodyPart", renderer)
+        self.assertIn("function startLimbReaction", renderer)
+        self.assertIn("drawLimbReaction(now);", renderer)
+        self.assertIn("petTapReaction(active.part||'body');", renderer)
+        self.assertIn("M.body.reactions", renderer)
+        self.assertIn("_publish_body_extras", export_source)
+        self.assertIn("react_", export_source)
+        from studio import limbs
+        self.assertGreaterEqual(limbs.STATES, 5)
 
     def test_continuous_size_expands_native_alpha_window(self):
         main = (ROOT / "electron" / "main.cjs").read_text()

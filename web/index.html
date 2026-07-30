@@ -405,7 +405,7 @@ controlRow.addEventListener('pointermove',event=>{
 controlRow.addEventListener('pointerleave',()=>{
   captionRowHot=false;scheduleCaptionFold();
 });
-let M=null,IMG={},EYE={},GZ={},BW={},CK={},CUTOUT=null,BODY=null,HEADMASK=null;
+let M=null,IMG={},EYE={},GZ={},BW={},CK={},RB={},CUTOUT=null,BODY=null,HEADMASK=null;
 let MOTION={walk:null,idle:null},ready=false;
 const faceSurface=document.createElement('canvas'),headSurface=document.createElement('canvas');
 const faceCtx=faceSurface.getContext('2d',{alpha:true}),headCtx=headSurface.getContext('2d',{alpha:true});
@@ -584,6 +584,8 @@ function routedStatus(route,fallback=''){
     ...(M.cutout?[load(M.cutout.src).then(image=>{CUTOUT=image;})]:[]),
     ...(M.body?[load(M.body.image).then(image=>{BODY=image;}),
                 load(M.body.head_mask).then(image=>{HEADMASK=image;})]:[]),
+    ...(M.body&&M.body.reactions?Object.entries(M.body.reactions).map(
+      async([name,meta])=>{RB[name]=await load(meta.src);}):[]),
     ...(M.motion?[loadMotion('walk'),loadMotion('idle')]:[])
   ]);
   const motionReady=Boolean(MOTION.walk);
@@ -1342,6 +1344,7 @@ function drawPetScene(now){
   ctx.translate(-pivotX,-pivotY);
   if(hasBody){
     ctx.drawImage(BODY,0,0);
+    drawLimbReaction(now);
     const matrix=M.body.face_transform;
     if(matrix&&matrix.length===2){
       ctx.save();ctx.transform(matrix[0][0],matrix[1][0],matrix[0][1],matrix[1][1],matrix[0][2],matrix[1][2]);
@@ -1662,20 +1665,125 @@ function pointerOnHead(x,y){
 function canPetTalk(){
   return Boolean(SHELL&&SHELL.isElectron&&typeof SHELL.petVoiceKey==='function');
 }
+/* ---- body-part hit testing -------------------------------------------------
+   The skeleton baked at export classifies a click by its nearest bone
+   segment, in plate coordinates recovered by inverting the same camera and
+   sway transforms the scene is drawn with. The head stays mask-exact. */
+function canvasToBody(x,y){
+  if(!(BODY&&M.body))return null;
+  const ratio=devicePixelRatio||1;
+  const width=BODY.width,height=BODY.height;
+  const camera=petCamera(M.body,width,height);
+  let px=(x*ratio-camera.x)/camera.scale;
+  let py=(y*ratio-camera.y)/camera.scale;
+  const motion=bodyAt(performance.now(),width,height);
+  const bounds=M.body.bounds||[0,0,width,height];
+  const pivotX=bounds[0]+bounds[2]/2,pivotY=bounds[1]+bounds[3];
+  const dx=px-(pivotX+motion.x),dy=py-(pivotY+motion.y);
+  const c=Math.cos(-motion.r),s=Math.sin(-motion.r);
+  return {x:(dx*c-dy*s)/motion.sx+pivotX,
+          y:(dx*s+dy*c)/motion.sy+pivotY};
+}
+function petBodyPart(x,y){
+  if(pointerOnHead(x,y))return 'head';
+  const joints=M.body&&M.body.pose&&M.body.pose.joints;
+  const point=joints?canvasToBody(x,y):null;
+  if(!point)return 'body';
+  const at=name=>{const j=joints[name];return j?[j.x,j.y]:null;};
+  const segdist=(p,a,b)=>{
+    const abx=b[0]-a[0],aby=b[1]-a[1];
+    const t=Math.max(0,Math.min(1,
+      ((p.x-a[0])*abx+(p.y-a[1])*aby)/Math.max(1e-6,abx*abx+aby*aby)));
+    return Math.hypot(p.x-(a[0]+t*abx),p.y-(a[1]+t*aby));
+  };
+  const candidates=[];
+  for(const side of ['left','right']){
+    const key='arm_'+side[0],leg='leg_'+side[0];
+    const shoulder=at(side+'_shoulder'),elbow=at(side+'_elbow'),
+      wrist=at(side+'_wrist'),hip=at(side+'_hip'),
+      knee=at(side+'_knee'),ankle=at(side+'_ankle');
+    if(elbow&&wrist){
+      const tip=[wrist[0]+(wrist[0]-elbow[0])*.4,
+                 wrist[1]+(wrist[1]-elbow[1])*.4];
+      candidates.push([key,Math.min(segdist(point,elbow,wrist),
+                                    segdist(point,wrist,tip))]);
+    }
+    if(shoulder&&elbow)candidates.push([key,segdist(point,shoulder,elbow)]);
+    if(hip&&knee)candidates.push([leg,segdist(point,hip,knee)]);
+    if(knee&&ankle)candidates.push([leg,segdist(point,knee,ankle)]);
+  }
+  const ls=at('left_shoulder'),rs=at('right_shoulder'),
+    lh=at('left_hip'),rh=at('right_hip');
+  if(ls&&rs&&lh&&rh){
+    const top=[(ls[0]+rs[0])/2,(ls[1]+rs[1])/2];
+    const bottom=[(lh[0]+rh[0])/2,(lh[1]+rh[1])/2];
+    // The spine is favoured slightly so central clicks read as torso even
+    // though the hanging arms run close beside it.
+    candidates.push(['torso',segdist(point,top,bottom)*.8]);
+  }
+  if(!candidates.length)return 'body';
+  candidates.sort((a,b)=>a[1]-b[1]);
+  const bodyHeight=(M.body.bounds||[0,0,0,BODY.height])[3];
+  return candidates[0][1]<=bodyHeight*.14?candidates[0][0]:'body';
+}
+
+/* ---- limb reactions --------------------------------------------------------
+   Baked warp states of the standing plate: rest -> peak -> rest over ~0.6s.
+   Each state is a full replacement tile for its box, so the player clears
+   the box and stamps the tile; first and last states ARE the plate. */
+let REACT=null;
+function startLimbReaction(name){
+  const meta=M.body&&M.body.reactions&&M.body.reactions[name];
+  if(!meta||!RB[name]||REACT)return false;
+  REACT={name,meta,image:RB[name],start:performance.now(),dur:620};
+  return true;
+}
+function drawLimbReaction(now){
+  if(!REACT)return;
+  const t=(now-REACT.start)/REACT.dur;
+  if(t>=1){REACT=null;return;}
+  const states=Math.max(1,REACT.meta.states||1);
+  const index=Math.min(states-1,Math.round(Math.sin(Math.PI*t)*(states-1)));
+  const box=REACT.meta.box;
+  ctx.clearRect(box[0],box[1],box[2],box[3]);
+  ctx.drawImage(REACT.image,0,index*box[3],box[2],box[3],
+                box[0],box[1],box[2],box[3]);
+}
+
 function startPetTalk(){
   if(canPetTalk())SHELL.petVoiceKey('down');
 }
 function stopPetTalk(){
   if(canPetTalk())SHELL.petVoiceKey('up');
 }
-function petTapReaction(onHead){
+function petTapReaction(part){
   const now=performance.now();
   if(now-lastTapAt<700)return;
   lastTapAt=now;
-  // A deliberate acknowledging nod through the real head rig (reads at chat
-  // scale) plus a whole-body squash-and-recover (reads at pet scale).
-  nods.push({t0:now,a:onHead?7.6:5.6,d:onHead?460:400,n:1});
+  // Every tap gets an acknowledging nod; the touched part answers with its
+  // own motion: arms lift their hand, the torso shrugs over a squash, legs
+  // shift her weight onto the tapped side.
+  nods.push({t0:now,a:part==='head'?7.6:5.6,d:part==='head'?460:400,n:1});
   nextNod=now+2400+Math.random()*2000;
+  if(part==='arm_l'||part==='arm_r'){
+    if(!startLimbReaction(part))tapPulse={t0:now,dir:part==='arm_l'?1:-1};
+    return;
+  }
+  if(part==='torso'){
+    startLimbReaction('shrug');
+    tapPulse={t0:now,dir:cursorDir.x>=0?-1:1};
+    return;
+  }
+  if(part==='leg_l'||part==='leg_r'){
+    // Vision's left_* joints sit at higher x on this front plate, so her
+    // tapped-side lean is positive shift for the left leg.
+    weight={from:weight.from+(weight.to-weight.from)*
+      Math.min(1,Math.max(0,(now-weight.t0)/weight.duration)),
+      to:part==='leg_l'?0.95:-0.95,t0:now,duration:520};
+    nextWeight=now+2600+Math.random()*1800;
+    tapPulse={t0:now,dir:part==='leg_l'?-1:1};
+    return;
+  }
   tapPulse={t0:now,dir:cursorDir.x>=0?-1:1};
 }
 function clearGesture(){
@@ -1685,10 +1793,11 @@ function clearGesture(){
 cv.addEventListener('pointerdown',event=>{
   if(!SHELL||!PET.enabled||event.button!==0||PET.locked||PET.roam||!confirmPetEventHit(event))return;
   clearGesture();
+  const part=petBodyPart(event.clientX,event.clientY);
   gesture={x0:event.clientX,y0:event.clientY,
     sx:event.screenX,sy:event.screenY,
     t0:performance.now(),ptt:false,
-    head:pointerOnHead(event.clientX,event.clientY)};
+    part,head:part==='head'};
   cv.setPointerCapture(event.pointerId);
   if(gesture.head&&canPetTalk()){
     gesture.timer=setTimeout(()=>{
@@ -1709,7 +1818,7 @@ cv.addEventListener('pointerup',event=>{
   }
   if(!active)return;
   if(active.ptt){stopPetTalk();return;}
-  if(performance.now()-active.t0<=TAP_MS)petTapReaction(active.head);
+  if(performance.now()-active.t0<=TAP_MS)petTapReaction(active.part||'body');
 });
 cv.addEventListener('pointercancel',event=>{
   const active=gesture;
