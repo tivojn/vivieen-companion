@@ -570,6 +570,7 @@ class MotionRequest(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
     kind: str = Field(default="both", pattern=r"^(walk|idle|both)$")
     walk_style: str = Field(default="office", max_length=40)
+    walk_prompt: str = Field(default="", max_length=600)
     pose: str = Field(default="back-heel", max_length=40)
     pose_prompt: str = Field(default="", max_length=600)
 
@@ -939,7 +940,7 @@ async def api_motion_generate(request: MotionRequest):
     )
     try:
         walk_style = (
-            motion.resolve_walk_style(request.walk_style)
+            motion.resolve_walk_style(request.walk_style, request.walk_prompt)
             if "walk" in kinds else None
         )
         idle_pose = (

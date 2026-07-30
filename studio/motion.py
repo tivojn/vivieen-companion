@@ -330,10 +330,42 @@ def _clean(value, maximum=800):
     return re.sub(r"\s+", " ", value).strip()[:maximum]
 
 
-def resolve_walk_style(style_id=None):
+def resolve_walk_style(style_id=None, custom_prompt=""):
     if isinstance(style_id, dict):
+        custom_prompt = style_id.get("prompt", custom_prompt)
         style_id = style_id.get("id")
     style_id = _clean(style_id, 40) or DEFAULT_WALK_STYLE
+    if style_id == "custom":
+        prompt = _clean(custom_prompt, 600)
+        if len(prompt) < 12:
+            raise ValueError(
+                "describe the custom gait in at least 12 characters")
+        # The user's text IS the gait; the synthesized fields slot into the
+        # standard keyframe and loop templates so only mechanics (in place,
+        # first equals final frame, identity, plate) are contract-imposed.
+        return {
+            "id": "custom",
+            "label": "Custom gait",
+            "description": "Your own described movement, walked in place.",
+            "validation": "free",
+            "prompt": prompt,
+            "loop": {"target": 1.2, "minimum": 0.85, "maximum": 3.6},
+            "keyframe": (
+                "one frozen, readable mid-movement frame of this custom "
+                f"gait: {prompt}. Keep both complete arms, hands, legs, and "
+                "shoes naturally visible and anatomically correct."
+            ),
+            "loop_video": (
+                "Animate the exact selected person performing this custom "
+                "gait IN PLACE, as if on an invisible treadmill, with real "
+                f"energy and full movement: {prompt}."
+            ),
+            "reject": (
+                "Reject freezing in place instead of performing, leaving the "
+                "frame, or drifting into an ordinary generic walk that "
+                "ignores the described movement."
+            ),
+        }
     preset = WALK_STYLE_PRESETS.get(style_id)
     if not preset:
         raise ValueError(f"unknown Horizon Walk style: {style_id}")
@@ -342,10 +374,16 @@ def resolve_walk_style(style_id=None):
 
 def _walk_style_receipt(style):
     style = resolve_walk_style(style)
-    return {
+    receipt = {
         key: style[key]
         for key in ("id", "label", "description", "validation")
     }
+    if style.get("prompt"):
+        # Custom gaits differ only by their text: without it in the receipt,
+        # two different prompts would share one cache signature and one
+        # approved-reuse identity.
+        receipt["prompt"] = style["prompt"]
+    return receipt
 
 
 def walk_mode(style):
@@ -622,11 +660,30 @@ def _loop_walk_video_prompt(walk_style):
     """In-place treadmill loop contract, seeded by the proven first-equals-
     last-frame approach: the authored seam replaces the traversal pipeline's
     loop-window search."""
+    # A custom gait may not be a two-footed walk at all (a hop, a shuffle),
+    # so the contralateral two-step contract only wraps the preset gaits;
+    # a custom act just demands identical repeated cycles of the described
+    # movement.
+    if walk_style["id"] == "custom":
+        cycle_contract = (
+            "PRIORITY 0.5 — REPEATED CYCLES: repeat identical cycles of "
+            "exactly the described movement continuously so the whole clip "
+            "is performing; never pause, stand still, or change speed."
+        )
+    else:
+        cycle_contract = (
+            "PRIORITY 0.5 — COMPLETE TWO-STEP GAIT CYCLES: one step is not "
+            "a cycle. In every cycle the left foot passes the right foot, "
+            "then the right foot passes the left foot, and each hand passes "
+            "IN FRONT OF its hip and then BEHIND its hip. Hold one steady "
+            "cadence and repeat identical cycles continuously so the whole "
+            "clip is walking; never pause, stand still, or change speed."
+        )
     return f"""{walk_style['loop_video']}
 
 PRIORITY 0 — SEAMLESS IN-PLACE LOOP: the supplied image is the EXACT first frame and the EXACT final frame. The character stays fixed at the same screen position for the entire clip: no forward travel, no sideways drift, no scale change. Motion eases smoothly away from the supplied starting pose and returns precisely to that identical supplied pose at the end.
 
-PRIORITY 0.5 — COMPLETE TWO-STEP GAIT CYCLES: one step is not a cycle. In every cycle the left foot passes the right foot, then the right foot passes the left foot, and each hand passes IN FRONT OF its hip and then BEHIND its hip. Hold one steady cadence and repeat identical cycles continuously so the whole clip is walking; never pause, stand still, or change speed.
+{cycle_contract}
 
 PRIORITY 1 — IDENTITY, HAIR, AND WARDROBE: preserve the exact selected person's face, apparent age, body proportions, skin tone, hairline, hairstyle, outfit, materials, colors, accessories, and both complete shoes from the input keyframe in every frame. Never restyle, beautify, de-age, change clothes, change footwear, or invent a different person.
 
