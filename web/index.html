@@ -1428,9 +1428,11 @@ function loop(now){
   syncPetEngagement(now);
   // Anything that counts as attention resets the stillness clock; after ten
   // quiet seconds the standing pet settles into the Edge Idle loop, and any
-  // attention brings the live standing avatar straight back.
+  // attention brings the live standing avatar straight back. An OPEN chat
+  // bar is not attention by itself - head-talk leaves it open for follow-ups
+  // and she must still step aside - but typing in it is.
   if(petHit||speaking||recording||dragging||REACT||gesture||
-     document.documentElement.classList.contains('chat-open'))lastEngagedAt=now;
+     (document.hasFocus()&&document.activeElement===txt)||txt.value.trim())lastEngagedAt=now;
   const ts=now/1000;
   lvl=lvl*0.55+level()*0.45;
   if(monitorEnabled&&externalAudio.receivedAt&&now-externalAudio.receivedAt>550){
@@ -1677,11 +1679,25 @@ function flashPrompt(message){
   promptFlashTimer=setTimeout(()=>{txt.placeholder=TXT_PLACEHOLDER;},6000);
 }
 
+// With the bar open, only its actual controls claim the window: an open bar
+// that force-claimed EVERYTHING killed Click-Through Gaps for as long as it
+// stayed up. Transparent gaps go back to the alpha sample.
+function pointerOverChatControls(){
+  if(!document.documentElement.classList.contains('chat-open'))return false;
+  if(pointer.x<0||pointer.y<0)return false;
+  for(const id of ['monitor','manual']){
+    const control=document.getElementById(id);
+    if(!control)continue;
+    const box=control.getBoundingClientRect();
+    if(pointer.x>=box.left&&pointer.x<=box.right&&
+       pointer.y>=box.top&&pointer.y<=box.bottom)return true;
+  }
+  return false;
+}
 function updatePetHit(force=false){
   if(!SHELL||!SHELL.isElectron||!PET.enabled)return;
   const now=performance.now();if(!force&&now-lastHitCheck<34)return;lastHitCheck=now;
-  const chatOpen=document.documentElement.classList.contains('chat-open');
-  const modalHit=chatOpen||!document.getElementById('emptyState').hidden;
+  const modalHit=pointerOverChatControls()||!document.getElementById('emptyState').hidden;
   let sample=modalHit;
   if(!sample&&ready&&pointer.x>=0&&pointer.y>=0&&pointer.x<innerWidth&&pointer.y<innerHeight){
     const ratio=devicePixelRatio||1,x=Math.floor(pointer.x*ratio),y=Math.floor(pointer.y*ratio);
