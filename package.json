@@ -1,6 +1,6 @@
 {
   "name": "vivieen-companion",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "author": "Vivieen contributors",
   "license": "MIT",
   "private": false,
@@ -60,22 +60,37 @@
       {
         "from": ".electron-site-packages",
         "to": "python/lib/python3.12/site-packages",
-        "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc", "!**/.DS_Store"]
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/*.pyc",
+          "!**/.DS_Store"
+        ]
       },
       {
         "from": "server",
         "to": "backend/server",
-        "filter": ["**/*.py", "!**/build_sprites.py"]
+        "filter": [
+          "**/*.py",
+          "!**/build_sprites.py"
+        ]
       },
       {
         "from": "studio",
         "to": "backend/studio",
-        "filter": ["**/*.py"]
+        "filter": [
+          "**/*.py"
+        ]
       },
       {
         "from": "web",
         "to": "backend/web",
-        "filter": ["index.html", "settings.html", "bubble.html", "appearance.html"]
+        "filter": [
+          "index.html",
+          "settings.html",
+          "bubble.html",
+          "appearance.html"
+        ]
       },
       {
         "from": ".electron-ffmpeg",
@@ -103,7 +118,10 @@
       }
     ],
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "icon": "assets/icon.icns",
       "category": "public.app-category.productivity",
       "hardenedRuntime": true,
