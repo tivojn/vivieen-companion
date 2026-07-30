@@ -801,7 +801,10 @@ def _video_command(
         raise RuntimeError(
             f"EnConvo's selected video provider is not supported for Pet motion yet: {provider['name']}")
     if not aspect_ratio:
-        aspect_ratio = "16:9" if file_name.startswith("walk") else "2:3"
+        # Both fallbacks are native provider grids; "2:3" is not one, and a
+        # non-native request resamples the subject through the model's
+        # internal grid (measured as the idle figure drifting wide).
+        aspect_ratio = "16:9" if file_name.startswith("walk") else "9:16"
     command = [
         ENCONVO, "video_create", "features", "x_ai/create",
         "--prompt", prompt,
@@ -915,6 +918,43 @@ LOOP_WALK_PLATE = {
     "subject_height": 940, "subject_width": 560, "floor": 1054,
     "aspect_ratio": "2:3",
 }
+
+
+# The idle i2v runs on the provider's NATIVE 9:16 grid. "2:3" is not one of
+# xAI's video aspect ratios, so a 2:3 request is resampled through the model's
+# internal grid and the subject drifts wide. Composing the keyframe onto a
+# 720x1280 plate and requesting 9:16 keeps request, plate, and output on one
+# grid. The figure at ~78% of frame height matches the subject's pixel scale
+# under the old 2:3 plate, so the 720x1088 bake canvas never has to shrink it.
+IDLE_PLATE = {
+    "width": 720, "height": 1280,
+    "subject_height": 1000, "subject_width": 620, "floor": 1250,
+    "aspect_ratio": "9:16",
+}
+
+
+def _idle_loop_keyframe(source, destination, log):
+    person = _keyframe_person(source, destination, log, "idle loop")
+    plate = IDLE_PLATE
+    scale = min(
+        plate["subject_height"] / person.shape[0],
+        plate["subject_width"] / person.shape[1],
+    )
+    person = cv2.resize(
+        person,
+        (round(person.shape[1] * scale), round(person.shape[0] * scale)),
+        interpolation=cv2.INTER_AREA,
+    )
+    canvas = np.full(
+        (plate["height"], plate["width"], 3), (0, 220, 0), dtype=np.uint8)
+    left = max(0, (plate["width"] - person.shape[1]) // 2)
+    top = max(0, plate["floor"] - person.shape[0])
+    region = canvas[top:top + person.shape[0], left:left + person.shape[1]]
+    alpha = person[:, :, 3:4].astype(np.float32) / 255
+    region[:] = (person[:, :, :3] * alpha + region * (1 - alpha)).astype(np.uint8)
+    if not cv2.imwrite(destination, canvas, [cv2.IMWRITE_PNG_COMPRESSION, 5]):
+        raise RuntimeError("could not save the idle loop keyframe")
+    return destination
 
 
 def _loop_walk_keyframe(source, destination, log):
@@ -1044,6 +1084,13 @@ def _generate_videos(
                 walk_frame,
             )
             aspect_ratio = walk_frame["aspect_ratio"]
+        elif kind == "idle":
+            source_keyframe = _idle_loop_keyframe(
+                source_keyframe,
+                os.path.join(video_dir, "idle-loop-keyframe.png"),
+                log,
+            )
+            aspect_ratio = IDLE_PLATE["aspect_ratio"]
         generated = _run(
             _video_command(
                 video_provider, source_keyframe, output_dir, f"{kind}-source",

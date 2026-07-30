@@ -332,8 +332,11 @@ class MotionPipelineTests(unittest.TestCase):
             "grok-imagine-video")
         self.assertEqual(
             video_command[video_command.index("--mode") + 1], "image-to-video")
+        # "2:3" is not a native xAI video grid; a non-native request resamples
+        # the subject through the model's internal grid and the idle figure
+        # drifts wide. The idle therefore runs on native 9:16 end to end.
         self.assertEqual(
-            video_command[video_command.index("--aspect_ratio") + 1], "2:3")
+            video_command[video_command.index("--aspect_ratio") + 1], "9:16")
         walk_command = motion._video_command(
             video_provider, "/walk.png", "/out", "walk-source", "prompt")
         self.assertEqual(
@@ -402,6 +405,55 @@ class MotionPipelineTests(unittest.TestCase):
         self.assertIn("twice", cartwheel_video)
         with self.assertRaisesRegex(ValueError, "unknown Horizon Walk style"):
             motion.resolve_walk_style("moonwalk")
+
+    def test_custom_walk_style_is_a_free_in_place_gait(self):
+        description = "hop forward on one foot with both arms stretched out"
+        style = motion.resolve_walk_style("custom", description)
+        self.assertEqual("custom", style["id"])
+        self.assertEqual("free", style["validation"])
+        self.assertEqual("loop", motion.walk_mode(style))
+        self.assertEqual(description, style["prompt"])
+        # The saved receipt round-trips through motion.json, so the dict form
+        # must rebuild the same style, and the receipt must carry the prompt:
+        # two different custom gaits may not share one cache signature.
+        receipt = motion._walk_style_receipt(style)
+        self.assertEqual(description, receipt["prompt"])
+        self.assertEqual(style, motion.resolve_walk_style(receipt))
+        self.assertNotIn("prompt", motion._walk_style_receipt("office"))
+        # The user's text leads both prompts, and the two-step walking
+        # contract must not override a gait that is not a two-footed walk.
+        keyframe = motion._walk_keyframe_prompt("existing outfit", style)
+        video = motion._walk_video_prompt(style)
+        self.assertIn(description, keyframe)
+        self.assertIn(description, video)
+        self.assertIn("REPEATED CYCLES", video)
+        self.assertNotIn("TWO-STEP GAIT CYCLE", video)
+        with self.assertRaisesRegex(ValueError, "at least 12 characters"):
+            motion.resolve_walk_style("custom", "hop")
+
+    def test_idle_video_runs_on_native_nine_sixteen_plate(self):
+        plate = motion.IDLE_PLATE
+        self.assertEqual("9:16", plate["aspect_ratio"])
+        self.assertEqual(plate["width"] * 16, plate["height"] * 9)
+        with tempfile.TemporaryDirectory() as workspace:
+            source = os.path.join(workspace, "keyframe.png")
+            frame = np.zeros((1536, 1024, 3), np.uint8)
+            frame[:, :] = (55, 170, 42)
+            cv2.rectangle(
+                frame, (390, 90), (640, 1460), (20, 30, 190),
+                thickness=cv2.FILLED)
+            cv2.imwrite(source, frame)
+            destination = os.path.join(workspace, "idle-loop-keyframe.png")
+            motion._idle_loop_keyframe(source, destination, lambda *_: None)
+            composed = cv2.imread(destination, cv2.IMREAD_COLOR)
+        self.assertEqual(
+            (plate["height"], plate["width"]), composed.shape[:2])
+        # Green plate in the corners, subject bottom-anchored at the floor.
+        self.assertGreater(int(composed[4, 4, 1]), 180)
+        rows = np.where((composed[:, :, 2] > 120) & (composed[:, :, 1] < 90))[0]
+        self.assertGreater(rows.size, 0)
+        self.assertLessEqual(plate["floor"] - int(rows.max()), 4)
+        self.assertLessEqual(int(rows.max()), plate["floor"])
 
     def test_green_screen_key_removes_background_and_green_spill(self):
         height, width = 180, 120
