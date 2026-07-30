@@ -885,6 +885,32 @@ async def api_body_prompt(request: BodyPromptRequest):
     }
 
 
+class PromptExpandRequest(BaseModel):
+    slug: str = Field(pattern=SLUG_PATTERN)
+    kind: str = Field(pattern=r"^(body|walk|idle)$")
+    gist: str = Field(min_length=4, max_length=600)
+
+
+@app.post("/api/avatar/prompt/expand")
+async def api_prompt_expand(request: PromptExpandRequest):
+    """Expand a rough gist into a field-ready prompt via the selected LLM.
+
+    Serves the AI-draft buttons on the full-body prompt and the custom walk
+    and Edge Idle prompt fields; the portrait rides along so the direction
+    suits the actual subject.
+    """
+    if not reg().read_manifest(request.slug):
+        raise HTTPException(404, "avatar not found")
+    from studio import promptsmith
+    directory = reg().adir(request.slug)
+    try:
+        prompt = await asyncio.to_thread(
+            promptsmith.expand, request.kind, request.gist, directory)
+    except Exception as error:
+        raise HTTPException(400, str(error))
+    return {"prompt": prompt, "kind": request.kind}
+
+
 @app.get("/api/media/defaults")
 async def api_media_defaults():
     from studio import body
