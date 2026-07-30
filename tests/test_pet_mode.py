@@ -101,6 +101,16 @@ class PetInputBridgeTests(unittest.TestCase):
         # The menu row reflects that both modes talk from the head.
         main = (ROOT / "electron" / "main.cjs").read_text()
         self.assertIn("'Talk · hold head or type'", main)
+        # Listening must be visible (soundwave pill + pulsing field), a mic
+        # refusal must surface in the field, and the open bar must never
+        # swallow drag / taps / the right-click menu on the avatar herself.
+        self.assertIn('id="listenWave"', renderer)
+        self.assertIn("classList.add('listening')", renderer)
+        self.assertIn("classList.remove('listening')", renderer)
+        self.assertIn("flashPrompt('Microphone blocked", renderer)
+        marker = renderer.index("html.electron.pet.chat-open #bar{")
+        self.assertIn("pointer-events:none", renderer[marker:marker + 220])
+        self.assertIn("#bar #manual{pointer-events:auto}", renderer)
 
     def test_gaze_grid_carries_directed_glances(self):
         # The iris grid keeps its quarter-pixel VOR centre and gains coarse
