@@ -16,3 +16,4 @@ misaki[en]==0.9.4
 mlx-whisper==0.4.3
 edge-tts==7.2.8
 torch==2.13.0
+websockets==17.0

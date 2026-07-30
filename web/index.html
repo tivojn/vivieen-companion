@@ -1658,22 +1658,36 @@ async function startRec(force=false){
     return;
   }
   rec=new MediaRecorder(stream);chunks=[];
-  rec.ondataavailable=e=>{chunks.push(e.data);interimTranscribe();};
+  openDictationStream();
+  rec.ondataavailable=e=>{
+    chunks.push(e.data);
+    // The WebM header lives in the FIRST chunk, so the stream must always
+    // start from chunk zero: while the socket is connecting the chunks
+    // accumulate and flush in order on open. Only a dead socket falls back
+    // to batch interim transcription.
+    if(dictationSocket&&dictationSocket.readyState<=1)flushDictationStream();
+    else interimTranscribe();
+  };
   rec.onstop=async()=>{
     stream.getTracks().forEach(t=>t.stop());
     const blob=new Blob(chunks,{type:rec.mimeType||'audio/webm'});
     if(blob.size<3000){
+      closeDictationStream();
       setStatus('ready','on');ptt.disabled=monitorEnabled;
       flashPrompt('Too short · hold, speak while the wave pulses, then release');
       return;
     }
     ptt.disabled=true;setStatus('transcribing','busy');
     try{
-      const fd2=new FormData();fd2.append('audio',blob,'a.webm');
-      const r=await(await fetch('stt',{method:'POST',body:fd2})).json();
-      // The interim dictation already on screen is a fine fallback if the
-      // final pass hears nothing.
-      const heard=String(r.text||'').trim()||txt.value.trim();
+      // The realtime stream already heard everything; ask it to finish.
+      // Anything else - stream unavailable, errored, or slow to finalise -
+      // falls back to one batch pass over the whole take.
+      let heard=await finishDictationStream();
+      if(!heard){
+        const fd2=new FormData();fd2.append('audio',blob,'a.webm');
+        const r=await(await fetch('stt',{method:'POST',body:fd2})).json();
+        heard=String(r.text||'').trim()||txt.value.trim();
+      }
       if(!heard){
         setStatus('ready','on');ptt.disabled=monitorEnabled;
         flashPrompt('I could not hear words in that · try again');
@@ -1682,12 +1696,68 @@ async function startRec(force=false){
       txt.value='';
       await turn(heard,true);
     }catch(e){setStatus('ready','on');ptt.disabled=monitorEnabled;}
+    finally{closeDictationStream();}
   };
-  // Timesliced so dictation can stream: each slice re-transcribes the take
-  // so far and the words land live in the input field while you speak.
-  rec.start(1200);recording=true;ptt.classList.add('rec');txt.classList.add('rec');
+  // Timesliced so dictation can stream: chunks feed the realtime socket (or
+  // the batch fallback) and the words land live in the input field.
+  rec.start(280);recording=true;ptt.classList.add('rec');txt.classList.add('rec');
   document.documentElement.classList.add('listening');
   setStatus('listening','rec');
+}
+/* ---- live dictation stream ------------------------------------------------
+   The server bridges to the dictation provider's realtime WebSocket API
+   (Soniox stt-rt); the words stream into the input field while the head is
+   held. When the bridge is unavailable the batch interim path takes over. */
+let dictationSocket=null,dictationLive=false,dictationFinish=null,dictationSent=0;
+function flushDictationStream(){
+  if(!dictationSocket||dictationSocket.readyState!==1)return;
+  while(dictationSent<chunks.length)dictationSocket.send(chunks[dictationSent++]);
+}
+function openDictationStream(){
+  if(monitorEnabled||dictationSocket)return;
+  dictationSent=0;
+  try{
+    const ws=new WebSocket(
+      (location.protocol==='https:'?'wss://':'ws://')+location.host+'/stt/stream');
+    ws.binaryType='arraybuffer';
+    ws.onmessage=event=>{
+      let payload=null;
+      try{payload=JSON.parse(event.data);}catch(error){return;}
+      if(payload.error){dictationLive=false;return;}
+      dictationLive=true;
+      if(typeof payload.text==='string'&&recording&&payload.text)txt.value=payload.text;
+      if(payload.finished&&dictationFinish)dictationFinish(String(payload.final||'').trim());
+    };
+    ws.onerror=()=>{dictationLive=false;};
+    ws.onclose=()=>{
+      if(dictationFinish)dictationFinish('');
+      if(dictationSocket===ws)dictationSocket=null;
+    };
+    ws.onopen=()=>{dictationLive=true;flushDictationStream();};
+    dictationSocket=ws;
+  }catch(error){dictationSocket=null;dictationLive=false;}
+}
+function finishDictationStream(){
+  if(!dictationSocket||!dictationLive||dictationSocket.readyState!==1){
+    return Promise.resolve('');
+  }
+  return new Promise(resolve=>{
+    const settle=value=>{dictationFinish=null;clearTimeout(timer);resolve(value);};
+    const timer=setTimeout(()=>settle(''),6000);
+    dictationFinish=settle;
+    try{
+      flushDictationStream();
+      dictationSocket.send(new ArrayBuffer(0));
+    }catch(error){settle('');}
+  });
+}
+function closeDictationStream(){
+  dictationFinish=null;
+  dictationLive=false;
+  if(dictationSocket){
+    try{dictationSocket.close();}catch(error){}
+    dictationSocket=null;
+  }
 }
 let interimBusy=false;
 async function interimTranscribe(){

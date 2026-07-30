@@ -141,7 +141,7 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("if(now-lastHitSentAt>500){lastHitSentAt=now;SHELL.setPetHit(petHit);}", renderer)
         # Live dictation: timesliced recording streams interim transcripts
         # into the input field through the configured dictation model.
-        self.assertIn("rec.start(1200)", renderer)
+        self.assertIn("rec.start(280)", renderer)
         self.assertIn("function interimTranscribe", renderer)
         self.assertIn("if(recording&&r.text)txt.value=", renderer)
         self.assertIn(

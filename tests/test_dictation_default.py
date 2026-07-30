@@ -50,5 +50,50 @@ class DictationDefault(unittest.TestCase):
         self.assertIn("'Dictation & Transcription → Dictation'", settings)
 
 
+class LiveDictationBridge(unittest.TestCase):
+    """The realtime path: renderer -> local WebSocket bridge -> Soniox.
+
+    Verified live 2026-07-31: a spoken webm streamed through /stt/stream
+    produced 17 incremental updates and the exact final transcript.
+    """
+
+    def test_server_bridge_contract(self):
+        app = (ROOT / "server" / "app.py").read_text()
+        self.assertIn('@app.websocket("/stt/stream")', app)
+        self.assertIn(
+            'SONIOX_RT_URL = "wss://stt-rt.soniox.com/transcribe-websocket"',
+            app)
+        # Measured live: Soniox only finalises on an empty TEXT frame; the
+        # documented empty-binary alternative just times out. The bridge
+        # must translate the client's end signal accordingly.
+        self.assertIn('await upstream.send("")', app)
+        # The http middleware skips websocket scopes, so the token gate
+        # must be inside the endpoint, and the key stays server-side.
+        marker = app.index('@app.websocket("/stt/stream")')
+        window = app[marker:marker + 600]
+        self.assertIn("x-vivieen-token", window)
+        self.assertIn('"credentials|soniox"', app)
+        # CSP: 'self' does not cover ws:, the local socket needs listing.
+        self.assertIn("ws://127.0.0.1:*", app)
+
+    def test_renderer_streams_and_falls_back(self):
+        renderer = (ROOT / "web" / "index.html").read_text()
+        self.assertIn("'/stt/stream'", renderer)
+        self.assertIn("function openDictationStream", renderer)
+        self.assertIn("function finishDictationStream", renderer)
+        # The WebM header lives in chunk zero: the stream must always be
+        # flushed from the start, never begun mid-take.
+        self.assertIn("function flushDictationStream", renderer)
+        self.assertIn(
+            "while(dictationSent<chunks.length)dictationSocket.send(chunks[dictationSent++]);",
+            renderer)
+        # A dead bridge falls back to batch interim transcription.
+        self.assertIn("else interimTranscribe();", renderer)
+
+    def test_websockets_dependency_is_pinned(self):
+        for name in ("requirements-backend.txt", "requirements-electron.txt"):
+            self.assertIn("websockets", (ROOT / name).read_text())
+
+
 if __name__ == "__main__":
     unittest.main()

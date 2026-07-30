@@ -25,7 +25,8 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
 
 import numpy as np
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query
+from fastapi import (FastAPI, UploadFile, File, Form, HTTPException, Query,
+                     WebSocket, WebSocketDisconnect)
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
@@ -50,7 +51,10 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 SLUG_PATTERN = r"^[a-z0-9](?:[a-z0-9-]{0,62})$"
 CSP = ("default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; "
        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
-       "connect-src 'self'; font-src 'self' data:; object-src 'none'; "
+       # 'self' does not cover the ws: scheme, and live dictation streams
+       # over a local WebSocket to this same server.
+       "connect-src 'self' ws://127.0.0.1:* ws://localhost:*; "
+       "font-src 'self' data:; object-src 'none'; "
        "base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 
 
@@ -1671,6 +1675,117 @@ async def stt(audio: UploadFile = File(...)):
     except Exception as e:
         print("[viv] stt failed:", P.safe_error(e), flush=True)
         return {"text": "", "error": P.safe_error(e, 200)}
+
+
+# ------------------------------------------------------------ live dictation
+# Hold-to-talk streams here for word-by-word dictation into the input field.
+# The bridge speaks Soniox's realtime WebSocket protocol server-side (the
+# API key never reaches the renderer) and forwards MediaRecorder's webm
+# chunks as-is - Soniox's audio_format "auto" decodes the container. If the
+# dictation default is not a Soniox realtime model, the endpoint reports
+# unavailable and the client falls back to batch interim transcription.
+
+SONIOX_RT_URL = "wss://stt-rt.soniox.com/transcribe-websocket"
+
+
+def _soniox_stream_config():
+    mapped = P.global_default("stt")
+    if mapped.get("provider") != "soniox":
+        return None
+    model = str(mapped.get("model") or "")
+    if not model.startswith("stt-rt"):
+        model = "stt-rt-v5"
+    detail = P._run_enconvo_json(
+        ["config", "get", "credentials|soniox", "--includes", "apiKey"],
+        timeout=15)
+    key = str(detail.get("apiKey") or "")
+    if not key:
+        return None
+    config = {"api_key": key, "model": model, "audio_format": "auto"}
+    language = str(mapped.get("language") or "")
+    if language and language != "auto":
+        config["language_hints"] = [language]
+    return config
+
+
+@app.websocket("/stt/stream")
+async def stt_stream(client: WebSocket):
+    # The http auth middleware does not run for websocket scopes, so the
+    # token check happens here; Electron injects the header on the upgrade.
+    if AUTH_TOKEN:
+        supplied = client.headers.get("x-vivieen-token", "")
+        if not secrets.compare_digest(supplied, AUTH_TOKEN):
+            await client.close(code=4403)
+            return
+    await client.accept()
+    try:
+        config = await asyncio.to_thread(_soniox_stream_config)
+    except Exception as e:
+        config = None
+        print("[viv] dictation stream config failed:", P.safe_error(e), flush=True)
+    if not config:
+        await client.send_json({"error": "realtime dictation unavailable",
+                                "finished": True})
+        await client.close()
+        return
+    import websockets
+    finals = []
+    try:
+        async with websockets.connect(
+                SONIOX_RT_URL, max_size=1 << 22, open_timeout=10) as upstream:
+            await upstream.send(json.dumps(config))
+
+            async def pump_audio():
+                while True:
+                    data = await client.receive_bytes()
+                    if not data:
+                        # End-of-take. Soniox's docs accept "an empty binary
+                        # or text frame", but measured live only the empty
+                        # TEXT frame finalises - empty binary just times out.
+                        await upstream.send("")
+                        return
+                    await upstream.send(data)
+
+            audio_task = asyncio.create_task(pump_audio())
+            try:
+                async for message in upstream:
+                    payload = json.loads(message)
+                    if payload.get("error_code") or payload.get("error_message"):
+                        await client.send_json({
+                            "error": str(payload.get("error_message")
+                                         or "provider error")[:200],
+                            "finished": True})
+                        return
+                    interim = []
+                    for token in payload.get("tokens") or []:
+                        text = str(token.get("text") or "")
+                        if token.get("is_final"):
+                            finals.append(text)
+                        else:
+                            interim.append(text)
+                    text = ("".join(finals) + "".join(interim)).strip()
+                    if payload.get("finished"):
+                        await client.send_json({
+                            "finished": True,
+                            "final": "".join(finals).strip() or text})
+                        return
+                    await client.send_json({"text": text})
+            finally:
+                audio_task.cancel()
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print("[viv] dictation stream failed:", P.safe_error(e), flush=True)
+        try:
+            await client.send_json({"error": P.safe_error(e, 200),
+                                    "finished": True})
+        except Exception:
+            pass
+    finally:
+        try:
+            await client.close()
+        except Exception:
+            pass
 
 
 class Turn(BaseModel):
