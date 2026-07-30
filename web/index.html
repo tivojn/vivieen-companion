@@ -1646,18 +1646,19 @@ function pointerOnHead(x,y){
   petHitCtx.drawImage(HEADMASK,0,0,headSurface.width,headSurface.height);
   try{return petHitCtx.getImageData(px,py,1,1).data[3]>40;}catch(error){return false;}
 }
+/* Holding her head presses EnConvo's voice hotkey (right Option) for real -
+   held down while the head is held, released on release - so the question
+   goes to EnConvo's own voice command and she lip-syncs the answer through
+   the monitor, exactly like any other EnConvo reply. Vivieen's local
+   hold-to-talk stays on the chat panel button only. */
+function canPetTalk(){
+  return Boolean(SHELL&&SHELL.isElectron&&typeof SHELL.petVoiceKey==='function');
+}
 function startPetTalk(){
-  if(recording)return;
-  startRec(true);
-  if(SHELL&&SHELL.isElectron&&typeof SHELL.showSpeechBubble==='function'){
-    SHELL.showSpeechBubble('🎙 Listening… release to send');
-  }
+  if(canPetTalk())SHELL.petVoiceKey('down');
 }
 function stopPetTalk(){
-  if(SHELL&&SHELL.isElectron&&typeof SHELL.showSpeechBubble==='function'){
-    SHELL.showSpeechBubble('');
-  }
-  stopRec();
+  if(canPetTalk())SHELL.petVoiceKey('up');
 }
 function petTapReaction(onHead){
   const now=performance.now();
@@ -1681,7 +1682,7 @@ cv.addEventListener('pointerdown',event=>{
     t0:performance.now(),ptt:false,
     head:pointerOnHead(event.clientX,event.clientY)};
   cv.setPointerCapture(event.pointerId);
-  if(gesture.head&&!recording&&(providerReady||!ptt.disabled)){
+  if(gesture.head&&canPetTalk()){
     gesture.timer=setTimeout(()=>{
       if(!gesture||dragging)return;
       gesture.timer=0;gesture.ptt=true;

@@ -101,6 +101,32 @@ const audioTapExecutable = () => path.join(
   app.isPackaged ? 'native' : '.electron-native',
   'enconvo-audio-tap',
 );
+const keyTapExecutable = () => path.join(
+  app.isPackaged ? process.resourcesPath : codeRoot(),
+  app.isPackaged ? 'native' : '.electron-native',
+  'key-tap',
+);
+
+// Holding the pet's head presses EnConvo's voice hotkey (right Option) for
+// real: a synthesized flagsChanged event, down while held, up on release.
+// Requires the Accessibility permission; the failure surfaces once per run.
+let voiceKeyWarned = false;
+function postVoiceKey(state) {
+  const action = state === 'down' ? 'down' : state === 'up' ? 'up' : 'tap';
+  execFile(keyTapExecutable(), [action], (error, _stdout, stderr) => {
+    if (!error) return;
+    const detail = String(stderr || error.message || '');
+    if (detail.includes('accessibility-permission-missing')) {
+      if (voiceKeyWarned) return;
+      voiceKeyWarned = true;
+      showSpeechBubble(
+        'To let a head press reach EnConvo, allow Vivieen under System '
+        + 'Settings → Privacy & Security → Accessibility.');
+      return;
+    }
+    console.error(`[voice-key] ${detail.trim()}`);
+  });
+}
 
 function ensureDataRoot() {
   fs.mkdirSync(dataRoot(), { recursive: true, mode: 0o700 });
@@ -497,12 +523,19 @@ function startPetPointerTracking() {
   stopPetPointerTracking();
   petPointerTimer = setInterval(() => {
     if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
-    if (!state.petClickThrough) {
-      setPetHit(true, 'click-through-off');
-      return;
-    }
     const point = screen.getCursorScreenPoint();
     const bounds = mainWindow.getBounds();
+    if (!state.petClickThrough) {
+      // The window is always interactive, but the gaze still needs the
+      // cursor, so the feed keeps flowing in this branch too.
+      setPetHit(true, 'click-through-off');
+      mainWindow.webContents.send('vivieen:pet-pointer', {
+        x: point.x - bounds.x, y: point.y - bounds.y,
+        inside: point.x >= bounds.x && point.x < bounds.x + bounds.width
+          && point.y >= bounds.y && point.y < bounds.y + bounds.height,
+      });
+      return;
+    }
     const inside = point.x >= bounds.x && point.x < bounds.x + bounds.width
       && point.y >= bounds.y && point.y < bounds.y + bounds.height;
     // Coordinates are sent even outside the window (they go negative or past
@@ -1465,6 +1498,9 @@ function installIpc() {
   });
   ipcMain.on('vivieen:pet-hit', (event, value) => {
     if (mainWindow && event.sender === mainWindow.webContents) setPetHit(Boolean(value), 'renderer-alpha');
+  });
+  ipcMain.on('vivieen:pet-voice-key', (event, state) => {
+    if (mainWindow && event.sender === mainWindow.webContents) postVoiceKey(String(state || ''));
   });
   ipcMain.on('vivieen:drag-start', (event, point) => {
     if (!mainWindow || event.sender !== mainWindow.webContents

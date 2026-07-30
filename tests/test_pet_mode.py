@@ -55,6 +55,41 @@ class PetInputBridgeTests(unittest.TestCase):
         # Drag must never start once push-to-talk is live.
         self.assertIn("if(gesture&&!dragging&&!gesture.ptt&&", renderer)
 
+    def test_head_press_drives_enconvo_voice_hotkey(self):
+        # A held head presses EnConvo's right-Option voice hotkey for real
+        # (held down while held, up on release) via the key-tap helper; the
+        # answer comes back through the monitor, not Vivieen's local chat.
+        renderer = (ROOT / "web" / "index.html").read_text()
+        preload = (ROOT / "electron" / "preload.cjs").read_text()
+        main = (ROOT / "electron" / "main.cjs").read_text()
+        package = json.loads((ROOT / "package.json").read_text())
+        self.assertIn("SHELL.petVoiceKey('down')", renderer)
+        self.assertIn("SHELL.petVoiceKey('up')", renderer)
+        self.assertIn("petVoiceKey", preload)
+        self.assertIn("vivieen:pet-voice-key", main)
+        self.assertIn("'key-tap'", main)
+        self.assertIn("accessibility-permission-missing", main)
+        self.assertIn("build:key-tap", package["scripts"])
+        self.assertIn("build:key-tap", package["scripts"]["build:native"])
+        swift = (ROOT / "electron" / "native" / "key_tap.swift").read_text()
+        self.assertIn("flagsChanged", swift)
+        self.assertIn("maskAlternate", swift)
+
+    def test_gaze_grid_carries_directed_glances(self):
+        # The iris grid keeps its quarter-pixel VOR centre and gains coarse
+        # flanks wide enough that eyes-following-cursor is visible at chat
+        # scale; old runtime bundles are rebaked on activation.
+        from studio import expression
+        self.assertGreaterEqual(max(expression.GAZE_DX), 6.0)
+        self.assertLessEqual(min(expression.GAZE_DX), -6.0)
+        self.assertIn(0.25, [round(b - a, 3) for a, b in zip(
+            expression.GAZE_DX, expression.GAZE_DX[1:])])
+        self.assertGreaterEqual(max(expression.GAZE_DY), 2.0)
+        server = (ROOT / "server" / "app.py").read_text()
+        self.assertIn("RUNTIME_VERSION = 9", server)
+        export_source = (ROOT / "studio" / "export.py").read_text()
+        self.assertIn("dict(v=9,", export_source)
+
     def test_continuous_size_expands_native_alpha_window(self):
         main = (ROOT / "electron" / "main.cjs").read_text()
         renderer = (ROOT / "web" / "index.html").read_text()

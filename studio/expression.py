@@ -34,16 +34,21 @@ IRIS = {"r": 468, "l": 473}                       # refined-landmark iris centre
 IRIS_RING = {"r": [469, 470, 471, 472], "l": [474, 475, 476, 477]}
 NOSE_X = 1                                        # nose tip: tells medial from lateral
 
-# The gaze is locked to the lens, not wandering, so the only excursions that
-# ever need to exist are the counter-rotation that holds that lock while the
-# head moves, plus fixational micro-saccades.  Both are under a pixel and a half
-# on this face - one degree of eye rotation is only ~0.73px here.  So the grid
-# is SMALL and FINE rather than wide and coarse, and the runtime snaps to the
-# nearest state instead of blending between two: at a quarter-pixel pitch the
-# quantisation is invisible, and snapping means the limbus is never
-# cross-dissolved with itself.
-GAZE_DX = [round(-1.5 + 0.25 * i, 3) for i in range(13)]      # +-1.5px
-GAZE_DY = [-0.75, -0.375, 0.0, 0.375, 0.75]
+# The resting gaze is locked to the lens, and the counter-rotation that holds
+# that lock while the head moves is under a pixel and a half - one degree of
+# eye rotation is only ~0.73px on this face.  So the CENTRE of the grid stays
+# small and fine, quarter-pixel pitch, and the runtime snaps to the nearest
+# state instead of blending: at that pitch the quantisation is invisible and
+# the limbus is never cross-dissolved with itself.
+#
+# The FLANKS exist for directed attention - the eyes following the cursor.
+# A glance that reads as "looking left" needs the iris to actually travel the
+# sclera, several pixels, not a micro-tremor.  Out there the pitch coarsens:
+# a directed glance is a saccade, and saccades jump.
+GAZE_DX = ([-6.0, -4.8, -3.6, -2.4] +
+           [round(-1.5 + 0.25 * i, 3) for i in range(13)] +
+           [2.4, 3.6, 4.8, 6.0])                              # +-6px
+GAZE_DY = [-2.5, -1.5, -0.75, -0.375, 0.0, 0.375, 0.75, 1.5, 2.5]
 # Brow offsets, negative = knitted.  Subtle-anchor range, not big acting: half a
 # pixel apart so the runtime can snap here too rather than ghost the brow hair.
 BROW_DY = [round(-1.5 + 0.5 * i, 3) for i in range(11)]       # -1.5 .. +3.5

@@ -187,12 +187,32 @@ def active_slug():
         return None
 
 
+RUNTIME_VERSION = 9  # bundles below this are rebaked on activation
+
+
 def ensure_runtime(slug, log=print):
     """An avatar is only usable once it has a runtime bundle. Build one on demand
-    rather than at activation time, so importing an old avatar folder works."""
+    rather than at activation time, so importing an old avatar folder works.
+    Bundles from an older exporter are republished the same way, so asset
+    upgrades (like the widened gaze grid) reach existing avatars without a
+    manual rebuild."""
     d = _recover_runtime_swap(slug)
-    if os.path.exists(os.path.join(d, "manifest.json")):
-        return d
+    manifest_path = os.path.join(d, "manifest.json")
+    if os.path.exists(manifest_path):
+        try:
+            with open(manifest_path, encoding="utf-8") as handle:
+                version = int((json.load(handle) or {}).get("v") or 0)
+        except (OSError, ValueError):
+            version = 0
+        if version >= RUNTIME_VERSION:
+            return d
+        log(f"runtime bundle is v{version}; republishing as v{RUNTIME_VERSION}")
+        try:
+            _publish_runtime_atomic(slug, log=log)
+            return d
+        except Exception as error:
+            log(f"runtime refresh failed, keeping v{version}: {error}")
+            return d
     from studio import export
     log("publishing runtime bundle")
     export.export(slug, d, log=log)
