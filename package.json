@@ -33,7 +33,7 @@
     "stage:python": "scripts/stage-electron-python.sh",
     "stage:ffmpeg": "scripts/stage-electron-ffmpeg.sh",
     "pack": "npm run build:native && npm run stage:python && npm run stage:ffmpeg && electron-builder --mac dir",
-    "dist": "npm run build:native && npm run stage:python && npm run stage:ffmpeg && electron-builder --mac dmg zip"
+    "dist": "npm run build:native && npm run stage:python && npm run stage:ffmpeg && electron-builder --mac dmg"
   },
   "devDependencies": {
     "electron": "^38.0.0",
@@ -64,7 +64,16 @@
           "**/*",
           "!**/__pycache__/**",
           "!**/*.pyc",
-          "!**/.DS_Store"
+          "!**/.DS_Store",
+          "!torch/bin/**",
+          "!torch/include/**",
+          "!torch/share/**",
+          "!**/tests/**",
+          "!**/test/**",
+          "!**/testing/**",
+          "!**/*.pyi",
+          "!**/examples/**",
+          "!**/benchmarks/**"
         ]
       },
       {
@@ -140,7 +149,8 @@
     },
     "dmg": {
       "title": "Vivieen ${version}",
-      "artifactName": "Vivieen-${version}-${arch}.${ext}"
+      "artifactName": "Vivieen-${version}-${arch}.${ext}",
+      "format": "UDBZ"
     }
   }
 }
