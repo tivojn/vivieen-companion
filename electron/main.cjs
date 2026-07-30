@@ -1375,8 +1375,9 @@ function petViewItems() {
 function showPetMenu() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const followingEnconvo = monitorState().enabled;
+  // Short one-row labels; " · " carries the gesture that does the same thing.
   const menu = Menu.buildFromTemplate([
-    { label: followingEnconvo ? 'Talk via EnConvo…' : 'Talk to Vivieen…', click: () => {
+    { label: followingEnconvo ? 'Talk · hold head' : 'Talk to Vivieen…', click: () => {
       if (followingEnconvo) {
         void triggerEnconvoVoiceCommand();
         return;
@@ -1385,16 +1386,24 @@ function showPetMenu() {
       mainWindow.focus();
       mainWindow.webContents.send('vivieen:pet-chat');
     } },
-    { label: monitorState().enabled ? 'Stop Following EnConvo' : 'Follow EnConvo Audio',
-      click: () => setEnconvoMonitoring(!monitorState().enabled) },
+    { label: followingEnconvo ? 'Unfollow EnConvo' : 'Follow EnConvo',
+      click: () => setEnconvoMonitoring(!followingEnconvo) },
     { type: 'separator' },
-    { label: 'View', enabled: !state.petRoam, submenu: petViewItems() },
-    { label: 'Size & Opacity…', click: showAppearanceWindow },
-    { label: petMotionReady ? 'Horizon Walk Along Dock' : 'Horizon Walk · Generate Motion First',
+    { label: !petMotionReady ? 'Walk · generate first'
+        : state.petRoam ? 'Walking · hover to stop' : 'Walk · 2×tap leg',
       type: 'checkbox', checked: state.petRoam, enabled: petMotionReady,
       click: (item) => applyPetRoam(item.checked) },
+    { label: 'React · tap arm or chest', enabled: false },
+    { label: 'Rest · still for 10s', enabled: false },
     { type: 'separator' },
-    { label: 'Click Through Empty Space', type: 'checkbox', checked: state.petClickThrough,
+    { label: 'Opacity + · 2×tap chest',
+      click: () => applyPetOpacity(Math.min(1, state.petOpacity + 0.12)) },
+    { label: 'Opacity − · 2×tap foot',
+      click: () => applyPetOpacity(Math.max(0.15, state.petOpacity - 0.12)) },
+    { label: 'Size & Opacity…', click: showAppearanceWindow },
+    { label: 'View', enabled: !state.petRoam, submenu: petViewItems() },
+    { type: 'separator' },
+    { label: 'Click-Through Gaps', type: 'checkbox', checked: state.petClickThrough,
       click: (item) => applyPetClickThrough(item.checked) },
     { label: 'Lock Position', type: 'checkbox', checked: state.petLocked,
       enabled: !state.petRoam, click: (item) => applyPetLock(item.checked) },
@@ -1413,6 +1422,8 @@ function showPetMenu() {
       mainWindow.webContents.send('vivieen:pet-pointer', {
         x: point.x - bounds.x,
         y: point.y - bounds.y,
+        inside: point.x >= bounds.x && point.x < bounds.x + bounds.width
+          && point.y >= bounds.y && point.y < bounds.y + bounds.height,
       });
     },
   });
@@ -1501,6 +1512,19 @@ function installIpc() {
   });
   ipcMain.on('vivieen:pet-voice-key', (event, state) => {
     if (mainWindow && event.sender === mainWindow.webContents) postVoiceKey(String(state || ''));
+  });
+  ipcMain.on('vivieen:pet-dock', (event) => {
+    // The stillness idle leans on the right screen edge, so the window
+    // settles bottom-right above the Dock first. Locked or roaming pets
+    // stay where they are and idle in place.
+    if (!mainWindow || event.sender !== mainWindow.webContents) return;
+    if (state.petRoam || state.petLocked) return;
+    const area = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
+    const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);
+    const bounds = dockedPetBounds(size, area, PET_DOCK_MARGIN);
+    mainWindow.setBounds(bounds, false);
+    state.bounds = { ...bounds };
+    saveStateSoon();
   });
   ipcMain.on('vivieen:drag-start', (event, point) => {
     if (!mainWindow || event.sender !== mainWindow.webContents

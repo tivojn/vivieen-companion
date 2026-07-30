@@ -114,11 +114,25 @@ class PetInputBridgeTests(unittest.TestCase):
         renderer = (ROOT / "web" / "index.html").read_text()
         self.assertIn("function standingIdleActive", renderer)
         self.assertIn("STANDING_IDLE_AFTER_MS=10000", renderer)
-        self.assertIn(
-            "if(standingIdleActive(now)&&drawMotionClip('idle',now))return;",
-            renderer)
-        self.assertIn("LEG_DOUBLE_TAP_MS=450", renderer)
+        self.assertIn("if(standingIdleActive(now)){", renderer)
+        self.assertIn("DOUBLE_TAP_MS=450", renderer)
+        self.assertIn("function petDoubleTap", renderer)
         self.assertIn("SHELL.setPetRoam(true);", renderer)
+        # Double-tap verbs: chest raises opacity, a foot lowers it (floored so
+        # she can never vanish), and the idle leans docked bottom-right.
+        self.assertIn("SHELL.setPetOpacity(Math.min(1,", renderer)
+        self.assertIn("SHELL.setPetOpacity(Math.max(.15,", renderer)
+        self.assertIn("SHELL.dockPet()", renderer)
+        self.assertIn("drawMotionClip('idle',now,'right')", renderer)
+        main = (ROOT / "electron" / "main.cjs").read_text()
+        preload = (ROOT / "electron" / "preload.cjs").read_text()
+        self.assertIn("vivieen:pet-dock", main)
+        self.assertIn("dockedPetBounds(size, area, PET_DOCK_MARGIN)", main)
+        self.assertIn("dockPet", preload)
+        # Menu rows carry their gesture hints.
+        for hint in ("Talk · hold head", "Walk · 2×tap leg",
+                     "Opacity + · 2×tap chest", "Opacity − · 2×tap foot"):
+            self.assertIn(hint, main)
         self.assertIn("ROAM_HOVER_STOP_MS", renderer)
         self.assertIn("SHELL.setPetRoam(false)", renderer)
         # The stillness clock resets on every kind of attention.
@@ -215,7 +229,7 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("travelOffsets", main)
         self.assertIn("clip.travel_offsets", renderer)
         self.assertIn("phase*clip.frames", renderer)
-        self.assertIn("ROAM.edge==='right'", renderer)
+        self.assertIn("edge==='right'", renderer)
         self.assertIn("clip.edge_anchors", renderer)
         self.assertIn("anchors.left_frames", renderer)
         self.assertIn("wallPadding=3", renderer)

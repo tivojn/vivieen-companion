@@ -911,29 +911,19 @@ function planWeight(now){
   weight={from:weight.to,to:(Math.random()*2-1),t0:now,duration:3200+Math.random()*4200};
   nextWeight=now+7000+Math.random()*15000;
 }
-let legSway=null;
 function bodyAt(now,width,height){
   if(now>nextWeight)planWeight(now);
   const u=Math.min(1,Math.max(0,(now-weight.t0)/weight.duration));
   const shift=weight.from+(weight.to-weight.from)*ease(u);
   const energy=presenceAt(now),t=now/1000;
   const breath=(.5+.5*vn(t*.19,21))*(.55+.45*vn(t*.073,22));
-  let x=shift*width*.0045+vn(t*.12,23)*width*.0016*energy;
-  let y=-breath*height*.0018;
-  let r=(shift*.11+vn(t*.09,24)*.055*energy)*Math.PI/180;
-  const sx=1+breath*.0018,sy=1+breath*.0034;
-  if(legSway){
-    // A tapped leg answers with one visible hip rock toward it - rotation
-    // reads at pet scale where the ambient weight shift does not.
-    const k=(now-legSway.t0)/520;
-    if(k>=1)legSway=null;
-    else{
-      const pulse=Math.sin(Math.PI*k);
-      x+=legSway.dir*width*.008*pulse;
-      r+=legSway.dir*1.4*Math.PI/180*pulse;
-    }
-  }
-  return {x,y,r,sx,sy};
+  return {
+    x:shift*width*.0045+vn(t*.12,23)*width*.0016*energy,
+    y:-breath*height*.0018,
+    r:(shift*.11+vn(t*.09,24)*.055*energy)*Math.PI/180,
+    sx:1+breath*.0018,
+    sy:1+breath*.0034,
+  };
 }
 
 /* Amplitude is in px AT THE EYES, and it has to be sized in degrees or it comes
@@ -1305,19 +1295,20 @@ function motionFrameAt(kind,now){
   const local=index-sheet.first,column=local%sheet.columns,row=Math.floor(local/sheet.columns);
   return {clip,sheet,index,sx:column*clip.frame_width,sy:row*clip.frame_height};
 }
-function drawMotionClip(kind,now){
+function drawMotionClip(kind,now,edgeOverride){
   const frame=motionFrameAt(kind,now);if(!frame)return false;
   const clip=frame.clip,width=clip.frame_width,height=clip.frame_height;
   const meta={bounds:clip.bounds||[0,0,width,height]};
   const camera=petCamera(meta,width,height);
-  const mirror=kind==='walk'?ROAM.direction<0:ROAM.edge==='right';
-  if(kind==='idle'&&ROAM.edge){
+  const edge=edgeOverride!==undefined?edgeOverride:ROAM.edge;
+  const mirror=kind==='walk'?ROAM.direction<0:edge==='right';
+  if(kind==='idle'&&edge){
     const anchors=clip.edge_anchors||{left:(clip.bounds||[0])[0]||0};
     const frameSupports=Array.isArray(anchors.left_frames)?anchors.left_frames:[];
     const frameSupport=Number(frameSupports[frame.index]);
     const support=Number.isFinite(frameSupport)?frameSupport:(Number(anchors.left)||0);
     const wallPadding=3;
-    camera.x=ROAM.edge==='left'?wallPadding-support*camera.scale:
+    camera.x=edge==='left'?wallPadding-support*camera.scale:
       cv.width-wallPadding-(width-support)*camera.scale;
   }
   ctx.save();ctx.setTransform(camera.scale,0,0,camera.scale,camera.x,camera.y);
@@ -1331,7 +1322,15 @@ function drawPetScene(now){
   const motionKind=PET.roam&&ROAM.enabled?
     (ROAM.mode==='walk'?'walk':ROAM.mode.startsWith('ledge-')?'idle':null):null;
   if(motionKind&&drawMotionClip(motionKind,now))return;
-  if(standingIdleActive(now)&&drawMotionClip('idle',now))return;
+  if(standingIdleActive(now)){
+    // She settles bottom-right above the Dock and leans on the screen edge,
+    // like a colleague stepping aside; the window docks once per stillness.
+    if(!idleDocked){
+      idleDocked=true;
+      if(typeof SHELL.dockPet==='function')SHELL.dockPet();
+    }
+    if(drawMotionClip('idle',now,'right'))return;
+  }else idleDocked=false;
   const hasBody=Boolean(BODY&&HEADMASK&&M.body);
   const source=hasBody?BODY:faceSurface;
   const width=source.width,height=source.height;
@@ -1369,7 +1368,7 @@ function loop(now){
   // Anything that counts as attention resets the stillness clock; after ten
   // quiet seconds the standing pet settles into the Edge Idle loop, and any
   // attention brings the live standing avatar straight back.
-  if(petHit||speaking||recording||dragging||REACT||legSway||gesture||
+  if(petHit||speaking||recording||dragging||REACT||gesture||
      document.documentElement.classList.contains('chat-open'))lastEngagedAt=now;
   const ts=now/1000;
   lvl=lvl*0.55+level()*0.45;
@@ -1725,6 +1724,13 @@ function petBodyPart(x,y){
     if(shoulder&&elbow)candidates.push([key,segdist(point,shoulder,elbow)]);
     if(hip&&knee)candidates.push([leg,segdist(point,hip,knee)]);
     if(knee&&ankle)candidates.push([leg,segdist(point,knee,ankle)]);
+    if(ankle){
+      // The foot hangs below the ankle; favoured slightly so clicks at shoe
+      // level classify as foot rather than shin.
+      const heightRef=(M.body.bounds||[0,0,0,BODY.height])[3];
+      const toe=[ankle[0],ankle[1]+heightRef*.055];
+      candidates.push(['foot_'+side[0],segdist(point,ankle,toe)*.85]);
+    }
   }
   const ls=at('left_shoulder'),rs=at('right_shoulder'),
     lh=at('left_hip'),rh=at('right_hip');
@@ -1746,8 +1752,29 @@ function petBodyPart(x,y){
    Each state is a full replacement tile for its box, so the player clears
    the box and stamps the tile; first and last states ARE the plate. */
 let REACT=null;
-let lastEngagedAt=performance.now(),lastLegTapAt=0,roamHoverStop=0;
-const STANDING_IDLE_AFTER_MS=10000,ROAM_HOVER_STOP_MS=260,LEG_DOUBLE_TAP_MS=450;
+let lastEngagedAt=performance.now(),lastTap={part:'',at:0},roamHoverStop=0,idleDocked=false;
+const STANDING_IDLE_AFTER_MS=10000,ROAM_HOVER_STOP_MS=260,DOUBLE_TAP_MS=450;
+/* Double taps are the deliberate verbs: legs start the Horizon Walk, the
+   chest raises opacity, a foot lowers it. Returns true when the part had a
+   double-tap action, so the second tap never also fires a reaction. */
+function petDoubleTap(part){
+  if((part==='leg_l'||part==='leg_r')&&MOTION.walk&&
+     SHELL&&typeof SHELL.setPetRoam==='function'){
+    SHELL.setPetRoam(true);
+    return true;
+  }
+  if(part==='torso'&&SHELL&&typeof SHELL.setPetOpacity==='function'){
+    SHELL.setPetOpacity(Math.min(1,(Number(PET.opacity)||.5)+0.12));
+    return true;
+  }
+  if((part==='foot_l'||part==='foot_r')&&
+     SHELL&&typeof SHELL.setPetOpacity==='function'){
+    // Floor at 0.15: a fully transparent pet cannot be found to click again.
+    SHELL.setPetOpacity(Math.max(.15,(Number(PET.opacity)||.5)-0.12));
+    return true;
+  }
+  return false;
+}
 function standingIdleActive(now){
   return Boolean(SHELL&&SHELL.isElectron&&PET.enabled&&!PET.roam&&
     MOTION.idle&&now-lastEngagedAt>STANDING_IDLE_AFTER_MS);
@@ -1780,24 +1807,16 @@ function petTapReaction(part){
   const now=performance.now();
   if(now-lastTapAt<700)return;
   lastTapAt=now;
-  // Every tap gets an acknowledging nod; the touched part answers with its
-  // own motion: arms raise their hand, the torso shrugs, legs rock the hips
-  // onto the tapped side. Nothing compresses the whole silhouette.
+  // Every tap gets an acknowledging nod; arms raise their hand and the torso
+  // shrugs. Legs and feet only nod on a single tap - their whole-body tilt
+  // was cancelled by taste - and answer properly on a double tap instead.
   nods.push({t0:now,a:part==='head'?7.6:5.6,d:part==='head'?460:400,n:1});
   nextNod=now+2400+Math.random()*2000;
   if(part==='arm_l'||part==='arm_r'){
     startLimbReaction(part);
     return;
   }
-  if(part==='torso'){
-    startLimbReaction('shrug');
-    return;
-  }
-  if(part==='leg_l'||part==='leg_r'){
-    // Vision's left_* joints sit at higher x on this front plate, so her
-    // tapped-side rock is positive for the left leg.
-    legSway={t0:now,dir:part==='leg_l'?1:-1};
-  }
+  if(part==='torso')startLimbReaction('shrug');
 }
 function clearGesture(){
   if(gesture&&gesture.timer)clearTimeout(gesture.timer);
@@ -1834,15 +1853,11 @@ cv.addEventListener('pointerup',event=>{
   if(performance.now()-active.t0<=TAP_MS){
     const part=active.part||'body';
     const now=performance.now();
-    if((part==='leg_l'||part==='leg_r')&&
-       now-lastLegTapAt<=LEG_DOUBLE_TAP_MS&&MOTION.walk&&
-       SHELL&&typeof SHELL.setPetRoam==='function'){
-      // A double tap on a leg sends her off on the Horizon Walk.
-      lastLegTapAt=0;legSway=null;
-      SHELL.setPetRoam(true);
+    if(lastTap.part===part&&now-lastTap.at<=DOUBLE_TAP_MS&&petDoubleTap(part)){
+      lastTap={part:'',at:0};
       return;
     }
-    lastLegTapAt=(part==='leg_l'||part==='leg_r')?now:0;
+    lastTap={part,at:now};
     petTapReaction(part);
   }
 });
