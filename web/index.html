@@ -1603,18 +1603,26 @@ async function turn(text,spoken=false){
   ptt.disabled=monitorEnabled;
 }
 
-let rec=null,chunks=[],recording=false,providerReady=false;
+let rec=null,chunks=[],recording=false,recWanted=false,providerReady=false;
 async function startRec(force=false){
   // Monitor mode locks the chat button, but head push-to-talk on the pet
   // must still work while she lip-syncs EnConvo, so it forces past the lock.
   if(recording||(!force&&(monitorEnabled||ptt.disabled)))return;
+  recWanted=true;
   let stream;
   try{stream=await navigator.mediaDevices.getUserMedia({audio:true});}
   catch(e){
     // The status line is hidden in pet mode, so the refusal must surface
     // where the user is looking: the input field itself.
+    document.documentElement.classList.remove('listening');
     setStatus('microphone blocked','');
     flashPrompt('Microphone blocked · allow Vivieen in System Settings → Privacy & Security → Microphone');
+    return;
+  }
+  if(!recWanted){
+    // Released before the microphone resolved: do not start a ghost take.
+    stream.getTracks().forEach(t=>t.stop());
+    document.documentElement.classList.remove('listening');
     return;
   }
   rec=new MediaRecorder(stream);chunks=[];
@@ -1636,9 +1644,10 @@ async function startRec(force=false){
   setStatus('listening','rec');
 }
 function stopRec(){
+  recWanted=false;
+  document.documentElement.classList.remove('listening');
   if(!recording)return;
   recording=false;ptt.classList.remove('rec');txt.classList.remove('rec');
-  document.documentElement.classList.remove('listening');
   rec.stop();
 }
 const TXT_PLACEHOLDER=txt.placeholder;
@@ -1791,6 +1800,16 @@ function petBodyPart(x,y){
   const point=joints?canvasToBody(x,y):null;
   if(!point)return 'body';
   const at=name=>{const j=joints[name];return j?[j.x,j.y]:null;};
+  // The mask is face-exact, but people aim for the top of the head: hair
+  // must count as head too, or hold-to-talk dies on the crown. A circle
+  // around the nose sized by the nose-to-neck span covers hair and ears.
+  {
+    const nose=at('nose'),neck=at('neck');
+    if(nose&&neck){
+      const radius=Math.hypot(nose[0]-neck[0],nose[1]-neck[1])*1.2;
+      if(Math.hypot(point.x-nose[0],point.y-nose[1])<=radius)return 'head';
+    }
+  }
   const segdist=(p,a,b)=>{
     const abx=b[0]-a[0],aby=b[1]-a[1];
     const t=Math.max(0,Math.min(1,
@@ -1896,6 +1915,9 @@ function startPetTalk(){
   // health poll lands - the head must not wait for it.
   document.documentElement.classList.add('chat-open');
   if(typeof SHELL.setPetHit==='function')SHELL.setPetHit(true);
+  // Optimistic wave: microphone acquisition can take a beat (or fail), and
+  // the hold needs feedback NOW; startRec's failure paths take it back down.
+  document.documentElement.classList.add('listening');
   startRec(true);
 }
 function stopPetTalk(){

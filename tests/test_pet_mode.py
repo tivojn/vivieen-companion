@@ -108,6 +108,15 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("classList.add('listening')", renderer)
         self.assertIn("classList.remove('listening')", renderer)
         self.assertIn("flashPrompt('Microphone blocked", renderer)
+        # The face mask alone is not the head: people hold the CROWN, so a
+        # skull circle around the nose (sized by the nose-to-neck span) must
+        # classify hair as head - verified live on the desktop 2026-07-31.
+        self.assertIn(
+            "Math.hypot(point.x-nose[0],point.y-nose[1])<=radius)return 'head'",
+            renderer)
+        # A release before the microphone resolves must not leave a ghost
+        # recording running.
+        self.assertIn("if(!recWanted){", renderer)
         marker = renderer.index("html.electron.pet.chat-open #bar{")
         self.assertIn("pointer-events:none", renderer[marker:marker + 220])
         self.assertIn("#bar #manual{pointer-events:auto}", renderer)
