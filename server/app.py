@@ -11,7 +11,9 @@ active slug on every request. Activating a face is therefore one atomic write
 to active.json, and no file is ever copied over another.
 """
 import os, sys, io, json, base64, tempfile, threading, time, shutil, subprocess, secrets, asyncio
+import datetime, re, zipfile
 from contextlib import asynccontextmanager
+from posixpath import normpath as posix_normpath
 os.environ["PATH"] = os.pathsep.join(filter(None, (
     os.path.expanduser("~/.config/enconvo/bin"), "/opt/homebrew/bin",
     "/usr/local/bin", os.environ.get("PATH", ""))))
@@ -1207,6 +1209,185 @@ async def api_activate(b: Slug):
         raise HTTPException(400, f"could not publish runtime: {e}")
     r.set_active(b.slug)
     return {"active": b.slug}
+
+
+# ---------------------------------------------------------------- .avtr
+
+AVTR_FORMAT = "vivieen-avatar"
+AVTR_VERSION = 1
+# The archive carries the avatar's source of truth; the runtime bundle and
+# caches are deliberately absent so the importing app rebakes a runtime at
+# ITS pipeline version - an imported avatar always gets the current eyes,
+# skeleton, and reactions.
+AVTR_TOP_EXCLUDES = {"runtime", "diag"}
+MAX_AVTR_BYTES = 4 * 1024 * 1024 * 1024
+MAX_AVTR_ENTRIES = 40000
+
+
+def _avtr_pruned(name):
+    return (name in AVTR_TOP_EXCLUDES or name == ".DS_Store"
+            or name == "__pycache__" or name.endswith(".previous")
+            or name.endswith(".activate-backup") or name.startswith(".runtime-")
+            or name.startswith(".motion-") or name.startswith(".body-")
+            or name.startswith(".import-"))
+
+
+def _avatar_archive(slug, directory, destination):
+    manifest = reg().read_manifest(slug) or {}
+    root = os.path.abspath(directory)
+    with zipfile.ZipFile(destination, "w", zipfile.ZIP_STORED) as archive:
+        archive.writestr("avtr.json", json.dumps({
+            "format": AVTR_FORMAT,
+            "version": AVTR_VERSION,
+            "slug": slug,
+            "name": manifest.get("name") or slug,
+            "status": manifest.get("status") or "draft",
+            "exported": datetime.datetime.now().isoformat(timespec="seconds"),
+        }, indent=1))
+        for base, folders, files in os.walk(root):
+            folders[:] = sorted(f for f in folders if not _avtr_pruned(f))
+            relative = os.path.relpath(base, root)
+            for name in sorted(files):
+                if _avtr_pruned(name):
+                    continue
+                full = os.path.join(base, name)
+                if os.path.islink(full):
+                    continue
+                inner = name if relative == "." else f"{relative}/{name}"
+                archive.write(full, f"avatar/{inner.replace(os.sep, '/')}")
+
+
+def _import_avatar_archive(path):
+    with zipfile.ZipFile(path) as archive:
+        try:
+            meta = json.loads(archive.read("avtr.json"))
+        except (KeyError, ValueError) as error:
+            raise ValueError("not a Vivieen .avtr file") from error
+        if meta.get("format") != AVTR_FORMAT:
+            raise ValueError("not a Vivieen .avtr file")
+        if int(meta.get("version") or 0) > AVTR_VERSION:
+            raise ValueError(
+                "this .avtr was exported by a newer Vivieen; update first")
+        entries = archive.infolist()
+        if len(entries) > MAX_AVTR_ENTRIES:
+            raise ValueError("archive holds too many files")
+        total = 0
+        for info in entries:
+            name = info.filename
+            if name == "avtr.json" or name.endswith("/"):
+                continue
+            normal = posix_normpath(name)
+            if (not normal.startswith("avatar/") or normal.startswith("/")
+                    or ".." in normal.split("/")):
+                raise ValueError(f"unsafe archive entry: {name}")
+            if (info.external_attr >> 16) & 0o170000 == 0o120000:
+                raise ValueError("archive contains symlinks")
+            total += info.file_size
+            if total > MAX_AVTR_BYTES:
+                raise ValueError("archive is too large")
+        if "avatar/manifest.json" not in archive.namelist():
+            raise ValueError("archive has no avatar manifest")
+
+        base = re.sub(r"[^a-z0-9-]+", "-",
+                      str(meta.get("slug") or "avatar").lower()).strip("-")[:40]
+        base = base or "avatar"
+        slug, counter = base, 2
+        while os.path.exists(reg().adir(slug)):
+            slug = f"{base}-{counter}"
+            counter += 1
+        target = reg().adir(slug)
+        stage = target + ".import-stage"
+        shutil.rmtree(stage, ignore_errors=True)
+        os.makedirs(stage, mode=0o700)
+        try:
+            stage_root = os.path.abspath(stage)
+            for info in entries:
+                name = info.filename
+                if name == "avtr.json" or name.endswith("/"):
+                    continue
+                relative = posix_normpath(name)[len("avatar/"):]
+                destination = os.path.abspath(os.path.join(
+                    stage_root, *relative.split("/")))
+                if os.path.commonpath((stage_root, destination)) != stage_root:
+                    raise ValueError(f"unsafe archive entry: {name}")
+                os.makedirs(os.path.dirname(destination), exist_ok=True)
+                with archive.open(info) as source, open(destination, "wb") as sink:
+                    shutil.copyfileobj(source, sink)
+            manifest_path = os.path.join(stage_root, "manifest.json")
+            with open(manifest_path, encoding="utf-8") as handle:
+                manifest = json.load(handle)
+            manifest["slug"] = slug
+            with open(manifest_path, "w", encoding="utf-8") as handle:
+                json.dump(manifest, handle, indent=1)
+            os.replace(stage, target)
+        except Exception:
+            shutil.rmtree(stage, ignore_errors=True)
+            raise
+    return {"slug": slug, "name": manifest.get("name") or slug,
+            "status": manifest.get("status") or "draft"}
+
+
+@app.get("/api/avatar/export")
+async def api_avatar_export(slug: str = Query(pattern=SLUG_PATTERN)):
+    if not reg().read_manifest(slug):
+        raise HTTPException(404, "avatar not found")
+    handle = tempfile.NamedTemporaryFile(suffix=".avtr", delete=False)
+    archive_path = handle.name
+    handle.close()
+    try:
+        await asyncio.to_thread(
+            _avatar_archive, slug, reg().adir(slug), archive_path)
+    except Exception:
+        if os.path.exists(archive_path):
+            os.unlink(archive_path)
+        raise
+    from starlette.background import BackgroundTask
+
+    def _cleanup():
+        if os.path.exists(archive_path):
+            os.unlink(archive_path)
+    return FileResponse(
+        archive_path, media_type="application/zip",
+        filename=f"{slug}.avtr", background=BackgroundTask(_cleanup))
+
+
+@app.post("/api/avatar/import")
+async def api_avatar_import(archive: UploadFile = File(...)):
+    handle = tempfile.NamedTemporaryFile(suffix=".avtr", delete=False)
+    temp = handle.name
+    try:
+        total = 0
+        while True:
+            chunk = await archive.read(1 << 20)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_AVTR_BYTES:
+                raise HTTPException(413, "avatar archive exceeds the 4 GB limit")
+            handle.write(chunk)
+        handle.close()
+        try:
+            result = await asyncio.to_thread(_import_avatar_archive, temp)
+        except ValueError as error:
+            raise HTTPException(422, str(error))
+    finally:
+        handle.close()
+        if os.path.exists(temp):
+            os.unlink(temp)
+    slug = result["slug"]
+    if result.get("status") == "ready":
+        job_id = _reserve_job(slug, "import", "Publishing imported avatar")
+        if job_id:
+            def publish():
+                failure = ""
+                try:
+                    ensure_runtime(slug, log=jlog(slug, "publishing import"))
+                except Exception as error:
+                    failure = str(error)
+                finally:
+                    _finish_job(slug, job_id, failure)
+            threading.Thread(target=publish, daemon=True).start()
+    return {"imported": True, **result}
 
 
 @app.post("/api/avatar/delete")

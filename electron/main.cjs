@@ -1513,6 +1513,33 @@ function installIpc() {
   ipcMain.on('vivieen:pet-voice-key', (event, state) => {
     if (mainWindow && event.sender === mainWindow.webContents) postVoiceKey(String(state || ''));
   });
+  ipcMain.handle('vivieen:export-avatar', async (event, payload) => {
+    const slug = String((payload && payload.slug) || '');
+    if (!/^[a-z0-9](?:[a-z0-9-]{0,62})$/.test(slug)) return { saved: false, error: 'Invalid avatar.' };
+    const suggested = String((payload && payload.name) || slug)
+      .replace(/[/\\:]+/g, '-').slice(0, 80) || slug;
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Export Avatar',
+      defaultPath: `${suggested}.avtr`,
+      filters: [{ name: 'Vivieen Avatar', extensions: ['avtr'] }],
+    });
+    if (canceled || !filePath) return { saved: false };
+    try {
+      const response = await fetch(
+        `${baseUrl()}/api/avatar/export?slug=${encodeURIComponent(slug)}`,
+        { headers: { 'X-Vivieen-Token': backendToken } });
+      if (!response.ok || !response.body) {
+        return { saved: false, error: `Export failed (${response.status}).` };
+      }
+      const { Readable } = require('node:stream');
+      const { pipeline } = require('node:stream/promises');
+      await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(filePath));
+      return { saved: true, path: filePath };
+    } catch (error) {
+      try { fs.unlinkSync(filePath); } catch (cleanupError) { /* partial file */ }
+      return { saved: false, error: String(error.message || error) };
+    }
+  });
   ipcMain.on('vivieen:pet-dock', (event) => {
     // The stillness idle leans on the right screen edge, so the window
     // settles bottom-right above the Dock first. Locked or roaming pets

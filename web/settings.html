@@ -413,8 +413,12 @@ button.btn.danger{color:#d9705f}
       </div>
     </div>
     <input type="file" id="file" accept="image/*" class="hidden">
+    <input type="file" id="avtrFile" accept=".avtr" class="hidden">
     <div class="row" style="margin-top:14px">
       <div class="f"><label>Name</label><input id="newname" placeholder="Vivieen"></div>
+      <div class="f" style="flex:none;align-self:flex-end">
+        <button class="btn" id="importAvtr" type="button" title="Import a complete avatar (.avtr) — face, body, walk, and edge idle arrive ready to use">Import .avtr…</button>
+      </div>
     </div>
   </div>
 
@@ -1126,6 +1130,7 @@ function card(a) {
              <button class="btn sm" data-act="body" ${busy ? 'disabled' : ''}>${a.body ? 'Edit full body' : 'Create full body'}</button>`
       : `<button class="btn sm pri" data-act="build" ${busy ? 'disabled' : ''}>${busy ? 'Building…' : 'Build avatar'}</button>`}
         ${a.preview ? `<button class="btn sm" data-act="preview">Preview</button>` : ''}
+        <button class="btn sm" data-act="export" ${busy ? 'disabled' : ''}>Export</button>
         <button class="btn sm danger" data-act="delete" ${on ? 'disabled' : ''}>Delete</button>
       </div>
       <div class="jobbox ${busy ? 'on' : ''}">
@@ -1262,6 +1267,20 @@ async function act(what, slug, btn) {
   if (what === 'calibrate') { openRig(slug); return; }
   if (what === 'body') { openBody(slug); return; }
   if (what === 'preview') { openPreview(slug); return; }
+  if (what === 'export') {
+    const title = btn.closest('.av').querySelector('h3');
+    const name = title ? title.textContent.trim() : slug;
+    if (SHELL && SHELL.isElectron && typeof SHELL.exportAvatar === 'function') {
+      btn.disabled = true; btn.textContent = 'Exporting…';
+      const result = await SHELL.exportAvatar({ slug, name });
+      btn.disabled = false; btn.textContent = 'Export';
+      if (result && result.saved) note(`Exported ${name} to ${result.path}`);
+      else if (result && result.error) alert(result.error);
+    } else {
+      window.open('/api/avatar/export?slug=' + encodeURIComponent(slug));
+    }
+    return;
+  }
   if (what === 'delete' && !confirm('Delete ' + slug + ' and everything built from it?')) return;
   btn.disabled = true;
   const r = await api('/api/avatar/' + what, {
@@ -2539,7 +2558,36 @@ drop.onclick = () => file.click();
 ['dragleave', 'drop'].forEach(e => drop.addEventListener(e, ev => {
   ev.preventDefault(); drop.classList.remove('over');
 }));
-drop.addEventListener('drop', ev => upload(ev.dataTransfer.files[0]));
+drop.addEventListener('drop', ev => {
+  const dropped = ev.dataTransfer.files[0];
+  if (dropped && /\.avtr$/i.test(dropped.name)) { importAvatarFile(dropped); return; }
+  upload(dropped);
+});
+
+/* .avtr import: one file carries the whole avatar - face bank, body, walk,
+   edge idle, and its set library. The runtime republishes on arrival, so an
+   imported avatar is ready to activate. */
+async function importAvatarFile(file) {
+  if (!file) return;
+  const button = $('#importAvtr');
+  button.disabled = true; button.textContent = 'Importing…';
+  try {
+    const form = new FormData();
+    form.append('archive', file, file.name);
+    const result = await api('/api/avatar/import', { method: 'POST', body: form });
+    if (result.detail) { alert(result.detail); return; }
+    note(`Imported ${result.name || result.slug}.`);
+    await loadAvatars();
+    if (result.status === 'ready') markAvatarBusy(result.slug, 'import');
+  } catch (error) {
+    alert('Import failed: ' + error.message);
+  } finally {
+    button.disabled = false; button.textContent = 'Import .avtr…';
+    $('#avtrFile').value = '';
+  }
+}
+$('#importAvtr').onclick = () => $('#avtrFile').click();
+$('#avtrFile').addEventListener('change', () => importAvatarFile($('#avtrFile').files[0]));
 file.onchange = () => upload(file.files[0]);
 
 async function upload(f) {
