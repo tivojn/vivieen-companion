@@ -56,7 +56,7 @@ class RecordedSettingsTest(unittest.TestCase):
             settings = motion.recorded_motion_settings(directory)
         resolved = motion.resolve_idle_pose(settings["idle_pose"], "")
         self.assertEqual(resolved["id"], "custom")
-        self.assertEqual(resolved["validation"], "edge")
+        self.assertEqual(resolved["validation"], "free")
         self.assertEqual(resolved["prompt"], BORED)
 
     def test_missing_manifest_falls_back_to_defaults(self):

@@ -1331,8 +1331,9 @@ function drawMotionClip(kind,now,edgeOverride){
   const meta={bounds:clip.bounds||[0,0,width,height]};
   const camera=petCamera(meta,width,height);
   const edge=edgeOverride!==undefined?edgeOverride:ROAM.edge;
-  const mirror=kind==='walk'?ROAM.direction<0:edge==='right';
-  if(kind==='idle'&&edge){
+  const freeAct=kind==='idle'&&clip.anchor_mode==='free';
+  const mirror=kind==='walk'?ROAM.direction<0:(edge==='right'&&!freeAct);
+  if(kind==='idle'&&edge&&!freeAct){
     const anchors=clip.edge_anchors||{left:(clip.bounds||[0])[0]||0};
     const frameSupports=Array.isArray(anchors.left_frames)?anchors.left_frames:[];
     const frameSupport=Number(frameSupports[index]);
