@@ -57,12 +57,13 @@ canvas{width:100%;height:100%;display:block}
 @media (prefers-reduced-motion:reduce){#her{transition:none}}
 #row{display:flex;align-items:center;gap:12px;width:min(720px,92vw)}
 #manual{flex:1;min-width:0;display:flex;align-items:center;gap:12px}
-#monitor{display:none;flex:none;width:54px;height:54px;padding:0;align-items:center;justify-content:center;gap:9px;
-  border:1px solid #303641;border-radius:27px;background:rgba(18,21,26,.9);color:#c8ced7;
+#monitor{display:none;flex:none;width:46px;height:46px;padding:0;align-items:center;justify-content:center;gap:9px;
+  border:1px solid rgba(255,255,255,.14);border-radius:23px;
+  background:rgba(14,16,20,.55);backdrop-filter:blur(18px);color:#c8ced7;
   font:600 13px/1 inherit;letter-spacing:.01em;cursor:pointer;white-space:nowrap;
   transition:flex .2s ease,width .2s ease,color .2s ease,border-color .2s ease,background .2s ease}
 html.electron #monitor{display:flex}
-#monitor:hover{color:#fff;border-color:#4a5361}
+#monitor:hover{color:#fff;border-color:rgba(255,255,255,.30)}
 #monitor[disabled]{cursor:wait;opacity:.7}
 #monitor.pending{color:#e8b13a;border-color:rgba(232,177,58,.42)}
 #monitor.error{color:#f07a86;border-color:rgba(240,122,134,.4)}
@@ -86,17 +87,17 @@ html.electron #monitor{display:flex}
 #row.monitoring #monitorText{display:inline}
 #row.monitoring #manual{display:none}
 #row.monitoring #monitor{flex:1;width:auto}
-#ptt{flex:1;min-width:0;height:54px;border:0;border-radius:27px;cursor:pointer;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  background:#d81f4a;color:#fff;font:600 15px/1 inherit;letter-spacing:.02em;
-  transition:transform .12s ease,background .2s ease,box-shadow .2s ease;
-  box-shadow:0 6px 24px rgba(216,31,74,.32)}
-#ptt:active,#ptt.rec{background:#f43c66;transform:scale(.985);
-  box-shadow:0 0 0 6px rgba(244,60,102,.16),0 6px 24px rgba(216,31,74,.4)}
-#ptt[disabled]{background:#2b2f36;box-shadow:none;cursor:default;color:#7c828c}
-#txt{flex:1.1;min-width:0;height:54px;border-radius:27px;border:1px solid #262b33;background:#12151a;
-  color:#f2efe9;padding:0 22px;font:400 15px/1 inherit;outline:none}
-#txt:focus{border-color:#3a414c}
+/* The talk button is gone: her head IS the hold-to-talk control (and Space
+   still records). The element stays in the DOM because the recording flow
+   reads its disabled/rec state. */
+#ptt{display:none}
+#txt{flex:1.1;min-width:0;height:46px;border-radius:23px;
+  border:1px solid rgba(255,255,255,.14);background:rgba(14,16,20,.55);
+  backdrop-filter:blur(18px);color:#f2efe9;padding:0 20px;
+  font:400 14px/1 inherit;outline:none;
+  transition:border-color .2s ease,background .2s ease}
+#txt::placeholder{color:rgba(242,239,233,.42)}
+#txt:focus{border-color:rgba(255,255,255,.30);background:rgba(14,16,20,.68)}
 #status{position:fixed;top:20px;left:24px;font-size:12px;letter-spacing:.08em;
   text-transform:uppercase;opacity:.55;display:flex;align-items:center;gap:9px}
 #st{max-width:calc(100vw - 190px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -134,16 +135,16 @@ html.electron body:after{content:"";position:fixed;inset:0;border-radius:22px;
 html.electron.pet body:after{display:none}
 html.electron.pet #vignette,html.electron.pet #shell,html.electron.pet #status,
 html.electron.pet #gear,html.electron.pet #vz,html.electron.pet #bar{display:none}
-html.electron.pet.chat-open #bar{display:flex;left:12px;right:12px;bottom:12px;padding:12px;
-  border-radius:24px;background:linear-gradient(to top,rgba(8,9,12,.94),rgba(8,9,12,.62) 58%,transparent)}
+html.electron.pet.chat-open #bar{display:flex;left:12px;right:12px;bottom:10px;
+  padding:0;background:transparent}
 html.electron.pet.chat-open #log{display:none}
 html.electron.pet.following-enconvo #bar{display:none!important}
 html.electron.pet #stage{inset:0}
 html.electron.pet canvas{cursor:default}
 html.electron.pet.dragging canvas{cursor:grabbing}
 #petBubble{display:none;position:fixed;z-index:70;top:7%;left:7%;max-width:min(360px,78vw);
-  padding:12px 15px;border:1px solid rgba(255,255,255,.16);border-radius:18px 18px 18px 5px;
-  background:rgba(15,17,21,.82);backdrop-filter:blur(16px);color:#f7f4ef;
+  padding:12px 15px;border:1px solid rgba(255,255,255,.14);border-radius:16px;
+  background:rgba(14,16,20,.78);backdrop-filter:blur(18px);color:#f7f4ef;
   font-size:14px;line-height:1.45;letter-spacing:-.01em;box-shadow:0 18px 44px rgba(0,0,0,.24);
   opacity:0;transform:translateY(7px);transition:opacity .3s ease,transform .3s ease;pointer-events:none}
 html.electron.pet #petBubble.on{display:block;opacity:1;transform:none}
@@ -178,15 +179,15 @@ Settings</a>
 <div id="bar">
   <div id="log"><div id="you"></div><div id="her" tabindex="0" role="log" aria-live="polite" aria-expanded="false" aria-label="Assistant response; hover to expand"></div></div>
   <div id="row">
-    <button id="monitor" type="button" aria-pressed="false" aria-label="Follow EnConvo"
-            title="Animate from EnConvo audio without replaying it">
+    <button id="monitor" type="button" aria-pressed="false" aria-label="Use EnConvo"
+            title="Use EnConvo">
       <span id="monitorMark" aria-hidden="true"></span>
       <span id="monitorWave" aria-hidden="true"><span></span><span></span><span></span></span>
       <span id="monitorText">EnConvo</span>
     </button>
     <div id="manual">
-      <button id="ptt" disabled>Hold to talk</button>
-      <input id="txt" placeholder="or type…" autocomplete="off">
+      <button id="ptt" disabled hidden>Hold to talk</button>
+      <input id="txt" placeholder="Hold her head to talk, or type…" autocomplete="off">
     </div>
   </div>
 </div>
