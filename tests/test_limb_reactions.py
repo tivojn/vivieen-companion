@@ -79,5 +79,25 @@ class LimbReactionTests(unittest.TestCase):
             self.assertLess(abs(peak - rest) / max(rest, 1), 0.08, name)
 
 
+class PublishRobustnessTests(unittest.TestCase):
+    def test_reaction_bake_failure_never_blocks_publish(self):
+        # Reactions are an enhancement: a Vision failure on some future body
+        # must log and skip, never fail the runtime publish itself.
+        import tempfile
+        from unittest import mock
+        from studio import export
+        body_meta = {"pose": {"joints": {}}}
+        lines = []
+        with tempfile.TemporaryDirectory() as destination:
+            with mock.patch.object(
+                    export, "_body_pose",
+                    side_effect=RuntimeError("vision down")):
+                export._publish_body_extras(
+                    "/nonexistent-body-dir", body_meta, destination,
+                    log=lines.append)
+        self.assertNotIn("reactions", body_meta)
+        self.assertTrue(any("skipped" in line for line in lines))
+
+
 if __name__ == "__main__":
     unittest.main()
