@@ -2534,15 +2534,24 @@ def _select_idle_wall_loop(
 
 
 def _edge_anchors(frames, bounds):
+    """Per-frame wall-contact columns for the edge idle.
+
+    The runtime pins this column to the window edge, so it must be the TRUE
+    silhouette extreme: the old 1st-percentile-of-a-band reading sat ~17px
+    inside the real shoulder line (a curved contact holds few pixels at its
+    apex) and pushed that sliver through the wall every frame. Full height,
+    noise-robust minimum - a column only counts with a few opaque rows - so
+    neither shoulder nor raised heel can ever be clipped by the window.
+    """
     x, y, width, height = bounds
-    bottom = y + round(height * 0.62)
     left_frames = []
     right_frames = []
     for frame in frames:
-        _rows, columns = np.where(frame[y:bottom, :, 3] > 32)
-        if columns.size:
-            left_frames.append(round(float(np.percentile(columns, 1)), 2))
-            right_frames.append(round(float(np.percentile(columns, 99)), 2))
+        opaque = frame[y:y + height, :, 3] > 32
+        solid = np.where(opaque.sum(axis=0) >= 4)[0]
+        if solid.size:
+            left_frames.append(round(float(solid.min()), 2))
+            right_frames.append(round(float(solid.max()), 2))
         else:
             left_frames.append(float(x))
             right_frames.append(float(x + width))
