@@ -20,8 +20,13 @@ from . import body, cutout
 
 ENCONVO = body.ENCONVO
 MOTION_VERSION = 9
-TARGET_WIDTH = 512
-TARGET_HEIGHT = 768
+# Full provider resolution. These were 512x768 - a decoded-atlas memory
+# budget from the traversal era - which threw away almost half the subject
+# pixels the in-place loop pipeline now buys (the portrait plate spends its
+# whole 720p short side on her). Decoded sheets cost ~3x more RAM at native
+# resolution, a fair price for a companion that survives being zoomed.
+TARGET_WIDTH = 720
+TARGET_HEIGHT = 1088
 WALK_FPS = 24
 IDLE_FPS = 12
 MAX_SHEET_FRAMES = 32
