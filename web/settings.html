@@ -644,6 +644,7 @@ button.btn.danger{color:#d9705f}
             <symbol id="walk-style-power" viewBox="0 0 52 68"><circle cx="29" cy="9" r="5"/><path d="M27 14l-6 27M24 22L12 32M24 22l12 12M21 41L9 59M21 41l21 15M5 61h11M38 58h10"/><path d="M7 64h40M5 25h8M3 31h7" opacity=".35"/></symbol>
             <symbol id="walk-style-promenade" viewBox="0 0 52 68"><circle cx="26" cy="8" r="5"/><path d="M26 13v30M26 21l-7 14M26 21l7 14M26 43l-9 19M26 43l11 17M12 63h10M34 61h9"/><path d="M7 64h40M17 17c2-4 5-6 9-6" opacity=".35"/></symbol>
             <symbol id="walk-style-cartwheel" viewBox="0 0 52 68"><path d="M5 59h42" opacity=".35"/><path d="M9 48c7-24 23-34 38-31" stroke-dasharray="2.5 3.5" opacity=".45"/><circle cx="30" cy="26" r="4"/><path d="M27 29L18 39M21 35L9 53M21 35l6 19M27 29l12-14M27 29l18 2M9 53h8M25 54h8"/></symbol>
+            <symbol id="walk-style-custom" viewBox="0 0 52 68"><path d="M11 49l2-10L35.5 16.5a4 4 0 015.6 0l1.4 1.4a4 4 0 010 5.6L20 46zM32.5 19.5l7.5 7.5M9 59h34"/><path d="M7 64h40" opacity=".35"/></symbol>
             <symbol id="idle-pose-back-heel" viewBox="0 0 72 118">
               <path d="M9 4v109M6 113h61" stroke-dasharray="2.5 3.5" opacity=".42"/>
               <circle cx="31" cy="14" r="7"/><path d="M27 21c-5 10-7 23-2 37l9 20 10-3-2-27-5-26"/>
@@ -680,7 +681,9 @@ button.btn.danger{color:#d9705f}
               <button class="walk-style-card" type="button" data-walk-style="power" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-power"></use></svg><span><b>Brisk power walk</b><small>Fast · grounded · focused</small></span></button>
               <button class="walk-style-card" type="button" data-walk-style="promenade" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-promenade"></use></svg><span><b>Elegant promenade</b><small>Graceful · measured · formal</small></span></button>
               <button class="walk-style-card" type="button" data-walk-style="cartwheel" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-cartwheel"></use></svg><span><b>Cartwheel</b><small>One lateral pass</small></span></button>
+              <button class="walk-style-card" type="button" data-walk-style="custom" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-custom"></use></svg><span><b>Custom gait</b><small>Your own described movement</small></span></button>
             </div>
+            <textarea class="idle-pose-prompt hidden" id="body-walk-prompt" maxlength="600" placeholder="Example: skip lightly with a small bounce · or: sneak on tip-toes with exaggerated knee lifts. She performs it in place, and the desktop slides her along the screen."></textarea>
             <p class="note">Uses the generated side body automatically. Identity, wardrobe, and facial rig remain locked; only the traversal changes.</p>
             <div class="motion-set-list hidden" id="body-walk-sets" role="group" aria-label="Generated Horizon Walk sets"></div>
             <div class="body-motion-actions"><div class="grow"></div><button class="btn pri" id="body-walk-generate">Generate Horizon Walk</button></div>
@@ -723,10 +726,11 @@ const api = async (p, o) => (await fetch(p, o)).json();
 const SHELL = window.vivieen;
 let CFG = null, CAT = null, GLOBALS = {}, MEDIA_DEFAULTS = {}, ACTIVE = null, POLL = null;
 let RIG = null, RIG_SLUG = null, RIG_PROFILE = null, RIG_POSE = 'closed', RIG_WATCH = null;
-const WALK_STYLE_IDS = new Set(['office', 'runway', 'stroll', 'power', 'promenade', 'cartwheel']);
+const WALK_STYLE_IDS = new Set(['office', 'runway', 'stroll', 'power', 'promenade', 'cartwheel', 'custom']);
 const WALK_STYLE_LABELS = {
   office: 'Office walk', runway: 'Runway catwalk', stroll: 'Relaxed stroll',
-  power: 'Brisk power walk', promenade: 'Elegant promenade', cartwheel: 'Cartwheel'
+  power: 'Brisk power walk', promenade: 'Elegant promenade', cartwheel: 'Cartwheel',
+  custom: 'Custom gait'
 };
 const IDLE_POSE_IDS = new Set(['back-heel', 'tailored-cross', 'pocket-lean', 'heel-up', 'folded-cross', 'side-cross', 'custom']);
 let BODY_SLUG = null, BODY_STATE = null, BODY_WATCH = null, BODY_VIEW = 'front';
@@ -1473,7 +1477,7 @@ function failBodyProgress(message) {
   endBodyProgress(true);
 }
 
-function selectWalkStyle(style) {
+function selectWalkStyle(style, focusPrompt = false) {
   if (!WALK_STYLE_IDS.has(style)) style = 'office';
   BODY_WALK_STYLE = style;
   document.querySelectorAll('[data-walk-style]').forEach(button => {
@@ -1481,6 +1485,11 @@ function selectWalkStyle(style) {
     button.classList.toggle('on', selected);
     button.setAttribute('aria-pressed', selected ? 'true' : 'false');
   });
+  const custom = style === 'custom';
+  const prompt = $('#body-walk-prompt');
+  prompt.classList.toggle('hidden', !custom);
+  prompt.disabled = BODY_BUSY || !custom;
+  if (custom && focusPrompt) setTimeout(() => prompt.focus(), 0);
 }
 
 function selectIdlePose(pose, focusPrompt = false) {
@@ -1514,6 +1523,7 @@ function setBodyBusy(busy) {
     button.disabled = busy || button.dataset.locked === '1';
   });
   $('#body-motion-prompt').disabled = busy || BODY_IDLE_POSE !== 'custom';
+  $('#body-walk-prompt').disabled = busy || BODY_WALK_STYLE !== 'custom';
   ['body-style', 'body-pose', 'body-prompt', 'body-prompt-reset'].forEach(id => {
     $('#' + id).disabled = busy;
   });
@@ -1799,6 +1809,7 @@ function renderBodyStudio() {
   const hasIdle = Boolean(BODY_STATE.has_idle ?? (motion.idle && motion.idle.sheets));
   const savedWalkStyle = motion.walk_style || (motion.walk || {}).walk_style || {};
   BODY_WALK_STYLE = WALK_STYLE_IDS.has(savedWalkStyle.id) ? savedWalkStyle.id : 'office';
+  $('#body-walk-prompt').value = BODY_WALK_STYLE === 'custom' ? savedWalkStyle.prompt || '' : '';
   selectWalkStyle(BODY_WALK_STYLE);
   const savedIdlePose = motion.idle_pose || {};
   BODY_IDLE_POSE = IDLE_POSE_IDS.has(savedIdlePose.id) ? savedIdlePose.id : 'back-heel';
@@ -2095,6 +2106,12 @@ async function generateMotion(kind) {
     $('#body-motion-prompt').focus();
     return;
   }
+  const walkPrompt = $('#body-walk-prompt').value.trim();
+  if (kind === 'walk' && BODY_WALK_STYLE === 'custom' && walkPrompt.length < 12) {
+    alert('Describe the custom gait in at least 12 characters.');
+    $('#body-walk-prompt').focus();
+    return;
+  }
   setBodyBusy(true);
   startBodyProgress('motion');
   let response;
@@ -2105,6 +2122,7 @@ async function generateMotion(kind) {
         slug: BODY_SLUG,
         kind,
         walk_style: BODY_WALK_STYLE,
+        walk_prompt: kind === 'walk' && BODY_WALK_STYLE === 'custom' ? walkPrompt : '',
         pose: BODY_IDLE_POSE,
         pose_prompt: kind === 'idle' && BODY_IDLE_POSE === 'custom' ? posePrompt : '',
       })
@@ -2203,7 +2221,8 @@ $('#body-remove').onclick = removeBody;
 $('#body-walk-generate').onclick = () => generateMotion('walk');
 $('#body-idle-generate').onclick = () => generateMotion('idle');
 document.querySelectorAll('[data-walk-style]').forEach(button => {
-  button.onclick = () => selectWalkStyle(button.dataset.walkStyle);
+  button.onclick = () => selectWalkStyle(
+    button.dataset.walkStyle, button.dataset.walkStyle === 'custom');
 });
 document.querySelectorAll('[data-idle-pose]').forEach(button => {
   button.onclick = () => selectIdlePose(
@@ -2211,6 +2230,9 @@ document.querySelectorAll('[data-idle-pose]').forEach(button => {
 });
 $('#body-motion-prompt').onfocus = () => {
   if (BODY_IDLE_POSE !== 'custom') selectIdlePose('custom');
+};
+$('#body-walk-prompt').onfocus = () => {
+  if (BODY_WALK_STYLE !== 'custom') selectWalkStyle('custom');
 };
 document.querySelectorAll('[data-body-mode]').forEach(button => {
   button.onclick = () => setBodyMode(button.dataset.bodyMode);

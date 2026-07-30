@@ -330,10 +330,42 @@ def _clean(value, maximum=800):
     return re.sub(r"\s+", " ", value).strip()[:maximum]
 
 
-def resolve_walk_style(style_id=None):
+def resolve_walk_style(style_id=None, custom_prompt=""):
     if isinstance(style_id, dict):
+        custom_prompt = style_id.get("prompt", custom_prompt)
         style_id = style_id.get("id")
     style_id = _clean(style_id, 40) or DEFAULT_WALK_STYLE
+    if style_id == "custom":
+        prompt = _clean(custom_prompt, 600)
+        if len(prompt) < 12:
+            raise ValueError(
+                "describe the custom gait in at least 12 characters")
+        # The user's text IS the gait; the synthesized fields slot into the
+        # standard keyframe and loop templates so only mechanics (in place,
+        # first equals final frame, identity, plate) are contract-imposed.
+        return {
+            "id": "custom",
+            "label": "Custom gait",
+            "description": "Your own described movement, walked in place.",
+            "validation": "free",
+            "prompt": prompt,
+            "loop": {"target": 1.2, "minimum": 0.85, "maximum": 3.6},
+            "keyframe": (
+                "one frozen, readable mid-movement frame of this custom "
+                f"gait: {prompt}. Keep both complete arms, hands, legs, and "
+                "shoes naturally visible and anatomically correct."
+            ),
+            "loop_video": (
+                "Animate the exact selected person performing this custom "
+                "gait IN PLACE, as if on an invisible treadmill, with real "
+                f"energy and full movement: {prompt}."
+            ),
+            "reject": (
+                "Reject freezing in place instead of performing, leaving the "
+                "frame, or drifting into an ordinary generic walk that "
+                "ignores the described movement."
+            ),
+        }
     preset = WALK_STYLE_PRESETS.get(style_id)
     if not preset:
         raise ValueError(f"unknown Horizon Walk style: {style_id}")
@@ -342,10 +374,16 @@ def resolve_walk_style(style_id=None):
 
 def _walk_style_receipt(style):
     style = resolve_walk_style(style)
-    return {
+    receipt = {
         key: style[key]
         for key in ("id", "label", "description", "validation")
     }
+    if style.get("prompt"):
+        # Custom gaits differ only by their text: without it in the receipt,
+        # two different prompts would share one cache signature and one
+        # approved-reuse identity.
+        receipt["prompt"] = style["prompt"]
+    return receipt
 
 
 def walk_mode(style):
@@ -622,11 +660,30 @@ def _loop_walk_video_prompt(walk_style):
     """In-place treadmill loop contract, seeded by the proven first-equals-
     last-frame approach: the authored seam replaces the traversal pipeline's
     loop-window search."""
+    # A custom gait may not be a two-footed walk at all (a hop, a shuffle),
+    # so the contralateral two-step contract only wraps the preset gaits;
+    # a custom act just demands identical repeated cycles of the described
+    # movement.
+    if walk_style["id"] == "custom":
+        cycle_contract = (
+            "PRIORITY 0.5 — REPEATED CYCLES: repeat identical cycles of "
+            "exactly the described movement continuously so the whole clip "
+            "is performing; never pause, stand still, or change speed."
+        )
+    else:
+        cycle_contract = (
+            "PRIORITY 0.5 — COMPLETE TWO-STEP GAIT CYCLES: one step is not "
+            "a cycle. In every cycle the left foot passes the right foot, "
+            "then the right foot passes the left foot, and each hand passes "
+            "IN FRONT OF its hip and then BEHIND its hip. Hold one steady "
+            "cadence and repeat identical cycles continuously so the whole "
+            "clip is walking; never pause, stand still, or change speed."
+        )
     return f"""{walk_style['loop_video']}
 
 PRIORITY 0 — SEAMLESS IN-PLACE LOOP: the supplied image is the EXACT first frame and the EXACT final frame. The character stays fixed at the same screen position for the entire clip: no forward travel, no sideways drift, no scale change. Motion eases smoothly away from the supplied starting pose and returns precisely to that identical supplied pose at the end.
 
-PRIORITY 0.5 — COMPLETE TWO-STEP GAIT CYCLES: one step is not a cycle. In every cycle the left foot passes the right foot, then the right foot passes the left foot, and each hand passes IN FRONT OF its hip and then BEHIND its hip. Hold one steady cadence and repeat identical cycles continuously so the whole clip is walking; never pause, stand still, or change speed.
+{cycle_contract}
 
 PRIORITY 1 — IDENTITY, HAIR, AND WARDROBE: preserve the exact selected person's face, apparent age, body proportions, skin tone, hairline, hairstyle, outfit, materials, colors, accessories, and both complete shoes from the input keyframe in every frame. Never restyle, beautify, de-age, change clothes, change footwear, or invent a different person.
 
@@ -744,7 +801,10 @@ def _video_command(
         raise RuntimeError(
             f"EnConvo's selected video provider is not supported for Pet motion yet: {provider['name']}")
     if not aspect_ratio:
-        aspect_ratio = "16:9" if file_name.startswith("walk") else "2:3"
+        # Both fallbacks are native provider grids; "2:3" is not one, and a
+        # non-native request resamples the subject through the model's
+        # internal grid (measured as the idle figure drifting wide).
+        aspect_ratio = "16:9" if file_name.startswith("walk") else "9:16"
     command = [
         ENCONVO, "video_create", "features", "x_ai/create",
         "--prompt", prompt,
@@ -858,6 +918,43 @@ LOOP_WALK_PLATE = {
     "subject_height": 940, "subject_width": 560, "floor": 1054,
     "aspect_ratio": "2:3",
 }
+
+
+# The idle i2v runs on the provider's NATIVE 9:16 grid. "2:3" is not one of
+# xAI's video aspect ratios, so a 2:3 request is resampled through the model's
+# internal grid and the subject drifts wide. Composing the keyframe onto a
+# 720x1280 plate and requesting 9:16 keeps request, plate, and output on one
+# grid. The figure at ~78% of frame height matches the subject's pixel scale
+# under the old 2:3 plate, so the 720x1088 bake canvas never has to shrink it.
+IDLE_PLATE = {
+    "width": 720, "height": 1280,
+    "subject_height": 1000, "subject_width": 620, "floor": 1250,
+    "aspect_ratio": "9:16",
+}
+
+
+def _idle_loop_keyframe(source, destination, log):
+    person = _keyframe_person(source, destination, log, "idle loop")
+    plate = IDLE_PLATE
+    scale = min(
+        plate["subject_height"] / person.shape[0],
+        plate["subject_width"] / person.shape[1],
+    )
+    person = cv2.resize(
+        person,
+        (round(person.shape[1] * scale), round(person.shape[0] * scale)),
+        interpolation=cv2.INTER_AREA,
+    )
+    canvas = np.full(
+        (plate["height"], plate["width"], 3), (0, 220, 0), dtype=np.uint8)
+    left = max(0, (plate["width"] - person.shape[1]) // 2)
+    top = max(0, plate["floor"] - person.shape[0])
+    region = canvas[top:top + person.shape[0], left:left + person.shape[1]]
+    alpha = person[:, :, 3:4].astype(np.float32) / 255
+    region[:] = (person[:, :, :3] * alpha + region * (1 - alpha)).astype(np.uint8)
+    if not cv2.imwrite(destination, canvas, [cv2.IMWRITE_PNG_COMPRESSION, 5]):
+        raise RuntimeError("could not save the idle loop keyframe")
+    return destination
 
 
 def _loop_walk_keyframe(source, destination, log):
@@ -987,6 +1084,13 @@ def _generate_videos(
                 walk_frame,
             )
             aspect_ratio = walk_frame["aspect_ratio"]
+        elif kind == "idle":
+            source_keyframe = _idle_loop_keyframe(
+                source_keyframe,
+                os.path.join(video_dir, "idle-loop-keyframe.png"),
+                log,
+            )
+            aspect_ratio = IDLE_PLATE["aspect_ratio"]
         generated = _run(
             _video_command(
                 video_provider, source_keyframe, output_dir, f"{kind}-source",
@@ -1088,8 +1192,12 @@ def _despill_green(rgba):
     alpha = output[:, :, 3].astype(np.float32) / 255
     blue, green, red = color[:, :, 0], color[:, :, 1], color[:, :, 2]
     neutral = np.maximum(red, blue)
-    spill = np.maximum(0, green - neutral - 2)
-    correction = spill * (0.94 + 0.06 * (1 - alpha))
+    # The contour band is where green physically mixes into the camera pixel,
+    # so it gets zero allowance and full-strength correction; opaque interior
+    # keeps a small allowance so naturally green-ish wardrobe isn't flattened.
+    edge_band = alpha < 250 / 255  # exactly the gate's non-opaque class
+    spill = np.maximum(0, green - neutral - np.where(edge_band, 0.0, 2.0))
+    correction = spill * np.where(edge_band, 1.0, 0.94)
     green -= correction
     red += correction * 0.12
     blue += correction * 0.12
@@ -1114,6 +1222,14 @@ def _chroma_key_frame(frame):
         raise RuntimeError("green-screen key found no foreground subject")
     largest = 1 + int(np.argmax(statistics[1:, cv2.CC_STAT_AREA]))
     subject = (labels == largest).astype(np.uint8) * 255
+    # The outermost matte ring is a camera pixel physically blended with the
+    # green plate; one erosion drops that ring so the soft edge is fed by
+    # subject-only pixels instead of green-contaminated ones.
+    subject = cv2.erode(
+        subject,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+        iterations=1,
+    )
     alpha = cv2.GaussianBlur(subject, (0, 0), 0.75)
     alpha[alpha < 8] = 0
     alpha[alpha > 247] = 255
