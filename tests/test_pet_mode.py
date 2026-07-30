@@ -80,15 +80,15 @@ class PetInputBridgeTests(unittest.TestCase):
         # flanks wide enough that eyes-following-cursor is visible at chat
         # scale; old runtime bundles are rebaked on activation.
         from studio import expression
-        self.assertGreaterEqual(max(expression.GAZE_DX), 6.0)
-        self.assertLessEqual(min(expression.GAZE_DX), -6.0)
+        self.assertGreaterEqual(max(expression.GAZE_DX), 9.0)
+        self.assertLessEqual(min(expression.GAZE_DX), -9.0)
         self.assertIn(0.25, [round(b - a, 3) for a, b in zip(
             expression.GAZE_DX, expression.GAZE_DX[1:])])
         self.assertGreaterEqual(max(expression.GAZE_DY), 2.0)
         server = (ROOT / "server" / "app.py").read_text()
-        self.assertIn("RUNTIME_VERSION = 9", server)
+        self.assertIn("RUNTIME_VERSION = 10", server)
         export_source = (ROOT / "studio" / "export.py").read_text()
-        self.assertIn("dict(v=9,", export_source)
+        self.assertIn("dict(v=10,", export_source)
 
     def test_continuous_size_expands_native_alpha_window(self):
         main = (ROOT / "electron" / "main.cjs").read_text()

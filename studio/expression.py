@@ -45,10 +45,10 @@ NOSE_X = 1                                        # nose tip: tells medial from 
 # A glance that reads as "looking left" needs the iris to actually travel the
 # sclera, several pixels, not a micro-tremor.  Out there the pitch coarsens:
 # a directed glance is a saccade, and saccades jump.
-GAZE_DX = ([-6.0, -4.8, -3.6, -2.4] +
+GAZE_DX = ([-9.0, -7.5, -6.0, -4.8, -3.6, -2.4] +
            [round(-1.5 + 0.25 * i, 3) for i in range(13)] +
-           [2.4, 3.6, 4.8, 6.0])                              # +-6px
-GAZE_DY = [-2.5, -1.5, -0.75, -0.375, 0.0, 0.375, 0.75, 1.5, 2.5]
+           [2.4, 3.6, 4.8, 6.0, 7.5, 9.0])                    # +-9px
+GAZE_DY = [-3.5, -2.5, -1.5, -0.75, -0.375, 0.0, 0.375, 0.75, 1.5, 2.5, 3.5]
 # Brow offsets, negative = knitted.  Subtle-anchor range, not big acting: half a
 # pixel apart so the runtime can snap here too rather than ghost the brow hair.
 BROW_DY = [round(-1.5 + 0.5 * i, 3) for i in range(11)]       # -1.5 .. +3.5
