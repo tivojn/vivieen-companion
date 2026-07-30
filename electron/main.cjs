@@ -1818,7 +1818,8 @@ function showPetMenu() {
   const followingEnconvo = monitorState().enabled;
   // Short one-row labels; " · " carries the gesture that does the same thing.
   const menu = Menu.buildFromTemplate([
-    { label: followingEnconvo ? 'Talk · hold head' : 'Talk to Vivieen…', click: () => {
+    // Holding the head talks either way; unfollowed adds the typed chat bar.
+    { label: followingEnconvo ? 'Talk · hold head' : 'Talk · hold head or type', click: () => {
       if (followingEnconvo) {
         void triggerEnconvoVoiceCommand();
         return;
