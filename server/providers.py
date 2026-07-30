@@ -199,7 +199,10 @@ _PROVIDER_LABELS = {
 _GLOBAL_SELECTIONS = {
     "llm": ("llm", "llm|"),
     "tts": ("tts", "tts|"),
-    "stt": ("stt", "transcribe|"),
+    # Hold-to-talk is dictation, not file transcription: EnConvo keeps two
+    # separate defaults ("stt" is the transcription panel), and the avatar
+    # must follow the Dictation one.
+    "stt": ("dictation", "transcribe|"),
 }
 _GLOBAL_FIELDS = {
     "llm": ["modelName", "temperature", "reasoning_effort", "modelName_preferences"],
@@ -267,6 +270,12 @@ def _global_one(kind):
 
     detail = _run_enconvo_json(
         ["config", "get", selected, "--includes", *_GLOBAL_FIELDS[kind]], timeout=15)
+    # Panels like Dictation keep their own per-route overrides (e.g. the
+    # dictation model "stt-rt-v5") embedded in their own preference file;
+    # those beat the route's standalone defaults.
+    embedded = selection.get(selected)
+    if isinstance(embedded, dict):
+        detail = {**detail, **embedded}
     provider = selected.split("|", 1)[1]
     model = detail.get("modelName") or ""
     voice = detail.get("voice") or ""

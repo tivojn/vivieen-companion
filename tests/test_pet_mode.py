@@ -124,6 +124,19 @@ class PetInputBridgeTests(unittest.TestCase):
         # transition.
         self.assertIn(
             "if(inside&&!pointerWasInside&&petHit", renderer)
+        # An open chat bar must not defeat Click-Through Gaps (only its
+        # actual controls claim the window) and must not count as engagement
+        # by itself (or the 10s stillness Edge Idle never triggers again
+        # after a head-talk leaves the bar open). Typing in it still does.
+        self.assertIn("function pointerOverChatControls", renderer)
+        self.assertIn(
+            "const modalHit=pointerOverChatControls()||", renderer)
+        self.assertIn(
+            "(document.hasFocus()&&document.activeElement===txt)||txt.value.trim())lastEngagedAt=now;",
+            renderer)
+        self.assertNotIn(
+            "document.documentElement.classList.contains('chat-open'))lastEngagedAt",
+            renderer)
         marker = renderer.index("html.electron.pet.chat-open #bar{")
         self.assertIn("pointer-events:none", renderer[marker:marker + 220])
         self.assertIn("#bar #manual{pointer-events:auto}", renderer)
