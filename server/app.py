@@ -504,7 +504,7 @@ async def api_avatars():
 @app.post("/api/avatar/upload")
 async def api_upload(photo: UploadFile = File(...), name: str = Form("", max_length=120)):
     ext = os.path.splitext(photo.filename or "")[1].lower() or ".png"
-    if ext not in (".png", ".jpg", ".jpeg", ".webp", ".heic", ".bmp", ".tif", ".tiff"):
+    if ext not in (".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif", ".bmp", ".tif", ".tiff"):
         raise HTTPException(400, f"unsupported image type {ext}")
     raw = await photo.read(MAX_UPLOAD_BYTES + 1)
     if len(raw) > MAX_UPLOAD_BYTES:
@@ -1202,6 +1202,23 @@ async def api_progress(slug: str = Query(pattern=SLUG_PATTERN)):
     return {"manifest": m, "job": j}
 
 
+def _publish_runtime(slug, label):
+    """ensure_runtime with a job entry that actually completes. jlog alone
+    creates a done=False job that nothing ever finishes, which left avatar
+    cards stuck on 'publishing 100%' with disabled buttons until restart."""
+    job_id = _reserve_job(slug, "publish", label)
+    writer = jlog(slug, label) if job_id else (
+        lambda msg: print(f"[avatar:{slug}] {msg}", flush=True))
+    try:
+        ensure_runtime(slug, log=writer)
+    except Exception as error:
+        if job_id:
+            _finish_job(slug, job_id, error)
+        raise
+    if job_id:
+        _finish_job(slug, job_id)
+
+
 @app.post("/api/avatar/activate")
 async def api_activate(b: Slug):
     r = reg()
@@ -1209,7 +1226,7 @@ async def api_activate(b: Slug):
     if m.get("status") != "ready":
         raise HTTPException(400, "build this avatar before activating it")
     try:
-        ensure_runtime(b.slug, log=jlog(b.slug, "publishing"))
+        _publish_runtime(b.slug, "publishing")
     except Exception as e:
         raise HTTPException(400, f"could not publish runtime: {e}")
     r.set_active(b.slug)
@@ -1241,7 +1258,7 @@ async def api_companion(request: CompanionRequest):
         raise HTTPException(
             400, "this avatar is already active; pick a different one for the left desk")
     try:
-        ensure_runtime(slug, log=jlog(slug, "publishing companion"))
+        _publish_runtime(slug, "publishing companion")
     except Exception as e:
         raise HTTPException(400, f"could not publish runtime: {e}")
     r.set_companion(slug)
