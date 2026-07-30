@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('vivieen', Object.freeze({
   triggerEnconvoVoiceCommand: () => ipcRenderer.invoke('vivieen:trigger-enconvo-voice'),
   showSpeechBubble: (value) => ipcRenderer.send('vivieen:show-speech-bubble', String(value || '')),
   petVoiceKey: (state) => ipcRenderer.send('vivieen:pet-voice-key', String(state || '')),
+  dockPet: () => ipcRenderer.send('vivieen:pet-dock'),
   setPetEngaged: (value) => ipcRenderer.send('vivieen:pet-engaged', Boolean(value)),
   setPetHit: (value) => ipcRenderer.send('vivieen:pet-hit', Boolean(value)),
   beginPetDrag: (point) => ipcRenderer.send('vivieen:drag-start', point),
