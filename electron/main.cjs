@@ -1559,7 +1559,10 @@ function installIpc() {
     if (state.petRoam || state.petLocked) return;
     const area = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
     const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);
-    const bounds = dockedPetBounds(size, area, PET_DOCK_MARGIN);
+    // Flush against the work area: the idle pose leans on the window's right
+    // edge, so any dock margin becomes a phantom wall floating in air - she
+    // must rest on the actual screen edge, feet just above the Dock.
+    const bounds = dockedPetBounds(size, area, 0);
     mainWindow.setBounds(bounds, false);
     state.bounds = { ...bounds };
     saveStateSoon();

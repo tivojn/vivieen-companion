@@ -135,7 +135,7 @@ class PetInputBridgeTests(unittest.TestCase):
         main = (ROOT / "electron" / "main.cjs").read_text()
         preload = (ROOT / "electron" / "preload.cjs").read_text()
         self.assertIn("vivieen:pet-dock", main)
-        self.assertIn("dockedPetBounds(size, area, PET_DOCK_MARGIN)", main)
+        self.assertIn("dockedPetBounds(size, area, 0)", main)
         self.assertIn("dockPet", preload)
         # Menu rows carry their gesture hints.
         for hint in ("Talk · hold head", "Walk · 2×tap leg",
