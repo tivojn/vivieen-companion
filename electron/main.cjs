@@ -397,10 +397,13 @@ function defaultState() {
     followEnconvo: true,
     enconvoFollowDefaultVersion: 1,
     petMode: true,
-    petOpacity: 0.5,
+    petOpacity: 1,
     petView: 'half',
     petZoom: 1,
-    petRoamZoom: 1,
+    // The walk reads best noticeably smaller than the standing character:
+    // 60% keeps the 720p-capped animation frames near 1:1 on screen.
+    petRoamZoom: 0.6,
+    appearanceDefaultVersion: 1,
     petClickThrough: true,
     petLocked: false,
     petRoam: false,
@@ -414,6 +417,14 @@ function loadState() {
     const defaults = defaultState();
     const saved = JSON.parse(fs.readFileSync(statePath(), 'utf8'));
     const next = { ...defaults, ...saved, bounds: { ...defaults.bounds, ...(saved.bounds || {}) } };
+    // One-time adoption of the tuned appearance defaults (same pattern as
+    // the followEnconvo migration): full opacity, 100% character, 60% walk.
+    if (Number(saved.appearanceDefaultVersion || 0) < 1) {
+      next.petOpacity = 1;
+      next.petZoom = 1;
+      next.petRoamZoom = 0.6;
+      next.appearanceDefaultVersion = 1;
+    }
     next.petOpacity = Math.max(0, Math.min(1, Number(next.petOpacity) || 0));
     next.petZoom = clampPetZoom(next.petZoom, PET_ZOOM_RANGE);
     next.petRoamZoom = clampPetZoom(next.petRoamZoom, PET_ROAM_ZOOM_RANGE);
