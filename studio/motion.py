@@ -2332,7 +2332,13 @@ def _normalise_frames(frames, include_scale=False):
     left, top, right, bottom = _alpha_union(frames)
     crop_width = right - left
     crop_height = bottom - top
-    scale = min(TARGET_WIDTH * 0.94 / crop_width, TARGET_HEIGHT * 0.97 / crop_height)
+    # Never enlarge at bake time: an upscale here resamples every provider
+    # pixel (and INTER_AREA is a downscale filter - enlarging with it is what
+    # made baked frames read softer than the raw mp4 in QuickTime). Capped at
+    # 1.0 the subject keeps its native pixels and the display's high-quality
+    # filter performs the ONE resample, exactly like a video player would.
+    scale = min(TARGET_WIDTH * 0.94 / crop_width,
+                TARGET_HEIGHT * 0.97 / crop_height, 1.0)
     output_width = max(1, round(crop_width * scale))
     output_height = max(1, round(crop_height * scale))
     offset_x = (TARGET_WIDTH - output_width) // 2
