@@ -1331,6 +1331,7 @@ function drawPetScene(now){
   const motionKind=PET.roam&&ROAM.enabled?
     (ROAM.mode==='walk'?'walk':ROAM.mode.startsWith('ledge-')?'idle':null):null;
   if(motionKind&&drawMotionClip(motionKind,now))return;
+  if(standingIdleActive(now)&&drawMotionClip('idle',now))return;
   const hasBody=Boolean(BODY&&HEADMASK&&M.body);
   const source=hasBody?BODY:faceSurface;
   const width=source.width,height=source.height;
@@ -1365,6 +1366,11 @@ function syncPetEngagement(now=performance.now()){
 function loop(now){
   requestAnimationFrame(loop);if(!ready)return;
   syncPetEngagement(now);
+  // Anything that counts as attention resets the stillness clock; after ten
+  // quiet seconds the standing pet settles into the Edge Idle loop, and any
+  // attention brings the live standing avatar straight back.
+  if(petHit||speaking||recording||dragging||REACT||legSway||gesture||
+     document.documentElement.classList.contains('chat-open'))lastEngagedAt=now;
   const ts=now/1000;
   lvl=lvl*0.55+level()*0.45;
   if(monitorEnabled&&externalAudio.receivedAt&&now-externalAudio.receivedAt>550){
@@ -1580,6 +1586,14 @@ function updatePetHit(force=false){
   if(hit===petHit){if(hit)petHoverUntil=now+1400;return;}
   petHit=hit;if(hit)petHoverUntil=now+1400;
   SHELL.setPetHit(hit);syncPetEngagement(now);
+  // Hovering her mid-walk brings her home to the standing avatar: a short
+  // dwell so a cursor merely passing through does not end the stroll.
+  clearTimeout(roamHoverStop);
+  if(hit&&PET.roam&&typeof SHELL.setPetRoam==='function'){
+    roamHoverStop=setTimeout(()=>{
+      if(petHit&&PET.roam)SHELL.setPetRoam(false);
+    },ROAM_HOVER_STOP_MS);
+  }
 }
 function closePetChat(){
   document.documentElement.classList.remove('chat-open');
@@ -1732,6 +1746,12 @@ function petBodyPart(x,y){
    Each state is a full replacement tile for its box, so the player clears
    the box and stamps the tile; first and last states ARE the plate. */
 let REACT=null;
+let lastEngagedAt=performance.now(),lastLegTapAt=0,roamHoverStop=0;
+const STANDING_IDLE_AFTER_MS=10000,ROAM_HOVER_STOP_MS=260,LEG_DOUBLE_TAP_MS=450;
+function standingIdleActive(now){
+  return Boolean(SHELL&&SHELL.isElectron&&PET.enabled&&!PET.roam&&
+    MOTION.idle&&now-lastEngagedAt>STANDING_IDLE_AFTER_MS);
+}
 function startLimbReaction(name){
   const meta=M.body&&M.body.reactions&&M.body.reactions[name];
   if(!meta||!RB[name]||REACT)return false;
@@ -1811,7 +1831,20 @@ cv.addEventListener('pointerup',event=>{
   }
   if(!active)return;
   if(active.ptt){stopPetTalk();return;}
-  if(performance.now()-active.t0<=TAP_MS)petTapReaction(active.part||'body');
+  if(performance.now()-active.t0<=TAP_MS){
+    const part=active.part||'body';
+    const now=performance.now();
+    if((part==='leg_l'||part==='leg_r')&&
+       now-lastLegTapAt<=LEG_DOUBLE_TAP_MS&&MOTION.walk&&
+       SHELL&&typeof SHELL.setPetRoam==='function'){
+      // A double tap on a leg sends her off on the Horizon Walk.
+      lastLegTapAt=0;legSway=null;
+      SHELL.setPetRoam(true);
+      return;
+    }
+    lastLegTapAt=(part==='leg_l'||part==='leg_r')?now:0;
+    petTapReaction(part);
+  }
 });
 cv.addEventListener('pointercancel',event=>{
   const active=gesture;
