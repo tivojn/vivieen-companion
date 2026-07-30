@@ -117,7 +117,12 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("if(standingIdleActive(now)){", renderer)
         self.assertIn("DOUBLE_TAP_MS=450", renderer)
         self.assertIn("function petDoubleTap", renderer)
-        self.assertIn("SHELL.setPetRoam(true);", renderer)
+        # The old anywhere-on-her dblclick walk handler must stay gone: it
+        # fired alongside the part verbs, so a chest double-tap meant to
+        # raise opacity also sent her walking.
+        self.assertNotIn("syncShellState(await SHELL.setPetRoam(true))", renderer)
+        self.assertIn(".then(state=>syncShellState(state)).catch(()=>{});", renderer)
+        self.assertIn("Promise.resolve(SHELL.setPetRoam(true))", renderer)
         # Double-tap verbs: chest raises opacity, a foot lowers it (floored so
         # she can never vanish), and the idle leans docked bottom-right.
         self.assertIn("SHELL.setPetOpacity(Math.min(1,", renderer)
