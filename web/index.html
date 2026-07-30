@@ -836,8 +836,8 @@ function cursorGazeFor(now){
   }
   gazeAttn+=(target-gazeAttn)*(target>gazeAttn?0.10:0.03);
   if(gazeAttn<0.02)return null;
-  const dirX=Math.tanh(dx/150),dirY=Math.tanh(dy/210);
-  cursorDir.x+=(dirX-cursorDir.x)*0.18; // body lean follows a beat behind the eyes
+  const dirX=Math.tanh(dx/90),dirY=Math.tanh(dy/130);
+  cursorDir.x+=(dirX-cursorDir.x)*0.18; // head turn follows a beat behind the eyes
   cursorDir.y+=(dirY-cursorDir.y)*0.18;
   const rangeX=M.gaze?Math.max(...M.gaze.dxs.map(Math.abs)):1.5;
   const rangeY=M.gaze?Math.max(...M.gaze.dys.map(Math.abs)):0.75;
@@ -845,6 +845,19 @@ function cursorGazeFor(now){
   cursorEye.x+=(gx-cursorEye.x)*0.30;   // saccade-quick, but never a teleport
   cursorEye.y+=(gy-cursorEye.y)*0.30;
   return {x:cursorEye.x,y:cursorEye.y,w:gazeAttn};
+}
+function cursorHeadFor(h){
+  /* The head carries the glance now, not the silhouette: it turns toward the
+     cursor together with the eyes. This composes with the VOR naturally - at
+     low attention the counter-rotation keeps the eyes on the lens while the
+     head drifts, and at full attention the gaze blend hands the eyes to the
+     cursor as the head arrives. */
+  const attend=gazeAttn>.02?Math.min(1,gazeAttn):0;
+  if(!attend)return h;
+  h.x+=attend*cursorDir.x*12;
+  h.y+=attend*cursorDir.y*5;
+  h.r+=attend*cursorDir.x*1.0;
+  return h;
 }
 
 /* ---- head on neck ----------------------------------------------------------
@@ -903,14 +916,9 @@ function bodyAt(now,width,height){
   const shift=weight.from+(weight.to-weight.from)*ease(u);
   const energy=presenceAt(now),t=now/1000;
   const breath=(.5+.5*vn(t*.19,21))*(.55+.45*vn(t*.073,22));
-  // Cursor attention, at a magnitude that survives pet scale: the iris grid
-  // lands under a tenth of a screen pixel out there, but a two-degree lean of
-  // the whole silhouette reads from across the desktop.
-  const attend=gazeAttn>.02?Math.min(1,gazeAttn):0;
-  const lean=attend*cursorDir.x;
-  let x=shift*width*.0045+vn(t*.12,23)*width*.0016*energy+lean*width*.010;
+  let x=shift*width*.0045+vn(t*.12,23)*width*.0016*energy;
   let y=-breath*height*.0018;
-  let r=(shift*.11+vn(t*.09,24)*.055*energy)*Math.PI/180+lean*2.0*Math.PI/180;
+  let r=(shift*.11+vn(t*.09,24)*.055*energy)*Math.PI/180;
   let sx=1+breath*.0018,sy=1+breath*.0034;
   if(tapPulse){
     const k=(now-tapPulse.t0)/420;
@@ -1382,7 +1390,7 @@ function loop(now){
   if(now>nextNod)planNod(now);
   while(nods.length&&now-nods[0].t0>2200)nods.shift();
   if(now>nextTilt)planTilt(now);
-  const h=headAt(now);
+  const h=cursorHeadFor(headAt(now));
 
   const N=M.neck||{ref:406,pivot:985,x:512};
   const lever=N.pivot-N.ref;               // eyes to neck pivot, in keyframe px
