@@ -106,6 +106,23 @@ class PetInputBridgeTests(unittest.TestCase):
         from studio import limbs
         self.assertGreaterEqual(limbs.STATES, 5)
 
+    def test_idle_walk_hover_choreography(self):
+        # Ten quiet seconds settle the standing pet into the Edge Idle loop;
+        # a double leg tap starts the Horizon Walk; hovering either animation
+        # brings the live standing avatar back.
+        renderer = (ROOT / "web" / "index.html").read_text()
+        self.assertIn("function standingIdleActive", renderer)
+        self.assertIn("STANDING_IDLE_AFTER_MS=10000", renderer)
+        self.assertIn(
+            "if(standingIdleActive(now)&&drawMotionClip('idle',now))return;",
+            renderer)
+        self.assertIn("LEG_DOUBLE_TAP_MS=450", renderer)
+        self.assertIn("SHELL.setPetRoam(true);", renderer)
+        self.assertIn("ROAM_HOVER_STOP_MS", renderer)
+        self.assertIn("SHELL.setPetRoam(false)", renderer)
+        # The stillness clock resets on every kind of attention.
+        self.assertIn("lastEngagedAt=now;", renderer)
+
     def test_continuous_size_expands_native_alpha_window(self):
         main = (ROOT / "electron" / "main.cjs").read_text()
         renderer = (ROOT / "web" / "index.html").read_text()
