@@ -608,6 +608,7 @@ button.btn.danger{color:#d9705f}
           <div class="body-actions" style="margin-top:8px">
             <p class="note" id="body-prompt-note" style="margin:0" aria-live="polite">Written for this portrait, and editable before every generation.</p>
             <div class="grow"></div>
+            <button class="btn sm" id="body-prompt-ai" type="button" title="Type a rough idea in the field, and AI expands it into a full brief">✦ Draft from my gist</button>
             <button class="btn sm" id="body-prompt-reset" type="button">Rewrite for this portrait</button>
           </div>
         </div>
@@ -684,6 +685,7 @@ button.btn.danger{color:#d9705f}
               <button class="walk-style-card" type="button" data-walk-style="custom" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-custom"></use></svg><span><b>Custom gait</b><small>Your own described movement</small></span></button>
             </div>
             <textarea class="idle-pose-prompt hidden" id="body-walk-prompt" maxlength="600" placeholder="Example: skip lightly with a small bounce · or: sneak on tip-toes with exaggerated knee lifts. She performs it in place, and the desktop slides her along the screen."></textarea>
+            <div class="body-motion-actions hidden" id="body-walk-prompt-tools" style="margin-top:6px"><div class="grow"></div><button class="btn sm" id="body-walk-prompt-ai" type="button" title="Type a rough idea above, and AI expands it into a full gait direction">✦ Draft from my gist</button></div>
             <p class="note">Uses the generated side body automatically. Identity, wardrobe, and facial rig remain locked; only the traversal changes.</p>
             <div class="motion-set-list hidden" id="body-walk-sets" role="group" aria-label="Generated Horizon Walk sets"></div>
             <div class="body-motion-actions"><div class="grow"></div><button class="btn pri" id="body-walk-generate">Generate Horizon Walk</button></div>
@@ -703,6 +705,7 @@ button.btn.danger{color:#d9705f}
               <button class="idle-pose-card" type="button" data-idle-pose="custom" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M5 20.5l1-5 10.8-10.8a2 2 0 012.8 0l1.7 1.7a2 2 0 010 2.8L10.5 20zM14.8 6.7l6.5 6.5M5 23h18"/></svg><span>Custom act</span><small>Any pose or movement, performed at the edge</small></button>
             </div>
             <textarea class="idle-pose-prompt hidden" id="body-motion-prompt" maxlength="600" placeholder="Example: dance an upbeat little routine for the audience · or: stretch and yawn, then check an imaginary watch. She performs it in place at the screen edge and loops back to standing."></textarea>
+            <div class="body-motion-actions hidden" id="body-motion-prompt-tools" style="margin-top:6px"><div class="grow"></div><button class="btn sm" id="body-motion-prompt-ai" type="button" title="Type a rough idea above, and AI expands it into a full act direction">✦ Draft from my gist</button></div>
             <p class="note">This controls Edge Idle only. It no longer regenerates or changes Horizon Walk.</p>
             <div class="motion-set-list hidden" id="body-idle-sets" role="group" aria-label="Generated Edge Idle sets"></div>
             <div class="body-motion-actions"><div class="grow"></div><button class="btn pri" id="body-idle-generate">Generate Edge Idle</button></div>
@@ -1516,6 +1519,7 @@ function selectWalkStyle(style, focusPrompt = false) {
   const custom = style === 'custom';
   const prompt = $('#body-walk-prompt');
   prompt.classList.toggle('hidden', !custom);
+  $('#body-walk-prompt-tools').classList.toggle('hidden', !custom);
   prompt.disabled = BODY_BUSY || !custom;
   if (custom && focusPrompt) setTimeout(() => prompt.focus(), 0);
 }
@@ -1531,6 +1535,7 @@ function selectIdlePose(pose, focusPrompt = false) {
   const custom = pose === 'custom';
   const prompt = $('#body-motion-prompt');
   prompt.classList.toggle('hidden', !custom);
+  $('#body-motion-prompt-tools').classList.toggle('hidden', !custom);
   prompt.disabled = BODY_BUSY || !custom;
   if (custom && focusPrompt) setTimeout(() => prompt.focus(), 0);
 }
@@ -1552,7 +1557,9 @@ function setBodyBusy(busy) {
   });
   $('#body-motion-prompt').disabled = busy || BODY_IDLE_POSE !== 'custom';
   $('#body-walk-prompt').disabled = busy || BODY_WALK_STYLE !== 'custom';
-  ['body-style', 'body-pose', 'body-prompt', 'body-prompt-reset'].forEach(id => {
+  $('#body-motion-prompt-ai').disabled = busy || BODY_IDLE_POSE !== 'custom';
+  $('#body-walk-prompt-ai').disabled = busy || BODY_WALK_STYLE !== 'custom';
+  ['body-style', 'body-pose', 'body-prompt', 'body-prompt-reset', 'body-prompt-ai'].forEach(id => {
     $('#' + id).disabled = busy;
   });
   document.querySelectorAll('[data-body-view]').forEach(button => {
@@ -2262,6 +2269,46 @@ $('#body-motion-prompt').onfocus = () => {
 $('#body-walk-prompt').onfocus = () => {
   if (BODY_WALK_STYLE !== 'custom') selectWalkStyle('custom');
 };
+
+// One rough idea in, one field-ready prompt out: the field's current text IS
+// the gist, and the drafted prompt replaces it (still editable afterwards).
+async function draftPromptFromGist(kind, field, button) {
+  const gist = field.value.trim();
+  if (gist.length < 4) {
+    alert('Type a rough idea in the field first — a few words are enough.');
+    field.focus();
+    return;
+  }
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Drafting…';
+  field.disabled = true;
+  try {
+    const r = await api('/api/avatar/prompt/expand', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: BODY_SLUG, kind, gist })
+    });
+    if (r.detail || !r.prompt) {
+      alert(r.detail || 'Could not draft a prompt. Check the EnConvo AI model in Settings → Models.');
+      return;
+    }
+    field.value = r.prompt;
+  } catch (error) {
+    alert('Could not reach the local backend. Check that the Vivieen server is running, then try again.');
+  } finally {
+    button.textContent = label;
+    button.disabled = false;
+    field.disabled = false;
+    setBodyBusy(BODY_BUSY);
+    field.focus();
+  }
+}
+$('#body-prompt-ai').onclick = () =>
+  draftPromptFromGist('body', $('#body-prompt'), $('#body-prompt-ai'));
+$('#body-walk-prompt-ai').onclick = () =>
+  draftPromptFromGist('walk', $('#body-walk-prompt'), $('#body-walk-prompt-ai'));
+$('#body-motion-prompt-ai').onclick = () =>
+  draftPromptFromGist('idle', $('#body-motion-prompt'), $('#body-motion-prompt-ai'));
 document.querySelectorAll('[data-body-mode]').forEach(button => {
   button.onclick = () => setBodyMode(button.dataset.bodyMode);
 });
