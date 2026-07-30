@@ -1706,13 +1706,17 @@ function pointerOnHead(x,y){
   petHitCtx.drawImage(HEADMASK,0,0,headSurface.width,headSurface.height);
   try{return petHitCtx.getImageData(px,py,1,1).data[3]>40;}catch(error){return false;}
 }
-/* Holding her head presses EnConvo's voice hotkey (right Option) for real -
-   held down while the head is held, released on release - so the question
-   goes to EnConvo's own voice command and she lip-syncs the answer through
-   the monitor, exactly like any other EnConvo reply. Vivieen's local
-   hold-to-talk stays on the chat panel button only. */
+/* Holding her head is always push-to-talk; WHERE the words go follows the
+   EnConvo monitor. Following: the hold presses EnConvo's voice hotkey (right
+   Option) for real - down while held, up on release - and she lip-syncs the
+   answer through the monitor. Unfollowed: she is fully her own - the hold
+   records through Vivieen's configured ASR, the reply comes from the models
+   set in her own Settings (LLM + TTS), the answer speaks into the bubble,
+   and the chat bar (Hold to talk + a text field) opens under her feet for
+   typed follow-ups. */
 function canPetTalk(){
-  return Boolean(SHELL&&SHELL.isElectron&&typeof SHELL.petVoiceKey==='function');
+  if(!SHELL||!SHELL.isElectron)return false;
+  return monitorEnabled?typeof SHELL.petVoiceKey==='function':true;
 }
 /* ---- body-part hit testing -------------------------------------------------
    The skeleton baked at export classifies a click by its nearest bone
@@ -1838,10 +1842,20 @@ function drawLimbReaction(now){
 }
 
 function startPetTalk(){
-  if(canPetTalk())SHELL.petVoiceKey('down');
+  if(!canPetTalk())return;
+  if(monitorEnabled){SHELL.petVoiceKey('down');return;}
+  // Unfollowed: the head IS the hold-to-talk button. Open her own chat bar
+  // and start recording; release transcribes and answers through the models
+  // configured in Settings, spoken into the bubble.
+  document.documentElement.classList.add('chat-open');
+  if(typeof SHELL.setPetHit==='function')SHELL.setPetHit(true);
+  startRec();
 }
 function stopPetTalk(){
-  if(canPetTalk())SHELL.petVoiceKey('up');
+  if(!canPetTalk())return;
+  if(monitorEnabled){SHELL.petVoiceKey('up');return;}
+  stopRec();
+  updatePetHit(true);
 }
 function petTapReaction(part){
   const now=performance.now();

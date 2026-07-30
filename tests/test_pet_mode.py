@@ -75,6 +75,31 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("flagsChanged", swift)
         self.assertIn("maskAlternate", swift)
 
+    def test_unfollowed_head_press_is_her_own_hold_to_talk(self):
+        # The EnConvo hotkey only fires while the monitor follows EnConvo.
+        # Unfollowed, the same head hold records through Vivieen's configured
+        # ASR, answers through her own Settings models, and opens the chat
+        # bar (Hold to talk + text field) for typed follow-ups.
+        renderer = (ROOT / "web" / "index.html").read_text()
+        self.assertIn(
+            "if(monitorEnabled){SHELL.petVoiceKey('down');return;}", renderer)
+        self.assertIn(
+            "if(monitorEnabled){SHELL.petVoiceKey('up');return;}", renderer)
+        marker = renderer.index("function startPetTalk")
+        window = renderer[marker:renderer.index("function stopPetTalk")]
+        self.assertIn("classList.add('chat-open')", window)
+        self.assertIn("startRec()", window)
+        stop = renderer[renderer.index("function stopPetTalk"):]
+        stop = stop[:stop.index("function petTapReaction")]
+        self.assertIn("stopRec()", stop)
+        # canPetTalk no longer requires the hotkey bridge when unfollowed.
+        marker = renderer.index("function canPetTalk")
+        window = renderer[marker:marker + 220]
+        self.assertIn("monitorEnabled?", window)
+        # The menu row reflects that both modes talk from the head.
+        main = (ROOT / "electron" / "main.cjs").read_text()
+        self.assertIn("'Talk · hold head or type'", main)
+
     def test_gaze_grid_carries_directed_glances(self):
         # The iris grid keeps its quarter-pixel VOR centre and gains coarse
         # flanks wide enough that eyes-following-cursor is visible at chat
