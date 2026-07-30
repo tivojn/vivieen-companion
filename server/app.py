@@ -187,7 +187,7 @@ def active_slug():
         return None
 
 
-RUNTIME_VERSION = 10  # bundles below this are rebaked on activation
+RUNTIME_VERSION = 11  # bundles below this are rebaked on activation
 
 
 def ensure_runtime(slug, log=print):

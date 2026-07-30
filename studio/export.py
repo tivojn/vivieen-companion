@@ -13,7 +13,7 @@ positions per eye and the two eyes can be driven independently.
 """
 import os, json, shutil
 import numpy as np, cv2
-from . import face, blink, expression, cutout, build as reg
+from . import face, blink, expression, cutout, limbs, build as reg
 
 # runtime viseme name -> studio shape name
 NAME_MAP = {"sil": "closed", "PP": "PP", "FF": "FF", "TH": "TH", "DD": "DD",
@@ -27,6 +27,87 @@ def _runtime_body_metadata(source):
     runtime.pop("turnaround", None)
     runtime.pop("motion_reference", None)
     return runtime
+
+
+def _body_pose(body_dir, log=print):
+    """Skeleton joints of the standing plate, in body-plate pixels.
+
+    Baked once and cached beside the body: the runtime classifies a click by
+    its nearest bone segment (arm, hand, torso, leg), so the pet can react to
+    the part that was actually touched instead of treating the whole
+    silhouette as one button. Head stays mask-exact and is not part of this.
+    """
+    cache = os.path.join(body_dir, "pose.json")
+    source = next((os.path.join(body_dir, name)
+                   for name in ("source-front.png", "source.png")
+                   if os.path.isfile(os.path.join(body_dir, name))), None)
+    if not source:
+        return None
+    if os.path.isfile(cache) and os.path.getmtime(cache) >= os.path.getmtime(source):
+        try:
+            with open(cache) as handle:
+                return json.load(handle)
+        except (OSError, ValueError):
+            pass
+    import tempfile
+    with tempfile.TemporaryDirectory() as work:
+        pose_path = os.path.join(work, "pose.json")
+        cutout.render(source, os.path.join(work, "cut.png"),
+                      log=lambda _m: None, tight=True,
+                      pose_destination=pose_path)
+        try:
+            with open(pose_path) as handle:
+                pose = json.load(handle)
+        except (OSError, ValueError):
+            return None
+    joints = {}
+    for name, joint in (pose.get("joints") or {}).items():
+        try:
+            if float(joint.get("confidence", 0)) < 0.3:
+                continue
+            joints[name] = {
+                "x": round(float(joint["x"]), 1),
+                "y": round(float(joint["y"]), 1),
+                "confidence": round(float(joint["confidence"]), 2),
+            }
+        except (KeyError, TypeError, ValueError):
+            continue
+    if len(joints) < 6:
+        log("  body skeleton too sparse; part reactions limited to the head")
+        return None
+    result = {"joints": joints}
+    with open(cache, "w") as handle:
+        json.dump(result, handle, indent=1)
+    log(f"  body skeleton baked: {len(joints)} joints")
+    return result
+
+
+def _publish_body_extras(body_dir, body_meta, destination, log):
+    """Skeleton + limb-reaction strips for the standing plate."""
+    for name in os.listdir(destination):
+        if name.startswith("react_") and name.endswith(".png"):
+            os.remove(os.path.join(destination, name))
+    pose = _body_pose(body_dir, log=log)
+    if not pose:
+        return
+    body_meta["pose"] = pose
+    plate = cv2.imread(os.path.join(destination, "body.png"),
+                       cv2.IMREAD_UNCHANGED)
+    if plate is None or plate.ndim != 3 or plate.shape[2] != 4:
+        return
+    reactions = {}
+    for name, reaction in limbs.build(plate, pose, log=log).items():
+        strip = f"react_{name}.png"
+        cv2.imwrite(os.path.join(destination, strip),
+                    np.vstack(reaction["patches"]),
+                    [cv2.IMWRITE_PNG_COMPRESSION, 9])
+        reactions[name] = {
+            "src": f"assets/{strip}",
+            "box": reaction["box"],
+            "states": len(reaction["patches"]),
+        }
+    if reactions:
+        body_meta["reactions"] = reactions
 
 
 def _publish_motion(directory, destination, log):
@@ -91,6 +172,7 @@ def publish_pet_assets(slug, runtime_dir=None, log=print):
         shutil.copy2(os.path.join(body_dir, "head-mask.png"), os.path.join(destination, "head-mask.png"))
         body_meta["image"] = "assets/body.png"
         body_meta["head_mask"] = "assets/head-mask.png"
+        _publish_body_extras(body_dir, body_meta, destination, log)
     else:
         for name in ("body.png", "head-mask.png"):
             try:
@@ -99,7 +181,7 @@ def publish_pet_assets(slug, runtime_dir=None, log=print):
                 pass
     motion_meta = _publish_motion(directory, destination, log)
     runtime.update(
-        v=max(10, int(runtime.get("v", 0))),
+        v=max(11, int(runtime.get("v", 0))),
         cutout=cutout_meta,
         body=body_meta,
         motion=motion_meta,
@@ -166,6 +248,7 @@ def export(slug, dest, quality=92, states=blink.N_STATES, log=print,
         shutil.copy2(os.path.join(body_dir, "head-mask.png"), os.path.join(dest, "head-mask.png"))
         body_meta["image"] = "assets/body.png"
         body_meta["head_mask"] = "assets/head-mask.png"
+        _publish_body_extras(body_dir, body_meta, dest, log)
         log("  full-body plate published")
     motion_meta = _publish_motion(d, dest, log)
 
@@ -200,7 +283,7 @@ def export(slug, dest, quality=92, states=blink.N_STATES, log=print,
 
     timing = dict(close=blink.CLOSE, hold=blink.HOLD, open=blink.OPEN,
                   settle=blink.SETTLE, creep=blink.CREEP)
-    manifest = dict(v=10, w=W, h=H, avatar=dict(slug=slug, name=m["name"]),
+    manifest = dict(v=11, w=W, h=H, avatar=dict(slug=slug, name=m["name"]),
                     visemes=names, frames=frames, eyes=eyes, gaze=gaze, brow=brow,
                     cheek=cheek, neck=expression.neck(klm), cutout=cutout_meta,
                     body=body_meta, motion=motion_meta, blink=timing,
