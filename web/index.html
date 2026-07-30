@@ -98,6 +98,10 @@ html.electron #monitor{display:flex}
   transition:border-color .2s ease,background .2s ease}
 #txt::placeholder{color:rgba(242,239,233,.42)}
 #txt:focus{border-color:rgba(255,255,255,.30);background:rgba(14,16,20,.68)}
+/* With the talk button gone, the field is the recording indicator. */
+#txt.rec{border-color:rgba(244,60,102,.72);
+  box-shadow:0 0 0 3px rgba(244,60,102,.14);animation:recPulse 1.1s infinite}
+@keyframes recPulse{50%{border-color:rgba(244,60,102,.34)}}
 #status{position:fixed;top:20px;left:24px;font-size:12px;letter-spacing:.08em;
   text-transform:uppercase;opacity:.55;display:flex;align-items:center;gap:9px}
 #st{max-width:calc(100vw - 190px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1601,9 +1605,13 @@ async function startRec(force=false){
       await turn(r.text,true);
     }catch(e){setStatus('ready','on');ptt.disabled=monitorEnabled;}
   };
-  rec.start();recording=true;ptt.classList.add('rec');setStatus('listening','rec');
+  rec.start();recording=true;ptt.classList.add('rec');txt.classList.add('rec');
+  setStatus('listening','rec');
 }
-function stopRec(){if(!recording)return;recording=false;ptt.classList.remove('rec');rec.stop();}
+function stopRec(){
+  if(!recording)return;
+  recording=false;ptt.classList.remove('rec');txt.classList.remove('rec');rec.stop();
+}
 
 function updatePetHit(force=false){
   if(!SHELL||!SHELL.isElectron||!PET.enabled)return;
@@ -1847,10 +1855,12 @@ function startPetTalk(){
   if(monitorEnabled){SHELL.petVoiceKey('down');return;}
   // Unfollowed: the head IS the hold-to-talk button. Open her own chat bar
   // and start recording; release transcribes and answers through the models
-  // configured in Settings, spoken into the bubble.
+  // configured in Settings, spoken into the bubble. Forced, because the
+  // hidden chat button's disabled flag stays latched in pet mode until a
+  // health poll lands - the head must not wait for it.
   document.documentElement.classList.add('chat-open');
   if(typeof SHELL.setPetHit==='function')SHELL.setPetHit(true);
-  startRec();
+  startRec(true);
 }
 function stopPetTalk(){
   if(!canPetTalk())return;
