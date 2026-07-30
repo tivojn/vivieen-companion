@@ -495,7 +495,7 @@ function handleMonitorSample(value){
   };
   const candidate=externalAudio.active?byExternalEnergy():'sil';
   stabiliseExternalViseme(candidate,sampleTimestamp,externalAudio.active);
-  speaking=externalAudio.active;
+  speaking=externalAudio.active||Boolean(localSource);
   monitorButton.classList.toggle('active',speaking);
   renderMonitorStatus();
 }
@@ -597,6 +597,9 @@ function routedStatus(route,fallback=''){
 async function poll(){
   try{const h=await(await fetch('health')).json();
     const providerOK=h.llm_ok??h.provider_ok??h.ollama;
+    // The chat button's disabled state doubles as a monitor-mode lock, so pet
+    // push-to-talk needs its own readiness signal.
+    providerReady=Boolean(h.warm&&providerOK);
     document.getElementById('gear').classList.toggle('alert',!providerOK);
     if(monitorEnabled){
       renderMonitorStatus();
@@ -607,7 +610,8 @@ async function poll(){
       setStatus(providerOK?(h.warming?'loading '+h.warming:'loading models')
                            :'model unreachable \u2014 check settings','busy');
     }
-  }catch(e){if(monitorEnabled)renderMonitorStatus();else setStatus('server offline','');}
+  }catch(e){providerReady=false;
+    if(monitorEnabled)renderMonitorStatus();else setStatus('server offline','');}
   setTimeout(poll,1500);
 }
 
@@ -786,6 +790,10 @@ function gazeFor(now,h,lever){
    stay inside the grid, so this can never paint an unbaked eye state. */
 let cursorFeed=null,cursorMovedAt=0,gazeAttn=0;
 const cursorEye={x:0,y:0};
+// Normalised -1..1 attention direction, consumed by bodyAt: at pet scale the
+// iris grid is a fraction of a screen pixel, so what actually READS as "she
+// noticed your cursor" is the whole body leaning toward it.
+const cursorDir={x:0,y:0};
 function noteCursor(x,y){
   const now=performance.now();
   if(!cursorFeed||Math.abs(x-cursorFeed.x)>1||Math.abs(y-cursorFeed.y)>1)cursorMovedAt=now;
@@ -828,9 +836,12 @@ function cursorGazeFor(now){
   }
   gazeAttn+=(target-gazeAttn)*(target>gazeAttn?0.10:0.03);
   if(gazeAttn<0.02)return null;
+  const dirX=Math.tanh(dx/150),dirY=Math.tanh(dy/210);
+  cursorDir.x+=(dirX-cursorDir.x)*0.18; // body lean follows a beat behind the eyes
+  cursorDir.y+=(dirY-cursorDir.y)*0.18;
   const rangeX=M.gaze?Math.max(...M.gaze.dxs.map(Math.abs)):1.5;
   const rangeY=M.gaze?Math.max(...M.gaze.dys.map(Math.abs)):0.75;
-  const gx=Math.tanh(dx/150)*rangeX,gy=Math.tanh(dy/210)*rangeY;
+  const gx=dirX*rangeX,gy=dirY*rangeY;
   cursorEye.x+=(gx-cursorEye.x)*0.30;   // saccade-quick, but never a teleport
   cursorEye.y+=(gy-cursorEye.y)*0.30;
   return {x:cursorEye.x,y:cursorEye.y,w:gazeAttn};
@@ -885,19 +896,34 @@ function planWeight(now){
   weight={from:weight.to,to:(Math.random()*2-1),t0:now,duration:3200+Math.random()*4200};
   nextWeight=now+7000+Math.random()*15000;
 }
+let tapPulse=null;
 function bodyAt(now,width,height){
   if(now>nextWeight)planWeight(now);
   const u=Math.min(1,Math.max(0,(now-weight.t0)/weight.duration));
   const shift=weight.from+(weight.to-weight.from)*ease(u);
   const energy=presenceAt(now),t=now/1000;
   const breath=(.5+.5*vn(t*.19,21))*(.55+.45*vn(t*.073,22));
-  return {
-    x:shift*width*.0045+vn(t*.12,23)*width*.0016*energy,
-    y:-breath*height*.0018,
-    r:(shift*.11+vn(t*.09,24)*.055*energy)*Math.PI/180,
-    sx:1+breath*.0018,
-    sy:1+breath*.0034,
-  };
+  // Cursor attention, at a magnitude that survives pet scale: the iris grid
+  // lands under a tenth of a screen pixel out there, but a two-degree lean of
+  // the whole silhouette reads from across the desktop.
+  const attend=gazeAttn>.02?Math.min(1,gazeAttn):0;
+  const lean=attend*cursorDir.x;
+  let x=shift*width*.0045+vn(t*.12,23)*width*.0016*energy+lean*width*.010;
+  let y=-breath*height*.0018;
+  let r=(shift*.11+vn(t*.09,24)*.055*energy)*Math.PI/180+lean*2.0*Math.PI/180;
+  let sx=1+breath*.0018,sy=1+breath*.0034;
+  if(tapPulse){
+    const k=(now-tapPulse.t0)/420;
+    if(k>=1)tapPulse=null;
+    else{
+      // A quick squash-and-recover: the acknowledgement you can actually see.
+      const pulse=Math.sin(Math.PI*k)*Math.exp(-1.6*k);
+      y+=height*.0065*pulse;
+      sy*=1-.028*pulse;sx*=1+.014*pulse;
+      r+=tapPulse.dir*.9*Math.PI/180*pulse;
+    }
+  }
+  return {x,y,r,sx,sy};
 }
 
 /* Amplitude is in px AT THE EYES, and it has to be sized in degrees or it comes
@@ -1129,15 +1155,19 @@ function byEnergy(){
   return'ou';
 }
 
+function timedPose(){
+  const t=actx.currentTime-audioT0+VISUAL_LEAD;
+  if(t<0)return'sil';
+  while(tIdx+1<track.length&&track[tIdx+1][0]<=t)tIdx++;
+  return track[tIdx][1];
+}
 function wanted(now=performance.now()/1000){
+  // Her own reply owns the mouth while it plays, even in monitor mode:
+  // a push-to-talk answer must not be mimed to EnConvo's audio.
+  if(localSource&&track.length)return timedPose();
   if(monitorEnabled)return externalPose;
   if(!speaking)return'sil';
-  if(track.length){
-    const t=actx.currentTime-audioT0+VISUAL_LEAD;
-    if(t<0)return'sil';
-    while(tIdx+1<track.length&&track[tIdx+1][0]<=t)tIdx++;
-    return track[tIdx][1];
-  }
+  if(track.length)return timedPose();
   return byEnergy();
 }
 
@@ -1474,7 +1504,7 @@ async function speak(b64,tr){
   speaking=monitorEnabled&&externalAudio.active;track=[];curV='sil';
 }
 
-async function turn(text){
+async function turn(text,spoken=false){
   ptt.disabled=true;elYou.textContent=text;setCaption('');
   setStatus('thinking','busy');
   history.push({role:'user',content:text});
@@ -1485,7 +1515,9 @@ async function turn(text){
       body:JSON.stringify({history})})).json();
     llmRoute=r.llm_route||null;
     history.push({role:'assistant',content:r.text});
-    if(monitorEnabled){renderMonitorStatus();return;}
+    // A pet-initiated question deserves a spoken answer even while the
+    // monitor is lip-syncing EnConvo; only unspoken chat turns defer to it.
+    if(monitorEnabled&&!spoken){renderMonitorStatus();return;}
     setCaption(r.text);
     setStatus('speaking','on');
     await speak(r.audio,r.track);
@@ -1494,9 +1526,11 @@ async function turn(text){
   ptt.disabled=monitorEnabled;
 }
 
-let rec=null,chunks=[],recording=false;
-async function startRec(){
-  if(monitorEnabled||recording||ptt.disabled)return;
+let rec=null,chunks=[],recording=false,providerReady=false;
+async function startRec(force=false){
+  // Monitor mode locks the chat button, but head push-to-talk on the pet
+  // must still work while she lip-syncs EnConvo, so it forces past the lock.
+  if(recording||(!force&&(monitorEnabled||ptt.disabled)))return;
   let stream;
   try{stream=await navigator.mediaDevices.getUserMedia({audio:true});}
   catch(e){setStatus('microphone blocked','');return;}
@@ -1511,7 +1545,7 @@ async function startRec(){
       const fd2=new FormData();fd2.append('audio',blob,'a.webm');
       const r=await(await fetch('stt',{method:'POST',body:fd2})).json();
       if(!r.text){setStatus('ready','on');ptt.disabled=monitorEnabled;return;}
-      await turn(r.text);
+      await turn(r.text,true);
     }catch(e){setStatus('ready','on');ptt.disabled=monitorEnabled;}
   };
   rec.start();recording=true;ptt.classList.add('rec');setStatus('listening','rec');
@@ -1613,8 +1647,8 @@ function pointerOnHead(x,y){
   try{return petHitCtx.getImageData(px,py,1,1).data[3]>40;}catch(error){return false;}
 }
 function startPetTalk(){
-  if(recording||monitorEnabled)return;
-  startRec();
+  if(recording)return;
+  startRec(true);
   if(SHELL&&SHELL.isElectron&&typeof SHELL.showSpeechBubble==='function'){
     SHELL.showSpeechBubble('🎙 Listening… release to send');
   }
@@ -1629,10 +1663,11 @@ function petTapReaction(onHead){
   const now=performance.now();
   if(now-lastTapAt<700)return;
   lastTapAt=now;
-  // A deliberate acknowledging nod through the real head rig: stronger than
-  // ambient nods, one beat, slightly bigger for a head tap.
+  // A deliberate acknowledging nod through the real head rig (reads at chat
+  // scale) plus a whole-body squash-and-recover (reads at pet scale).
   nods.push({t0:now,a:onHead?7.6:5.6,d:onHead?460:400,n:1});
   nextNod=now+2400+Math.random()*2000;
+  tapPulse={t0:now,dir:cursorDir.x>=0?-1:1};
 }
 function clearGesture(){
   if(gesture&&gesture.timer)clearTimeout(gesture.timer);
@@ -1646,7 +1681,7 @@ cv.addEventListener('pointerdown',event=>{
     t0:performance.now(),ptt:false,
     head:pointerOnHead(event.clientX,event.clientY)};
   cv.setPointerCapture(event.pointerId);
-  if(gesture.head&&!monitorEnabled&&!recording&&!ptt.disabled){
+  if(gesture.head&&!recording&&(providerReady||!ptt.disabled)){
     gesture.timer=setTimeout(()=>{
       if(!gesture||dragging)return;
       gesture.timer=0;gesture.ptt=true;
@@ -1749,7 +1784,7 @@ monitorButton.addEventListener('click',async()=>{
   catch(e){setStatus('could not change EnConvo monitor','');}
   finally{monitorButton.disabled=false;}
 });
-ptt.addEventListener('mousedown',startRec);
+ptt.addEventListener('mousedown',()=>startRec());
 addEventListener('mouseup',stopRec);
 addEventListener('keydown',e=>{if(!monitorEnabled&&e.code==='Space'&&document.activeElement!==txt&&!e.repeat){
   e.preventDefault();startRec();}});
