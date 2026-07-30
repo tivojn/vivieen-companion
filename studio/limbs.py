@@ -21,12 +21,12 @@ import cv2
 
 # 7 states from rest to peak; the runtime plays rest -> peak -> rest.
 STATES = 7
-# The arm motion is a small forearm lift plus a wrist flick, not a wave: with
-# hands hanging beside the thighs, a large elbow rotation drags trouser fabric
-# through the warp band (measured at 16 degrees: a fist-sized smear). Small
-# angles at two hinges read as a charming acknowledgement and stay clean.
-ELBOW_PEAK_DEGREES = 5.0
-WRIST_PEAK_DEGREES = 12.0
+# The arm motion is a vertical hand+cuff raise, not a rotation: with hands
+# hanging beside the thighs, ANY hinge rotation sweeps trouser fabric out of
+# the silhouette (measured twice: 16deg smears a fist-size patch, and even
+# 3.5+7deg extrudes a green lobe past the leg edge). A vertical lift keeps
+# every displaced trouser pixel inside the trouser, exactly like the shrug.
+ARM_LIFT_RATIO = 0.11         # of forearm length, at the hand
 SHRUG_PEAK_RATIO = 0.055      # of shoulder width, at the shoulders
 
 
@@ -58,60 +58,42 @@ def _clip_box(x0, y0, x1, y1, width, height):
 
 
 def _arm_states(plate, elbow, wrist):
-    """Forearm+hand rotate about the elbow; the hand always lifts."""
+    """Hand and cuff rise vertically and settle back; the elbow stays quiet."""
     height, width = plate.shape[:2]
     forearm = wrist - elbow
     length = float(np.linalg.norm(forearm))
     if length < 24:
         return None
-    tip = wrist + forearm / length * 0.42 * length      # include the hand
-    forearm_rigid, forearm_band = 0.18 * length, 0.16 * length
-    hand_rigid, hand_band = 0.16 * length, 0.14 * length
+    tip = wrist + forearm / length * 0.58 * length      # include the fingertips
+    rigid = 0.22 * length
+    band = 0.12 * length
+    lift = ARM_LIFT_RATIO * length
 
-    reach = length * 1.15 + forearm_rigid + forearm_band
+    reach = length * 1.58 + rigid + band + lift
     x0, y0, x1, y1 = _clip_box(
         elbow[0] - reach, elbow[1] - reach,
         elbow[0] + reach, elbow[1] + reach, width, height)
     xs = np.arange(x0, x1, dtype=np.float32)
     ys = np.arange(y0, y1, dtype=np.float32)
     gx, gy = np.meshgrid(xs, ys)
-    w_forearm = (1.0 - _smoothstep(
-        forearm_rigid, forearm_rigid + forearm_band,
-        _segment_distance(gx, gy, elbow, tip))).astype(np.float32)
-    w_hand = (1.0 - _smoothstep(
-        hand_rigid, hand_rigid + hand_band,
-        _segment_distance(gx, gy, wrist, tip))).astype(np.float32)
 
-    # Rotate so the hand LIFTS: pick the sign that moves the wrist up.
-    elbow_peak = np.deg2rad(ELBOW_PEAK_DEGREES)
-    def rotated_wrist_y(theta):
-        c, s = np.cos(theta), np.sin(theta)
-        v = wrist - elbow
-        return elbow[1] + v[0] * s + v[1] * c
-    if rotated_wrist_y(elbow_peak) > rotated_wrist_y(-elbow_peak):
-        elbow_peak = -elbow_peak
-    wrist_peak = np.sign(elbow_peak) * np.deg2rad(WRIST_PEAK_DEGREES)
+    d = _segment_distance(gx, gy, elbow, tip)
+    span = tip - elbow
+    span_len2 = max(float(span @ span), 1e-6)
+    t_axis = np.clip(((gx - elbow[0]) * span[0] + (gy - elbow[1]) * span[1])
+                     / span_len2, 0.0, 1.0)
+    # Full weight over the hand and cuff, fading to nothing by mid-forearm so
+    # the sleeve stretches softly instead of shearing at the elbow.
+    w = ((1.0 - _smoothstep(rigid, rigid + band, d))
+         * _smoothstep(0.22, 0.52, t_axis)).astype(np.float32)
 
-    w = np.maximum(w_forearm, w_hand)
     base = plate[y0:y1, x0:x1]
     patches = []
-
-    def soft_rotation(px, py, centre, theta):
-        c, s = np.cos(theta), np.sin(theta)
-        rx = px - centre[0]
-        ry = py - centre[1]
-        return centre[0] + rx * c - ry * s, centre[1] + rx * s + ry * c
-
     for index in range(STATES):
         amount = index / (STATES - 1)
-        # Two hinges composed in the inverse map: hand about the wrist first,
-        # then the whole forearm about the elbow.
-        map_x, map_y = soft_rotation(
-            gx, gy, wrist, -wrist_peak * amount * w_hand)
-        map_x, map_y = soft_rotation(
-            map_x, map_y, elbow, -elbow_peak * amount * w_forearm)
-        warped = cv2.remap(plate, map_x.astype(np.float32),
-                           map_y.astype(np.float32), cv2.INTER_LANCZOS4,
+        map_x = gx.astype(np.float32)
+        map_y = (gy + lift * amount * w).astype(np.float32)  # src below -> lifts
+        warped = cv2.remap(plate, map_x, map_y, cv2.INTER_LANCZOS4,
                            borderMode=cv2.BORDER_REPLICATE)
         # The patch is a full REPLACEMENT tile for its box: outside the claim
         # it equals the plate exactly, inside it is the warped content - so

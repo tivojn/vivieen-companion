@@ -911,7 +911,7 @@ function planWeight(now){
   weight={from:weight.to,to:(Math.random()*2-1),t0:now,duration:3200+Math.random()*4200};
   nextWeight=now+7000+Math.random()*15000;
 }
-let tapPulse=null;
+let legSway=null;
 function bodyAt(now,width,height){
   if(now>nextWeight)planWeight(now);
   const u=Math.min(1,Math.max(0,(now-weight.t0)/weight.duration));
@@ -921,16 +921,16 @@ function bodyAt(now,width,height){
   let x=shift*width*.0045+vn(t*.12,23)*width*.0016*energy;
   let y=-breath*height*.0018;
   let r=(shift*.11+vn(t*.09,24)*.055*energy)*Math.PI/180;
-  let sx=1+breath*.0018,sy=1+breath*.0034;
-  if(tapPulse){
-    const k=(now-tapPulse.t0)/420;
-    if(k>=1)tapPulse=null;
+  const sx=1+breath*.0018,sy=1+breath*.0034;
+  if(legSway){
+    // A tapped leg answers with one visible hip rock toward it - rotation
+    // reads at pet scale where the ambient weight shift does not.
+    const k=(now-legSway.t0)/520;
+    if(k>=1)legSway=null;
     else{
-      // A quick squash-and-recover: the acknowledgement you can actually see.
-      const pulse=Math.sin(Math.PI*k)*Math.exp(-1.6*k);
-      y+=height*.0065*pulse;
-      sy*=1-.028*pulse;sx*=1+.014*pulse;
-      r+=tapPulse.dir*.9*Math.PI/180*pulse;
+      const pulse=Math.sin(Math.PI*k);
+      x+=legSway.dir*width*.008*pulse;
+      r+=legSway.dir*1.4*Math.PI/180*pulse;
     }
   }
   return {x,y,r,sx,sy};
@@ -1761,30 +1761,23 @@ function petTapReaction(part){
   if(now-lastTapAt<700)return;
   lastTapAt=now;
   // Every tap gets an acknowledging nod; the touched part answers with its
-  // own motion: arms lift their hand, the torso shrugs over a squash, legs
-  // shift her weight onto the tapped side.
+  // own motion: arms raise their hand, the torso shrugs, legs rock the hips
+  // onto the tapped side. Nothing compresses the whole silhouette.
   nods.push({t0:now,a:part==='head'?7.6:5.6,d:part==='head'?460:400,n:1});
   nextNod=now+2400+Math.random()*2000;
   if(part==='arm_l'||part==='arm_r'){
-    if(!startLimbReaction(part))tapPulse={t0:now,dir:part==='arm_l'?1:-1};
+    startLimbReaction(part);
     return;
   }
   if(part==='torso'){
     startLimbReaction('shrug');
-    tapPulse={t0:now,dir:cursorDir.x>=0?-1:1};
     return;
   }
   if(part==='leg_l'||part==='leg_r'){
     // Vision's left_* joints sit at higher x on this front plate, so her
-    // tapped-side lean is positive shift for the left leg.
-    weight={from:weight.from+(weight.to-weight.from)*
-      Math.min(1,Math.max(0,(now-weight.t0)/weight.duration)),
-      to:part==='leg_l'?0.95:-0.95,t0:now,duration:520};
-    nextWeight=now+2600+Math.random()*1800;
-    tapPulse={t0:now,dir:part==='leg_l'?-1:1};
-    return;
+    // tapped-side rock is positive for the left leg.
+    legSway={t0:now,dir:part==='leg_l'?1:-1};
   }
-  tapPulse={t0:now,dir:cursorDir.x>=0?-1:1};
 }
 function clearGesture(){
   if(gesture&&gesture.timer)clearTimeout(gesture.timer);
