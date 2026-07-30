@@ -1760,7 +1760,8 @@ const STANDING_IDLE_AFTER_MS=10000,ROAM_HOVER_STOP_MS=260,DOUBLE_TAP_MS=450;
 function petDoubleTap(part){
   if((part==='leg_l'||part==='leg_r')&&MOTION.walk&&
      SHELL&&typeof SHELL.setPetRoam==='function'){
-    SHELL.setPetRoam(true);
+    Promise.resolve(SHELL.setPetRoam(true))
+      .then(state=>syncShellState(state)).catch(()=>{});
     return true;
   }
   if(part==='torso'&&SHELL&&typeof SHELL.setPetOpacity==='function'){
@@ -1875,10 +1876,11 @@ cv.addEventListener('contextmenu',event=>{
   if(!SHELL||!PET.enabled||!confirmPetEventHit(event))return;
   event.preventDefault();SHELL.showPetMenu({x:event.screenX,y:event.screenY});
 });
-cv.addEventListener('dblclick',async event=>{
-  if(!SHELL||!PET.enabled||PET.roam||!confirmPetEventHit(event)||typeof SHELL.setPetRoam!=='function')return;
-  event.preventDefault();
-  try{syncShellState(await SHELL.setPetRoam(true));}catch(error){}
+// Double-click is part-aware now (legs walk, chest and feet set opacity), so
+// the old anywhere-on-her dblclick walk handler is gone: it fired alongside
+// the new verbs and sent her walking when a chest tap only meant "brighter".
+cv.addEventListener('dblclick',event=>{
+  if(SHELL&&PET.enabled)event.preventDefault();
 });
 const STAND_ZOOM={min:.25,max:4};
 const ZOOM_SETTLE_MS=140;
