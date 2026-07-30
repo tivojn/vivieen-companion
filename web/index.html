@@ -570,6 +570,19 @@ function routedStatus(route,fallback=''){
     i.src=`${src}${src.includes('?')?'&':'?'}v=${assetRev}`;});
   const loadMotion=async kind=>{
     const clip=M.motion&&M.motion[kind];if(!clip)return;
+    if(clip.alpha_stream){
+      // GPU-decoded VP9-alpha video instead of a decoded PNG atlas.
+      const video=document.createElement('video');
+      video.muted=true;video.loop=true;video.playsInline=true;
+      video.preload='auto';
+      const okay=await new Promise(res=>{
+        video.oncanplaythrough=()=>res(true);
+        video.onerror=()=>res(false);
+        video.src=`${clip.alpha_stream}?v=${assetRev}`;
+        video.load();
+      });
+      if(okay&&video.videoWidth){MOTION[kind]={...clip,video};return;}
+    }
     const sheets=[];
     for(const sheet of clip.sheets||[]){
       const image=await load(sheet.image);if(!image)return;
@@ -1300,8 +1313,21 @@ function motionFrameAt(kind,now){
   return {clip,sheet,index,sx:column*clip.frame_width,sy:row*clip.frame_height};
 }
 function drawMotionClip(kind,now,edgeOverride){
-  const frame=motionFrameAt(kind,now);if(!frame)return false;
-  const clip=frame.clip,width=clip.frame_width,height=clip.frame_height;
+  const clip=MOTION[kind];if(!clip)return false;
+  const width=clip.frame_width,height=clip.frame_height;
+  let index,draw;
+  if(clip.video){
+    // GPU-decoded alpha video; the frame index only steers edge anchoring.
+    const video=clip.video;
+    if(video.paused)video.play().catch(()=>{});
+    const frames=Math.max(1,clip.frames||1);
+    index=Math.min(frames-1,Math.floor(video.currentTime*(clip.fps||24))%frames);
+    draw=()=>ctx.drawImage(video,0,0,width,height,0,0,width,height);
+  }else{
+    const frame=motionFrameAt(kind,now);if(!frame)return false;
+    index=frame.index;
+    draw=()=>ctx.drawImage(frame.sheet.image,frame.sx,frame.sy,width,height,0,0,width,height);
+  }
   const meta={bounds:clip.bounds||[0,0,width,height]};
   const camera=petCamera(meta,width,height);
   const edge=edgeOverride!==undefined?edgeOverride:ROAM.edge;
@@ -1309,7 +1335,7 @@ function drawMotionClip(kind,now,edgeOverride){
   if(kind==='idle'&&edge){
     const anchors=clip.edge_anchors||{left:(clip.bounds||[0])[0]||0};
     const frameSupports=Array.isArray(anchors.left_frames)?anchors.left_frames:[];
-    const frameSupport=Number(frameSupports[frame.index]);
+    const frameSupport=Number(frameSupports[index]);
     const support=Number.isFinite(frameSupport)?frameSupport:(Number(anchors.left)||0);
     const wallPadding=3;
     camera.x=edge==='left'?wallPadding-support*camera.scale:
@@ -1317,7 +1343,7 @@ function drawMotionClip(kind,now,edgeOverride){
   }
   ctx.save();ctx.setTransform(camera.scale,0,0,camera.scale,camera.x,camera.y);
   if(mirror){ctx.translate(width,0);ctx.scale(-1,1);}
-  ctx.drawImage(frame.sheet.image,frame.sx,frame.sy,width,height,0,0,width,height);
+  draw();
   ctx.restore();return true;
 }
 function drawPetScene(now){

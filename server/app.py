@@ -161,9 +161,12 @@ def _validate_runtime_bundle(directory, expect_motion=None):
             clip = runtime_motion.get(kind)
             if not clip:
                 continue
-            if not isinstance(clip, dict) or not clip.get("sheets"):
-                raise ValueError(f"runtime {kind} atlas metadata is missing")
-            for sheet in clip["sheets"]:
+            if not isinstance(clip, dict) or not (
+                    clip.get("sheets") or clip.get("alpha_stream")):
+                raise ValueError(f"runtime {kind} clip assets are missing")
+            if clip.get("alpha_stream"):
+                _runtime_asset(directory, clip["alpha_stream"])
+            for sheet in clip.get("sheets") or []:
                 _runtime_asset(directory, sheet.get("image"))
             if clip.get("poster"):
                 _runtime_asset(directory, clip["poster"])

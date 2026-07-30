@@ -131,21 +131,38 @@ def _publish_motion(directory, destination, log):
         source = json.load(handle)
     runtime = {"v": source.get("v", 1)}
     published = False
+    for name in os.listdir(destination):
+        if name.startswith("motion-") and name.endswith(".webm"):
+            os.remove(os.path.join(destination, name))
     for kind in ("walk", "idle"):
         clip = dict(source.get(kind) or {})
         if not clip.get("sheets"):
             continue
-        sheets = []
-        for index, sheet in enumerate(clip.get("sheets") or []):
-            name = f"motion-{kind}-{index}.png"
-            shutil.copy2(os.path.join(motion_dir, sheet["image"]), os.path.join(destination, name))
-            sheets.append({**sheet, "image": f"assets/{name}"})
+        # A clip with a VP9-alpha stream ships as GPU-decoded video and its
+        # atlas stays home: the sheets remain in the studio's motion dir for
+        # previews and rebakes, but the runtime bundle carries ~0.4MB instead
+        # of ~20MB and the renderer skips ~120MB of decoded frames.
+        stream = clip.get("alpha_stream")
+        stream_path = os.path.join(motion_dir, str(stream or ""))
+        if stream and os.path.isfile(stream_path):
+            stream_name = f"motion-{kind}.webm"
+            shutil.copy2(stream_path, os.path.join(destination, stream_name))
+            clip["alpha_stream"] = f"assets/{stream_name}"
+            clip["sheets"] = []
+        else:
+            clip.pop("alpha_stream", None)
+            sheets = []
+            for index, sheet in enumerate(clip.get("sheets") or []):
+                name = f"motion-{kind}-{index}.png"
+                shutil.copy2(os.path.join(motion_dir, sheet["image"]),
+                             os.path.join(destination, name))
+                sheets.append({**sheet, "image": f"assets/{name}"})
+            clip["sheets"] = sheets
         poster_name = f"motion-{kind}-poster.png"
         if clip.get("poster") and os.path.isfile(os.path.join(motion_dir, clip["poster"])):
             shutil.copy2(os.path.join(motion_dir, clip["poster"]),
                          os.path.join(destination, poster_name))
             clip["poster"] = f"assets/{poster_name}"
-        clip["sheets"] = sheets
         clip.pop("alpha_video", None)
         clip.pop("source_loop", None)
         runtime[kind] = clip

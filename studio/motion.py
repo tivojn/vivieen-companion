@@ -2697,6 +2697,35 @@ def _encode_alpha_preview(frames, fps, destination):
         return None
 
 
+def _encode_alpha_stream(frames, fps, destination):
+    """VP9-with-alpha WebM: the runtime plays this instead of decoding a
+    ~20MB PNG atlas into ~120MB of RAM - Chromium decodes it on the GPU.
+    Best-effort: a build whose ffmpeg lacks libvpx-vp9 (the packaged
+    minimal ffmpeg does) simply ships the atlas fallback."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return None
+    try:
+        encoders = subprocess.run(
+            [ffmpeg, "-hide_banner", "-encoders"], capture_output=True, text=True,
+            timeout=30, stdin=subprocess.DEVNULL)
+        if "libvpx-vp9" not in encoders.stdout:
+            return None
+        with tempfile.TemporaryDirectory(prefix=".alpha-stream-") as directory:
+            for index, frame in enumerate(frames):
+                cv2.imwrite(os.path.join(directory, f"{index:04d}.png"), frame)
+            result = subprocess.run([
+                ffmpeg, "-y", "-loglevel", "error", "-framerate", str(fps),
+                "-i", os.path.join(directory, "%04d.png"),
+                "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p",
+                "-b:v", "0", "-crf", "24", "-row-mt", "1",
+                "-an", destination,
+            ], capture_output=True, text=True, timeout=600, stdin=subprocess.DEVNULL)
+        return destination if result.returncode == 0 and os.path.getsize(destination) > 8192 else None
+    except Exception:
+        return None
+
+
 # Measured on the alpha channel of normalised loop frames. Whole-body overlap
 # alone cannot separate the two failure modes: a drifting idle that never stops
 # lowering its head scores 0.827, which is HIGHER than the approved production
@@ -2914,6 +2943,14 @@ def _process_clip(
     cv2.imwrite(os.path.join(stage, poster), normalised[0], [cv2.IMWRITE_PNG_COMPRESSION, 9])
     alpha_name = f"{kind}-alpha.mov"
     alpha_path = _encode_alpha_preview(normalised, fps, os.path.join(stage, alpha_name))
+    alpha_stream_name = None
+    if kind == "idle":
+        # The idle runs free (no window-position phase lock like the walk),
+        # so it can ship as GPU-decoded alpha video instead of a PNG atlas.
+        candidate = f"{kind}-alpha.webm"
+        if _encode_alpha_stream(
+                normalised, fps, os.path.join(stage, candidate)):
+            alpha_stream_name = candidate
     if kind == "walk":
         if walk_mode(walk_style) == "loop":
             trajectory = _inplace_trajectory(
@@ -2957,6 +2994,7 @@ def _process_clip(
         "sheets": sheets,
         "poster": poster,
         "alpha_video": alpha_name if alpha_path else None,
+        "alpha_stream": alpha_stream_name,
         "source_loop": [int(loop_start), int(loop_end)],
         "continuous_source_frames": True,
         "matte_method": matte_method,

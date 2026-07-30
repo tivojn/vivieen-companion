@@ -242,6 +242,18 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("anchors.left_frames", renderer)
         self.assertIn("wallPadding=3", renderer)
         self.assertIn("const motionReady=Boolean(MOTION.walk);", renderer)
+        # The idle ships as GPU-decoded VP9-alpha video when the baking
+        # ffmpeg can encode it; the walk keeps its frame-exact atlas, and
+        # every consumer tolerates either shape.
+        self.assertIn("def _encode_alpha_stream",
+                      (ROOT / "studio" / "motion.py").read_text())
+        self.assertIn('clip["alpha_stream"] = f"assets/{stream_name}"',
+                      (ROOT / "studio" / "export.py").read_text())
+        self.assertIn(
+            'clip.get("sheets") or clip.get("alpha_stream")',
+            (ROOT / "server" / "app.py").read_text())
+        self.assertIn("if(clip.alpha_stream){", renderer)
+        self.assertIn("if(clip.video){", renderer)
         self.assertIn("backgroundThrottling: false", main)
         self.assertNotIn("stride*direction*width", renderer)
         self.assertNotIn("PET_ROAM_SPEED", main)
