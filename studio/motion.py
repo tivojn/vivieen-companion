@@ -1192,8 +1192,12 @@ def _despill_green(rgba):
     alpha = output[:, :, 3].astype(np.float32) / 255
     blue, green, red = color[:, :, 0], color[:, :, 1], color[:, :, 2]
     neutral = np.maximum(red, blue)
-    spill = np.maximum(0, green - neutral - 2)
-    correction = spill * (0.94 + 0.06 * (1 - alpha))
+    # The contour band is where green physically mixes into the camera pixel,
+    # so it gets zero allowance and full-strength correction; opaque interior
+    # keeps a small allowance so naturally green-ish wardrobe isn't flattened.
+    edge_band = alpha < 250 / 255  # exactly the gate's non-opaque class
+    spill = np.maximum(0, green - neutral - np.where(edge_band, 0.0, 2.0))
+    correction = spill * np.where(edge_band, 1.0, 0.94)
     green -= correction
     red += correction * 0.12
     blue += correction * 0.12
@@ -1218,6 +1222,14 @@ def _chroma_key_frame(frame):
         raise RuntimeError("green-screen key found no foreground subject")
     largest = 1 + int(np.argmax(statistics[1:, cv2.CC_STAT_AREA]))
     subject = (labels == largest).astype(np.uint8) * 255
+    # The outermost matte ring is a camera pixel physically blended with the
+    # green plate; one erosion drops that ring so the soft edge is fed by
+    # subject-only pixels instead of green-contaminated ones.
+    subject = cv2.erode(
+        subject,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+        iterations=1,
+    )
     alpha = cv2.GaussianBlur(subject, (0, 0), 0.75)
     alpha[alpha < 8] = 0
     alpha[alpha > 247] = 255
