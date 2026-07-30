@@ -724,7 +724,7 @@ button.btn.danger{color:#d9705f}
 const $ = s => document.querySelector(s);
 const api = async (p, o) => (await fetch(p, o)).json();
 const SHELL = window.vivieen;
-let CFG = null, CAT = null, GLOBALS = {}, MEDIA_DEFAULTS = {}, ACTIVE = null, POLL = null;
+let CFG = null, CAT = null, GLOBALS = {}, MEDIA_DEFAULTS = {}, ACTIVE = null, COMPANION = null, POLL = null;
 let RIG = null, RIG_SLUG = null, RIG_PROFILE = null, RIG_POSE = 'closed', RIG_WATCH = null;
 const WALK_STYLE_IDS = new Set(['office', 'runway', 'stroll', 'power', 'promenade', 'cartwheel', 'custom']);
 const WALK_STYLE_LABELS = {
@@ -1112,6 +1112,7 @@ function avatarProgress(a) {
 
 function card(a) {
   const on = a.slug === ACTIVE, st = a.status || 'draft';
+  const duo = a.slug === COMPANION;
   const busy = st === 'building' || (a.job && !a.job.done);
   const pill = { ready: 'ok', building: 'warn', draft: '', error: 'bad' }[st] || '';
   const thumb = `/files/${a.slug}/keyframe.png`;
@@ -1119,9 +1120,9 @@ function card(a) {
   return `<div class="av ${on ? 'active' : ''}" data-slug="${esc(a.slug)}"
     data-busy="${busy ? '1' : '0'}" data-job-kind="${esc((a.job && a.job.kind) || 'build')}">
     <div class="thumb" style="background-image:url('${thumb}'),url('/files/${a.slug}/source.png')">
-      <span class="badge pill ${on ? 'act' : busy ? 'warn' : pill}">${esc(busy
+      <span class="badge pill ${on ? 'act' : duo ? 'act' : busy ? 'warn' : pill}">${esc(busy
         ? ((a.job && a.job.kind) === 'calibration' ? 'calibrating' : 'building')
-        : on ? 'active' : st)}</span>
+        : on ? 'active' : duo ? 'on desk · left' : st)}</span>
     </div>
     <div class="body">
       <h3>${esc(a.name || a.slug)}</h3>
@@ -1130,6 +1131,7 @@ function card(a) {
       <div class="acts">
         ${st === 'ready'
       ? `<button class="btn sm pri" data-act="activate" ${on ? 'disabled' : ''}>${on ? 'In use' : 'Use this face'}</button>
+             <button class="btn sm" data-act="companion" ${on || busy ? 'disabled' : ''}>${duo ? 'Leave the desk' : 'Second avatar (left)'}</button>
              <button class="btn sm" data-act="calibrate" ${busy ? 'disabled' : ''}>${busy ? 'Calibrating…' : 'Rebuild'}</button>
              <button class="btn sm" data-act="body" ${busy ? 'disabled' : ''}>${a.body ? 'Edit full body' : 'Create full body'}</button>`
       : `<button class="btn sm pri" data-act="build" ${busy ? 'disabled' : ''}>${busy ? 'Building…' : 'Build avatar'}</button>`}
@@ -1168,6 +1170,7 @@ function scheduleAvatarPoll() {
 async function loadAvatars() {
   const r = await api('/api/avatars');
   ACTIVE = r.active;
+  COMPANION = r.companion || null;
   $('#avatars').innerHTML = r.avatars.map(card).join('') ||
     '<p class="note">No avatars yet. Drop a portrait above.</p>';
   bindAvatarActions($('#avatars'));
@@ -1179,6 +1182,7 @@ async function loadAvatars() {
 async function refreshAvatarCard(slug) {
   const listing = await api('/api/avatars');
   ACTIVE = listing.active;
+  COMPANION = listing.companion || null;
   const avatar = listing.avatars.find(item => item.slug === slug);
   const current = document.querySelector(`.av[data-slug="${slug}"]`);
   if (!avatar || !current) return;
@@ -1271,6 +1275,24 @@ async function act(what, slug, btn) {
   if (what === 'calibrate') { openRig(slug); return; }
   if (what === 'body') { openBody(slug); return; }
   if (what === 'preview') { openPreview(slug); return; }
+  if (what === 'companion') {
+    const leaving = slug === COMPANION;
+    btn.disabled = true;
+    const r = await api('/api/avatar/companion', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: leaving ? '' : slug })
+    });
+    if (r.detail) { alert(r.detail); btn.disabled = false; return; }
+    COMPANION = r.companion || null;
+    if (SHELL && SHELL.isElectron && typeof SHELL.companionChanged === 'function') {
+      await SHELL.companionChanged();
+    }
+    note(leaving
+      ? slug + ' left the desk.'
+      : slug + ' joined the desk on the left side.');
+    loadAvatars();
+    return;
+  }
   if (what === 'export') {
     const title = btn.closest('.av').querySelector('h3');
     const name = title ? title.textContent.trim() : slug;
@@ -1296,6 +1318,12 @@ async function act(what, slug, btn) {
   if (what === 'activate') {
     if (SHELL && SHELL.isElectron) await SHELL.avatarChanged();
     note(slug + ' is now the active face.');
+  }
+  if (what === 'delete' && slug === COMPANION && SHELL && SHELL.isElectron
+      && typeof SHELL.companionChanged === 'function') {
+    // The server already vacated the left desk with the deletion; this just
+    // closes the orphaned window.
+    await SHELL.companionChanged();
   }
   if (what === 'build') {
     markAvatarBusy(slug, 'build');

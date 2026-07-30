@@ -194,6 +194,9 @@ Settings</a>
 const SHELL=window.vivieen;
 const HAS_GLOBAL_PET_POINTER=Boolean(SHELL&&SHELL.onPetPointer);
 const PET_PREVIEW=new URLSearchParams(location.search).has('pet-preview');
+// A second on-desk avatar loads this same page at /c/<slug>/?side=left: it
+// idles against the LEFT screen edge while the active avatar keeps the right.
+const PET_SIDE=new URLSearchParams(location.search).get('side')==='left'?'left':'right';
 let syncShellState=()=>{};
 if(PET_PREVIEW)document.documentElement.classList.add('electron','pet');
 if(SHELL&&SHELL.isElectron){
@@ -1354,13 +1357,15 @@ function drawPetScene(now){
     (ROAM.mode==='walk'?'walk':ROAM.mode.startsWith('ledge-')?'idle':null):null;
   if(motionKind&&drawMotionClip(motionKind,now))return;
   if(standingIdleActive(now)){
-    // She settles bottom-right above the Dock and leans on the screen edge,
-    // like a colleague stepping aside; the window docks once per stillness.
+    // She settles in her bottom corner above the Dock and leans on the screen
+    // edge, like a colleague stepping aside; the window docks once per
+    // stillness. The active avatar owns the right corner, a second on-desk
+    // avatar mirrors to the left.
     if(!idleDocked){
       idleDocked=true;
       if(typeof SHELL.dockPet==='function')SHELL.dockPet();
     }
-    if(drawMotionClip('idle',now,'right'))return;
+    if(drawMotionClip('idle',now,PET_SIDE))return;
   }else idleDocked=false;
   const hasBody=Boolean(BODY&&HEADMASK&&M.body);
   const source=hasBody?BODY:faceSurface;

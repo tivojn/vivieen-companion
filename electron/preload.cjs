@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('vivieen', Object.freeze({
   endPetDrag: () => ipcRenderer.send('vivieen:drag-end'),
   setEnconvoMonitor: (enabled) => ipcRenderer.invoke('vivieen:set-enconvo-monitor', Boolean(enabled)),
   avatarChanged: () => ipcRenderer.invoke('vivieen:avatar-changed'),
+  companionChanged: () => ipcRenderer.invoke('vivieen:companion-changed'),
   restartBackend: () => ipcRenderer.invoke('vivieen:restart-backend'),
   saveMotionAsset: (asset) => ipcRenderer.invoke('vivieen:save-motion-asset', asset),
   onState: (callback) => subscribe('vivieen:state', callback),

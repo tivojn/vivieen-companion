@@ -497,7 +497,8 @@ async def api_avatars():
             "progress": j.get("progress")
         } if j else None
         out.append(a)
-    return {"avatars": out, "active": r.get_active()}
+    return {"avatars": out, "active": r.get_active(),
+            "companion": r.get_companion()}
 
 
 @app.post("/api/avatar/upload")
@@ -1212,7 +1213,39 @@ async def api_activate(b: Slug):
     except Exception as e:
         raise HTTPException(400, f"could not publish runtime: {e}")
     r.set_active(b.slug)
-    return {"active": b.slug}
+    if r.get_companion() == b.slug:
+        # One avatar cannot hold both desks; promoting the companion to the
+        # active face vacates the left desk.
+        r.set_companion(None)
+    return {"active": b.slug, "companion": r.get_companion()}
+
+
+class CompanionRequest(BaseModel):
+    # Empty clears the second desk; the strict pattern applies only when set.
+    slug: str = Field(default="", max_length=64)
+
+
+@app.post("/api/avatar/companion")
+async def api_companion(request: CompanionRequest):
+    r = reg()
+    slug = request.slug.strip()
+    if not slug:
+        r.set_companion(None)
+        return {"companion": None}
+    if not re.fullmatch(SLUG_PATTERN, slug):
+        raise HTTPException(422, "invalid avatar slug")
+    manifest = r.read_manifest(slug) or {}
+    if manifest.get("status") != "ready":
+        raise HTTPException(400, "build this avatar before putting it on the desk")
+    if slug == active_slug():
+        raise HTTPException(
+            400, "this avatar is already active; pick a different one for the left desk")
+    try:
+        ensure_runtime(slug, log=jlog(slug, "publishing companion"))
+    except Exception as e:
+        raise HTTPException(400, f"could not publish runtime: {e}")
+    r.set_companion(slug)
+    return {"companion": slug}
 
 
 # ---------------------------------------------------------------- .avtr
@@ -1438,7 +1471,8 @@ async def api_assets(path: str):
 
 @app.get("/api/meta")
 async def api_meta():
-    return {"app_id": APP_ID, "active": active_slug()}
+    return {"app_id": APP_ID, "active": active_slug(),
+            "companion": reg().get_companion()}
 
 
 @app.get("/api/config")
@@ -1643,6 +1677,31 @@ async def _say(text, cfg):
 async def index():
     return HTMLResponse(open(os.path.join(WEB, "index.html")).read(),
                         headers={"Cache-Control": "no-store"})
+
+
+# The pet page addressed to ONE avatar rather than "the active one". The page
+# is served under /c/<slug>/ so its relative "assets/..." references resolve
+# to the per-slug asset route below - the renderer needs no URL changes. This
+# is how the second on-desk avatar window renders its own runtime while the
+# main window keeps following the active avatar.
+@app.get("/c/{slug}/")
+async def companion_page(slug: str):
+    if not re.fullmatch(SLUG_PATTERN, slug):
+        raise HTTPException(404, "not found")
+    if not os.path.isfile(os.path.join(runtime_dir(slug), "manifest.json")):
+        raise HTTPException(404, "this avatar has no runtime bundle")
+    return HTMLResponse(open(os.path.join(WEB, "index.html")).read(),
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.get("/c/{slug}/assets/{path:path}")
+async def companion_assets(slug: str, path: str):
+    if not re.fullmatch(SLUG_PATTERN, slug):
+        raise HTTPException(404, "not found")
+    full = _safe_file(runtime_dir(slug), path)
+    if not full:
+        raise HTTPException(404, "not found")
+    return FileResponse(full, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/bubble")

@@ -65,11 +65,15 @@ function fitPetZoomToArea(baseSize, minimumSize, zoom, area, margin = 0) {
   return Math.min(safe, limit);
 }
 
-// Bottom-right corner of the work area, which macOS already trims to exclude
-// the Dock and the menu bar — the companion lands above the Dock, not under it.
-function dockedPetBounds(size, area, margin = 0) {
+// Bottom corner of the work area, which macOS already trims to exclude the
+// Dock and the menu bar — the avatar lands above the Dock, not under it. The
+// active avatar owns the right corner; a second on-desk avatar mirrors to
+// the left one.
+function dockedPetBounds(size, area, margin = 0, side = 'right') {
   return {
-    x: Math.round(area.x + area.width - size.width - margin),
+    x: Math.round(side === 'left'
+      ? area.x + margin
+      : area.x + area.width - size.width - margin),
     y: Math.round(area.y + area.height - size.height - margin),
     width: size.width,
     height: size.height,

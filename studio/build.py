@@ -24,6 +24,9 @@ CODE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.abspath(os.environ.get("VIVIEEN_DATA_DIR", CODE_ROOT))
 AVATARS = os.path.join(ROOT, "avatars")
 ACTIVE = os.path.join(ROOT, "active.json")
+# The optional second on-desk avatar. It renders in its own desktop window,
+# mirrored to the LEFT screen edge while the active avatar owns the right.
+COMPANION = os.path.join(ROOT, "companion.json")
 _locks = {}
 _write_lock = threading.Lock()   # progress callbacks fire from worker threads
 _SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62})$")
@@ -120,6 +123,40 @@ def set_active(slug):
     return slug
 
 
+def get_companion():
+    try:
+        with open(COMPANION) as f:
+            slug = json.load(f).get("slug")
+        return slug if valid_slug(slug) else None
+    except Exception:
+        return None
+
+
+def set_companion(slug):
+    """Set (or with None/empty, clear) the second on-desk avatar."""
+    if not slug:
+        try:
+            os.remove(COMPANION)
+        except OSError:
+            pass
+        return None
+    if not os.path.isdir(adir(slug)):
+        raise ValueError(f"unknown avatar: {slug}")
+    os.makedirs(ROOT, mode=0o700, exist_ok=True)
+    descriptor, tmp = tempfile.mkstemp(prefix=".companion-", dir=ROOT)
+    try:
+        with os.fdopen(descriptor, "w") as handle:
+            json.dump(dict(slug=slug,
+                           set_at=datetime.datetime.now().isoformat(timespec="seconds")),
+                      handle, indent=1)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, COMPANION)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    return slug
+
+
 def delete_avatar(slug):
     shutil.rmtree(adir(slug), ignore_errors=True)
     if get_active() == slug:
@@ -127,6 +164,8 @@ def delete_avatar(slug):
             os.remove(ACTIVE)
         except OSError:
             pass
+    if get_companion() == slug:
+        set_companion(None)
 
 
 # ---------------------------------------------------------------- create

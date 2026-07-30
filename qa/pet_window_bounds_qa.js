@@ -91,4 +91,20 @@ const shifted = dockedPetBounds({ width: 560, height: 760 },
   { x: 1512, y: 200, width: 1920, height: 1055 }, margin);
 assert.deepEqual(shifted, { x: 2844, y: 467, width: 560, height: 760 });
 
+// The second on-desk avatar mirrors to the LEFT corner: same size, same
+// bottom line, x measured from the left work-area edge so the pair sits
+// symmetrically around the screen center.
+const dockedLeft = dockedPetBounds(fittedSize, area, margin, 'left');
+assert.equal(dockedLeft.x, area.x + margin);
+assert.equal(dockedLeft.y, docked.y);
+assert.equal(dockedLeft.width, docked.width);
+assert.equal(
+  dockedLeft.x - area.x,
+  area.x + area.width - (docked.x + docked.width));
+const shiftedLeft = dockedPetBounds({ width: 560, height: 760 },
+  { x: 1512, y: 200, width: 1920, height: 1055 }, margin, 'left');
+assert.deepEqual(shiftedLeft, { x: 1540, y: 467, width: 560, height: 760 });
+// An explicit 'right' and the legacy default agree.
+assert.deepEqual(dockedPetBounds(fittedSize, area, margin, 'right'), docked);
+
 console.log('pet window bounds QA passed');

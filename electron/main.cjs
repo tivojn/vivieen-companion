@@ -71,6 +71,26 @@ let petMotionProfile = {
   cycleDistance: 70.4,
   travelOffsets: [],
 };
+// The second on-desk avatar ("buddy"): its own window on the LEFT screen
+// edge, mirroring the active avatar's right-side behaviour. Its state is
+// deliberately in-memory only - the server's companion.json is the source of
+// truth for WHICH avatar sits on the left desk, and everything else resets
+// with the window.
+let buddyWindow = null;
+let buddySlug = null;
+let buddyRoam = false;
+let buddyRoamTimer = null;
+let buddyRoamRuntime = null;
+let buddyMotionReady = false;
+let buddyMotionProfile = {
+  walkSpeed: 64,
+  cycleSeconds: 1.1,
+  cycleDistance: 70.4,
+  travelOffsets: [],
+};
+let buddyDrag = null;
+let buddyPointerInteractive = null;
+let buddyOpacity = null; // null follows state.petOpacity
 const enconvoSampleBuffer = [];
 const MAX_ENCONVO_SAMPLE_BACKLOG = 160;
 const PET_VIEWS = new Set(['full', 'three-quarter', 'half', 'bust', 'head', 'face']);
@@ -490,6 +510,9 @@ function broadcastState() {
   for (const window of [mainWindow, settingsWindow, appearanceWindow]) {
     if (window && !window.isDestroyed()) window.webContents.send('vivieen:state', value);
   }
+  // The second on-desk avatar sees the same state with its own roam,
+  // opacity, and motion profile spliced in.
+  pushBuddyState();
   buildTrayMenu();
 }
 
@@ -532,42 +555,36 @@ function stopPetPointerTracking() {
 
 function startPetPointerTracking() {
   stopPetPointerTracking();
+  // One timer feeds every pet window (the main avatar and, when present, the
+  // second on-desk avatar): each gets cursor coordinates in its own local
+  // space and manages its own hit-testing/click-through flag.
   petPointerTimer = setInterval(() => {
-    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) return;
     const point = screen.getCursorScreenPoint();
-    const bounds = mainWindow.getBounds();
-    if (!state.petClickThrough) {
-      // The window is always interactive, but the gaze still needs the
-      // cursor, so the feed keeps flowing in this branch too.
-      setPetHit(true, 'click-through-off');
-      mainWindow.webContents.send('vivieen:pet-pointer', {
-        x: point.x - bounds.x, y: point.y - bounds.y,
-        inside: point.x >= bounds.x && point.x < bounds.x + bounds.width
-          && point.y >= bounds.y && point.y < bounds.y + bounds.height,
-      });
-      return;
-    }
-    const inside = point.x >= bounds.x && point.x < bounds.x + bounds.width
-      && point.y >= bounds.y && point.y < bounds.y + bounds.height;
-    // Coordinates are sent even outside the window (they go negative or past
-    // the edge) so the renderer's gaze can follow the cursor across the
-    // desktop; `inside` keeps the hit-testing semantics unchanged.
-    const localPoint = {
-      x: point.x - bounds.x, y: point.y - bounds.y, inside,
-    };
-    if (!inside) {
-      if (process.env.VIVIEEN_DEBUG_HIT && petPointerInteractive) {
-        console.error(`[pet-pointer] point=${point.x},${point.y} bounds=${bounds.x},${bounds.y},${bounds.width},${bounds.height}`);
+    for (const target of [
+      { window: () => mainWindow, setHit: setPetHit },
+      { window: () => buddyWindow, setHit: setBuddyHit },
+    ]) {
+      const window = target.window();
+      if (!window || window.isDestroyed() || !window.isVisible()) continue;
+      const bounds = window.getBounds();
+      const inside = point.x >= bounds.x && point.x < bounds.x + bounds.width
+        && point.y >= bounds.y && point.y < bounds.y + bounds.height;
+      // Coordinates are sent even outside the window (they go negative or
+      // past the edge) so the renderer's gaze can follow the cursor across
+      // the desktop; `inside` keeps the hit-testing semantics unchanged.
+      const localPoint = {
+        x: point.x - bounds.x, y: point.y - bounds.y, inside,
+      };
+      if (!state.petClickThrough) {
+        // The window is always interactive, but the gaze still needs the
+        // cursor, so the feed keeps flowing in this branch too.
+        target.setHit(true, 'click-through-off');
+        window.webContents.send('vivieen:pet-pointer', localPoint);
+        continue;
       }
-      mainWindow.webContents.send('vivieen:pet-pointer', localPoint);
-      setPetHit(false, 'outside-window');
-      return;
+      window.webContents.send('vivieen:pet-pointer', localPoint);
+      if (!inside) target.setHit(false, 'outside-window');
     }
-    if (process.env.VIVIEEN_DEBUG_HIT && Date.now() - petPointerDebugAt > 1000) {
-      petPointerDebugAt = Date.now();
-      console.error(`[pet-pointer] local=${localPoint.x},${localPoint.y}`);
-    }
-    mainWindow.webContents.send('vivieen:pet-pointer', localPoint);
   }, 32);
   petPointerTimer.unref?.();
 }
@@ -580,6 +597,15 @@ function applyPetOpacity(value, reveal = true) {
     else {
       mainWindow.setOpacity(opacity);
       if (reveal) mainWindow.showInactive();
+    }
+  }
+  // Until the second avatar takes its own opacity (a chest/foot double-tap
+  // on its window), it follows the primary's.
+  if (buddyOpacity === null && buddyWindow && !buddyWindow.isDestroyed()) {
+    if (opacity <= 0.001) buddyWindow.hide();
+    else {
+      buddyWindow.setOpacity(opacity);
+      if (reveal) buddyWindow.showInactive();
     }
   }
   saveStateSoon();
@@ -879,17 +905,17 @@ function stopPetRoamMotion(restore = true) {
   if (restore) applyPetZoom(state.petZoom);
 }
 
-function setPetMotionReady(value) {
+function normalizeMotionProfile(value, current) {
   const payload = value && typeof value === 'object' ? value : { ready: Boolean(value) };
   const ready = Boolean(payload.ready);
   const requestedSpeed = Number(payload.walkSpeed);
   const requestedCycle = Number(payload.cycleSeconds);
   const walkSpeed = Number.isFinite(requestedSpeed)
     ? Math.max(PET_ROAM_MIN_SPEED, Math.min(PET_ROAM_MAX_SPEED, requestedSpeed))
-    : petMotionProfile.walkSpeed;
+    : current.walkSpeed;
   const cycleSeconds = Number.isFinite(requestedCycle)
     ? Math.max(0.5, Math.min(2.5, requestedCycle))
-    : petMotionProfile.cycleSeconds;
+    : current.cycleSeconds;
   const requestedDistance = Number(payload.cycleDistance);
   const cycleDistance = Number.isFinite(requestedDistance)
     ? Math.max(10, Math.min(PET_ROAM_MAX_SPEED * 2.5, requestedDistance))
@@ -901,11 +927,17 @@ function setPetMotionReady(value) {
       values.push(Math.max(values.at(-1) || 0, Math.min(cycleDistance, value)));
       return values;
     }, []) : [];
-  const nextProfile = { walkSpeed, cycleSeconds, cycleDistance, travelOffsets };
-  const profileChanged = Math.abs(nextProfile.walkSpeed - petMotionProfile.walkSpeed) > 0.01
-    || Math.abs(nextProfile.cycleSeconds - petMotionProfile.cycleSeconds) > 0.001
-    || Math.abs(nextProfile.cycleDistance - petMotionProfile.cycleDistance) > 0.01
-    || JSON.stringify(nextProfile.travelOffsets) !== JSON.stringify(petMotionProfile.travelOffsets);
+  const profile = { walkSpeed, cycleSeconds, cycleDistance, travelOffsets };
+  const changed = Math.abs(profile.walkSpeed - current.walkSpeed) > 0.01
+    || Math.abs(profile.cycleSeconds - current.cycleSeconds) > 0.001
+    || Math.abs(profile.cycleDistance - current.cycleDistance) > 0.01
+    || JSON.stringify(profile.travelOffsets) !== JSON.stringify(current.travelOffsets);
+  return { ready, profile, changed };
+}
+
+function setPetMotionReady(value) {
+  const { ready, profile: nextProfile, changed: profileChanged } =
+    normalizeMotionProfile(value, petMotionProfile);
   petMotionProfile = nextProfile;
   if (petRoamRuntime) {
     petRoamRuntime.walkSpeed = nextProfile.walkSpeed;
@@ -975,6 +1007,404 @@ function applyPetRoam(value) {
   saveStateSoon();
   broadcastState();
   return shellState();
+}
+
+// ---------------------------------------------------------------- buddy
+// The second on-desk avatar. Same page, same gestures, its own window: it
+// docks and idles against the LEFT screen edge, mirroring the active
+// avatar's right corner, and runs its own roam engine so both can walk the
+// desktop independently.
+
+function isBuddySender(event) {
+  return Boolean(buddyWindow && !buddyWindow.isDestroyed()
+    && event.sender === buddyWindow.webContents);
+}
+
+function buddyOpacityValue() {
+  return buddyOpacity === null ? state.petOpacity : buddyOpacity;
+}
+
+function buddyShellState() {
+  const value = shellState();
+  value.pet = {
+    ...value.pet,
+    opacity: buddyOpacityValue(),
+    roam: buddyRoam,
+    motionReady: buddyMotionReady,
+    motionProfile: { ...buddyMotionProfile },
+  };
+  return value;
+}
+
+function pushBuddyState() {
+  if (!buddyWindow || buddyWindow.isDestroyed()) return;
+  buddyWindow.webContents.send('vivieen:state', buddyShellState());
+}
+
+function setBuddyHit(interactive) {
+  if (!buddyWindow || buddyWindow.isDestroyed()) return;
+  const value = Boolean(interactive);
+  if (buddyPointerInteractive === value) return;
+  buddyPointerInteractive = value;
+  buddyWindow.setIgnoreMouseEvents(state.petClickThrough && !value, { forward: true });
+}
+
+function buddyStartupBounds() {
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const zoom = clampPetZoom(
+    fitPetZoomToArea(
+      PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom, area, PET_DOCK_MARGIN),
+    PET_ZOOM_RANGE);
+  const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, zoom);
+  return dockedPetBounds(size, area, PET_DOCK_MARGIN, 'left');
+}
+
+function dockBuddy() {
+  // Mirrors the main pet's stillness dock: flush against the LEFT work-area
+  // edge, feet just above the Dock, so the idle lean rests on a real edge.
+  if (!buddyWindow || buddyWindow.isDestroyed() || buddyRoam || state.petLocked) return;
+  const area = screen.getDisplayMatching(buddyWindow.getBounds()).workArea;
+  const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);
+  buddyWindow.setBounds(dockedPetBounds(size, area, 0, 'left'), false);
+}
+
+function buddyRoamDisplay() {
+  if (buddyRoamRuntime) {
+    const active = screen.getAllDisplays().find(
+      (display) => display.id === buddyRoamRuntime.displayId);
+    if (active) return active;
+  }
+  if (buddyWindow && !buddyWindow.isDestroyed()) {
+    return screen.getDisplayMatching(buddyWindow.getBounds());
+  }
+  return screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+}
+
+function sendBuddyRoamMotion(payload = null) {
+  if (!buddyWindow || buddyWindow.isDestroyed()) return;
+  const value = payload || (buddyRoamRuntime ? {
+    enabled: true,
+    mode: buddyRoamRuntime.mode,
+    direction: buddyRoamRuntime.direction,
+    phase: buddyRoamRuntime.stride % 1,
+    edge: buddyRoamRuntime.mode.startsWith('ledge-')
+      ? buddyRoamRuntime.mode.slice('ledge-'.length) : null,
+  } : { enabled: false, mode: 'idle', direction: 1, phase: 0, edge: null });
+  buddyWindow.webContents.send('vivieen:pet-roam-motion', value);
+}
+
+function tickBuddyRoam() {
+  if (!buddyRoam || !buddyRoamRuntime || !buddyWindow || buddyWindow.isDestroyed()) {
+    if (buddyRoamTimer) clearInterval(buddyRoamTimer);
+    buddyRoamTimer = null;
+    return;
+  }
+  const now = Date.now();
+  const elapsed = Math.max(0, Math.min(0.1, (now - buddyRoamRuntime.lastAt) / 1000));
+  buddyRoamRuntime.lastAt = now;
+  const area = buddyRoamDisplay().workArea;
+  const bounds = buddyWindow.getBounds();
+  const minimumX = area.x;
+  const maximumX = area.x + area.width - bounds.width;
+  const dockLineY = Math.round(area.y + area.height - bounds.height + 2);
+  let x = Number.isFinite(buddyRoamRuntime.x) ? buddyRoamRuntime.x : bounds.x;
+
+  if (buddyRoamRuntime.mode === 'stand') {
+    x = Math.max(minimumX, Math.min(maximumX, x));
+    if (!buddyRoamRuntime.engaged && now >= buddyRoamRuntime.resumeAt) {
+      buddyRoamRuntime.mode = buddyRoamRuntime.resumeMode || 'walk';
+      if (buddyRoamRuntime.mode.startsWith('ledge-')) {
+        buddyRoamRuntime.holdUntil = now + PET_LEDGE_HOLD_MS;
+      }
+      buddyRoamRuntime.resumeMode = 'walk';
+    } else {
+      buddyRoamRuntime.x = x;
+      buddyWindow.setPosition(Math.round(x), dockLineY, false);
+      sendBuddyRoamMotion();
+      return;
+    }
+  }
+  if (buddyRoamRuntime.mode === 'walk') {
+    const previousStride = buddyRoamRuntime.stride;
+    buddyRoamRuntime.stride = (buddyRoamRuntime.stride
+      + elapsed / Math.max(0.1, buddyRoamRuntime.cycleSeconds)) % 1;
+    const travelled = motionTravelDelta(
+      buddyRoamRuntime, previousStride, buddyRoamRuntime.stride);
+    x += buddyRoamRuntime.direction * travelled;
+    if (x >= maximumX) {
+      x = maximumX;
+      buddyRoamRuntime.mode = 'ledge-right';
+      buddyRoamRuntime.holdUntil = now + PET_LEDGE_HOLD_MS;
+    } else if (x <= minimumX) {
+      x = minimumX;
+      buddyRoamRuntime.mode = 'ledge-left';
+      buddyRoamRuntime.holdUntil = now + PET_LEDGE_HOLD_MS;
+    }
+  } else if (buddyRoamRuntime.mode.startsWith('ledge-')) {
+    const right = buddyRoamRuntime.mode === 'ledge-right';
+    x = right ? maximumX : minimumX;
+    if (now >= buddyRoamRuntime.holdUntil) {
+      buddyRoamRuntime.direction = right ? -1 : 1;
+      buddyRoamRuntime.mode = 'walk';
+    }
+  }
+
+  buddyRoamRuntime.x = x;
+  buddyWindow.setPosition(Math.round(x), dockLineY, false);
+  sendBuddyRoamMotion();
+}
+
+function startBuddyRoamMotion() {
+  if (!buddyRoam || !buddyMotionReady || !buddyWindow || buddyWindow.isDestroyed()) return;
+  if (buddyRoamTimer) clearInterval(buddyRoamTimer);
+  const display = buddyRoamDisplay();
+  const area = display.workArea;
+  const home = buddyWindow.getBounds();
+  const size = petRoamSize();
+  const maximumX = area.x + area.width - size.width;
+  const homeCenter = Number.isFinite(home.x) && Number.isFinite(home.width)
+    ? home.x + home.width / 2 : area.x + area.width / 2;
+  const startX = Math.round(Math.max(area.x, Math.min(
+    maximumX, homeCenter - size.width / 2)));
+  const startY = Math.round(area.y + area.height - size.height + 2);
+  const direction = startX > area.x + area.width / 2 ? -1 : 1;
+
+  buddyWindow.setResizable(false);
+  buddyWindow.setMinimumSize(size.width, size.height);
+  buddyWindow.setBounds({
+    x: startX,
+    y: startY,
+    width: size.width,
+    height: size.height,
+  }, false);
+  buddyWindow.setAlwaysOnTop(true, 'floating');
+  buddyWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  if (buddyOpacityValue() > 0.001) buddyWindow.showInactive();
+
+  buddyRoamRuntime = {
+    displayId: display.id,
+    x: startX,
+    direction,
+    mode: 'walk',
+    stride: 0,
+    holdUntil: 0,
+    engaged: false,
+    resumeAt: 0,
+    resumeMode: 'walk',
+    walkSpeed: buddyMotionProfile.walkSpeed,
+    cycleSeconds: buddyMotionProfile.cycleSeconds,
+    cycleDistance: buddyMotionProfile.cycleDistance,
+    travelOffsets: [...buddyMotionProfile.travelOffsets],
+    lastAt: Date.now(),
+  };
+  sendBuddyRoamMotion();
+  buddyRoamTimer = setInterval(tickBuddyRoam, 32);
+  buddyRoamTimer.unref?.();
+}
+
+function stopBuddyRoamMotion(restore = true) {
+  if (buddyRoamTimer) clearInterval(buddyRoamTimer);
+  buddyRoamTimer = null;
+  buddyRoamRuntime = null;
+  sendBuddyRoamMotion({ enabled: false, mode: 'idle', direction: 1, phase: 0, edge: null });
+  if (!buddyWindow || buddyWindow.isDestroyed()) return;
+  buddyWindow.setResizable(true);
+  buddyWindow.setMinimumSize(PET_NORMAL_MINIMUM.width, PET_NORMAL_MINIMUM.height);
+  if (restore) buddyWindow.setBounds(buddyStartupBounds(), false);
+  buddyWindow.setAlwaysOnTop(state.alwaysOnTop, 'floating');
+  buddyWindow.setVisibleOnAllWorkspaces(state.alwaysOnTop, { visibleOnFullScreen: true });
+}
+
+function applyBuddyRoam(value) {
+  const enabled = Boolean(value);
+  if (enabled && !buddyMotionReady) return buddyShellState();
+  buddyRoam = enabled;
+  if (enabled) startBuddyRoamMotion();
+  else stopBuddyRoamMotion(true);
+  buddyDrag = null;
+  pushBuddyState();
+  return buddyShellState();
+}
+
+function setBuddyEngaged(value) {
+  if (!buddyRoam || !buddyRoamRuntime || !buddyWindow || buddyWindow.isDestroyed()) return;
+  const engaged = Boolean(value);
+  if (buddyRoamRuntime.engaged === engaged) return;
+  buddyRoamRuntime.engaged = engaged;
+  if (engaged) {
+    if (buddyRoamRuntime.mode !== 'stand') {
+      buddyRoamRuntime.resumeMode = buddyRoamRuntime.mode.startsWith('ledge-')
+        ? buddyRoamRuntime.mode : 'walk';
+      if (buddyRoamRuntime.mode === 'ledge-right') buddyRoamRuntime.direction = -1;
+      if (buddyRoamRuntime.mode === 'ledge-left') buddyRoamRuntime.direction = 1;
+    }
+    buddyRoamRuntime.mode = 'stand';
+    buddyRoamRuntime.resumeAt = Number.POSITIVE_INFINITY;
+    const area = buddyRoamDisplay().workArea;
+    const bounds = buddyWindow.getBounds();
+    const x = Math.max(area.x, Math.min(area.x + area.width - bounds.width, bounds.x));
+    buddyRoamRuntime.x = x;
+    buddyWindow.setPosition(Math.round(x),
+      Math.round(area.y + area.height - bounds.height + 2), false);
+  } else {
+    buddyRoamRuntime.resumeAt = Date.now() + PET_INTERACTION_COOLDOWN_MS;
+  }
+  sendBuddyRoamMotion();
+}
+
+function setBuddyMotionReady(value) {
+  const { ready, profile, changed } = normalizeMotionProfile(value, buddyMotionProfile);
+  buddyMotionProfile = profile;
+  if (buddyRoamRuntime) {
+    buddyRoamRuntime.walkSpeed = profile.walkSpeed;
+    buddyRoamRuntime.cycleSeconds = profile.cycleSeconds;
+    buddyRoamRuntime.cycleDistance = profile.cycleDistance;
+    buddyRoamRuntime.travelOffsets = [...profile.travelOffsets];
+  }
+  if (buddyMotionReady === ready && !changed) return;
+  buddyMotionReady = ready;
+  if (!ready && buddyRoam) {
+    buddyRoam = false;
+    stopBuddyRoamMotion(true);
+  } else if (ready && buddyRoam) {
+    startBuddyRoamMotion();
+  }
+  pushBuddyState();
+}
+
+function applyBuddyOpacity(value) {
+  buddyOpacity = Math.max(0, Math.min(1, Number(value) || 0));
+  if (buddyWindow && !buddyWindow.isDestroyed()) {
+    if (buddyOpacity <= 0.001) buddyWindow.hide();
+    else {
+      buddyWindow.setOpacity(buddyOpacity);
+      buddyWindow.showInactive();
+    }
+  }
+  pushBuddyState();
+  return buddyShellState();
+}
+
+async function removeBuddyFromDesk() {
+  try {
+    await fetch(`${baseUrl()}/api/avatar/companion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Vivieen-Token': backendToken },
+      body: JSON.stringify({ slug: '' }),
+    });
+  } catch {
+    // The window closes regardless; the server re-syncs on the next launch.
+  }
+  closeBuddyWindow();
+}
+
+function showBuddyMenu() {
+  if (!buddyWindow || buddyWindow.isDestroyed()) return;
+  Menu.buildFromTemplate([
+    { label: `Second avatar · ${buddySlug || ''}`, enabled: false },
+    { type: 'separator' },
+    { label: 'Talk · hold head', enabled: false },
+    { label: 'Walk · 2×tap leg', enabled: false },
+    { label: 'Opacity + · 2×tap chest', enabled: false },
+    { label: 'Opacity − · 2×tap foot', enabled: false },
+    { type: 'separator' },
+    {
+      label: buddyRoam ? 'Return to standing' : 'Start walking',
+      enabled: buddyMotionReady || buddyRoam,
+      click: () => applyBuddyRoam(!buddyRoam),
+    },
+    { type: 'separator' },
+    { label: 'Remove from desk', click: () => { removeBuddyFromDesk(); } },
+  ]).popup({ window: buddyWindow });
+}
+
+function createBuddyWindow(slug) {
+  if (buddyWindow && !buddyWindow.isDestroyed()) {
+    if (buddySlug === slug) {
+      buddyWindow.webContents.reloadIgnoringCache();
+      return;
+    }
+    closeBuddyWindow();
+  }
+  buddySlug = slug;
+  buddyRoam = false;
+  buddyMotionReady = false;
+  buddyDrag = null;
+  buddyPointerInteractive = null;
+  buddyWindow = new BrowserWindow({
+    ...buddyStartupBounds(),
+    minWidth: PET_NORMAL_MINIMUM.width,
+    minHeight: PET_NORMAL_MINIMUM.height,
+    show: false,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    roundedCorners: false,
+    hasShadow: false,
+    resizable: true,
+    enableLargerThanScreen: true,
+    fullscreenable: false,
+    skipTaskbar: true,
+    acceptFirstMouse: true,
+    title: 'Vivieen',
+    webPreferences: {
+      backgroundThrottling: false,
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      webviewTag: false,
+      allowRunningInsecureContent: false,
+      spellcheck: false,
+    },
+  });
+  buddyWindow.setOpacity(buddyOpacityValue() > 0 ? buddyOpacityValue() : 0.5);
+  setBuddyHit(false);
+  buddyWindow.setAlwaysOnTop(state.alwaysOnTop, 'floating');
+  buddyWindow.setVisibleOnAllWorkspaces(state.alwaysOnTop, { visibleOnFullScreen: true });
+  guardNavigation(buddyWindow, 'buddy');
+  buddyWindow.loadURL(`${baseUrl()}/c/${slug}/?electron=1&companion=1&side=left`
+    + `&app=${encodeURIComponent(app.getVersion())}`);
+  buddyWindow.once('ready-to-show', () => {
+    if (buddyOpacityValue() > 0.001) buddyWindow.showInactive();
+  });
+  buddyWindow.on('close', (event) => {
+    if (!quitting) {
+      event.preventDefault();
+      buddyWindow.hide();
+    }
+  });
+  buddyWindow.on('closed', () => {
+    if (buddyRoamTimer) clearInterval(buddyRoamTimer);
+    buddyRoamTimer = null;
+    buddyRoamRuntime = null;
+    buddyWindow = null;
+    buddySlug = null;
+    buddyRoam = false;
+    buddyMotionReady = false;
+  });
+}
+
+function closeBuddyWindow() {
+  stopBuddyRoamMotion(false);
+  if (buddyWindow && !buddyWindow.isDestroyed()) buddyWindow.destroy();
+  buddyWindow = null;
+  buddySlug = null;
+  buddyRoam = false;
+  buddyMotionReady = false;
+  buddyDrag = null;
+  buddyPointerInteractive = null;
+}
+
+// The server's companion.json decides which avatar sits on the left desk;
+// the shell just mirrors it. Called at boot and whenever settings changes it.
+async function syncBuddyFromServer() {
+  const metadata = await vivieenMetadata(3000);
+  const slug = metadata ? metadata.companion : buddySlug;
+  if (slug) createBuddyWindow(slug);
+  else closeBuddyWindow();
+  return slug || null;
 }
 
 function guardNavigation(window, kind) {
@@ -1477,7 +1907,8 @@ async function restartBackend() {
 }
 
 function installIpc() {
-  ipcMain.handle('vivieen:get-state', () => shellState());
+  ipcMain.handle('vivieen:get-state', (event) => (
+    isBuddySender(event) ? buddyShellState() : shellState()));
   ipcMain.handle('vivieen:save-motion-asset', saveMotionAsset);
   ipcMain.handle('vivieen:get-enconvo-samples', (_event, afterSequence = 0) => {
     const requested = Number(afterSequence);
@@ -1494,35 +1925,51 @@ function installIpc() {
   ipcMain.handle('vivieen:hide-main', () => { if (mainWindow) mainWindow.hide(); });
   ipcMain.handle('vivieen:minimize', () => { if (mainWindow) mainWindow.minimize(); });
   ipcMain.handle('vivieen:toggle-top', () => applyAlwaysOnTop(!state.alwaysOnTop));
-  ipcMain.handle('vivieen:pet-menu', () => { showPetMenu(); return shellState(); });
+  ipcMain.handle('vivieen:pet-menu', (event) => {
+    if (isBuddySender(event)) { showBuddyMenu(); return buddyShellState(); }
+    showPetMenu();
+    return shellState();
+  });
   ipcMain.handle('vivieen:set-pet-view', (_event, value) => applyPetView(value));
-  ipcMain.handle('vivieen:set-pet-opacity', (_event, value) => applyPetOpacity(value));
-  ipcMain.handle('vivieen:set-pet-zoom', (_event, value) => applyPetZoom(value));
-  ipcMain.handle('vivieen:set-pet-roam-zoom', (_event, value) => applyPetRoamZoom(value));
+  ipcMain.handle('vivieen:set-pet-opacity', (event, value) => (
+    isBuddySender(event) ? applyBuddyOpacity(value) : applyPetOpacity(value)));
+  // Zoom stays a main-avatar control: the second window shares the primary's
+  // sizes so the pair keeps its left/right symmetry.
+  ipcMain.handle('vivieen:set-pet-zoom', (event, value) => (
+    isBuddySender(event) ? buddyShellState() : applyPetZoom(value)));
+  ipcMain.handle('vivieen:set-pet-roam-zoom', (event, value) => (
+    isBuddySender(event) ? buddyShellState() : applyPetRoamZoom(value)));
   ipcMain.on('vivieen:pet-zoom-live', (event, payload) => {
     if (mainWindow && event.sender === mainWindow.webContents) applyPetZoomLive(payload);
   });
   ipcMain.handle('vivieen:set-pet-click-through', (_event, value) => applyPetClickThrough(value));
   ipcMain.handle('vivieen:set-pet-lock', (_event, value) => applyPetLock(value));
-  ipcMain.handle('vivieen:set-pet-roam', (_event, value) => applyPetRoam(value));
+  ipcMain.handle('vivieen:set-pet-roam', (event, value) => (
+    isBuddySender(event) ? applyBuddyRoam(value) : applyPetRoam(value)));
   ipcMain.handle('vivieen:trigger-enconvo-voice', (event) => {
+    if (isBuddySender(event)) return triggerEnconvoVoiceCommand();
     if (!mainWindow || event.sender !== mainWindow.webContents) return { ok: false };
     return triggerEnconvoVoiceCommand();
   });
   ipcMain.on('vivieen:show-speech-bubble', (event, value) => {
-    if (mainWindow && event.sender === mainWindow.webContents) showSpeechBubble(value);
+    if (isBuddySender(event)
+        || (mainWindow && event.sender === mainWindow.webContents)) showSpeechBubble(value);
   });
   ipcMain.on('vivieen:pet-motion-ready', (event, value) => {
-    if (mainWindow && event.sender === mainWindow.webContents) setPetMotionReady(value);
+    if (isBuddySender(event)) setBuddyMotionReady(value);
+    else if (mainWindow && event.sender === mainWindow.webContents) setPetMotionReady(value);
   });
   ipcMain.on('vivieen:pet-engaged', (event, value) => {
-    if (mainWindow && event.sender === mainWindow.webContents) setPetEngaged(value);
+    if (isBuddySender(event)) setBuddyEngaged(value);
+    else if (mainWindow && event.sender === mainWindow.webContents) setPetEngaged(value);
   });
   ipcMain.on('vivieen:pet-hit', (event, value) => {
-    if (mainWindow && event.sender === mainWindow.webContents) setPetHit(Boolean(value), 'renderer-alpha');
+    if (isBuddySender(event)) setBuddyHit(Boolean(value));
+    else if (mainWindow && event.sender === mainWindow.webContents) setPetHit(Boolean(value), 'renderer-alpha');
   });
   ipcMain.on('vivieen:pet-voice-key', (event, state) => {
-    if (mainWindow && event.sender === mainWindow.webContents) postVoiceKey(String(state || ''));
+    if (isBuddySender(event)
+        || (mainWindow && event.sender === mainWindow.webContents)) postVoiceKey(String(state || ''));
   });
   ipcMain.handle('vivieen:export-avatar', async (event, payload) => {
     const slug = String((payload && payload.slug) || '');
@@ -1552,9 +1999,11 @@ function installIpc() {
     }
   });
   ipcMain.on('vivieen:pet-dock', (event) => {
-    // The stillness idle leans on the right screen edge, so the window
-    // settles bottom-right above the Dock first. Locked or roaming pets
-    // stay where they are and idle in place.
+    // The stillness idle leans on a screen edge, so the window settles in
+    // its bottom corner above the Dock first - right for the active avatar,
+    // left for the second one. Locked or roaming pets stay where they are
+    // and idle in place.
+    if (isBuddySender(event)) { dockBuddy(); return; }
     if (!mainWindow || event.sender !== mainWindow.webContents) return;
     if (state.petRoam || state.petLocked) return;
     const area = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
@@ -1568,6 +2017,15 @@ function installIpc() {
     saveStateSoon();
   });
   ipcMain.on('vivieen:drag-start', (event, point) => {
+    if (isBuddySender(event)) {
+      if (state.petLocked || buddyRoam) return;
+      buddyDrag = {
+        x: Number(point && point.screenX) || 0,
+        y: Number(point && point.screenY) || 0,
+        bounds: buddyWindow.getBounds(),
+      };
+      return;
+    }
     if (!mainWindow || event.sender !== mainWindow.webContents
         || state.petLocked || state.petRoam) return;
     petDrag = {
@@ -1577,20 +2035,35 @@ function installIpc() {
     };
   });
   ipcMain.on('vivieen:drag-move', (event, point) => {
+    if (isBuddySender(event)) {
+      if (!buddyDrag || state.petLocked || buddyRoam) return;
+      const x = Math.round(buddyDrag.bounds.x + (Number(point && point.screenX) - buddyDrag.x));
+      const y = Math.round(buddyDrag.bounds.y + (Number(point && point.screenY) - buddyDrag.y));
+      if (Number.isFinite(x) && Number.isFinite(y)) buddyWindow.setPosition(x, y, false);
+      return;
+    }
     if (!petDrag || !mainWindow || event.sender !== mainWindow.webContents
         || state.petLocked || state.petRoam) return;
     const x = Math.round(petDrag.bounds.x + (Number(point && point.screenX) - petDrag.x));
     const y = Math.round(petDrag.bounds.y + (Number(point && point.screenY) - petDrag.y));
     if (Number.isFinite(x) && Number.isFinite(y)) mainWindow.setPosition(x, y, false);
   });
-  ipcMain.on('vivieen:drag-end', () => { petDrag = null; saveStateSoon(); });
+  ipcMain.on('vivieen:drag-end', (event) => {
+    if (isBuddySender(event)) { buddyDrag = null; return; }
+    petDrag = null;
+    saveStateSoon();
+  });
   ipcMain.handle('vivieen:set-enconvo-monitor', (_event, value) => setEnconvoMonitoring(value));
   ipcMain.handle('vivieen:avatar-changed', () => {
     if (state.petRoam) applyPetRoam(false);
     petMotionReady = false;
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reloadIgnoringCache();
+    // Activating the avatar that held the left desk vacates it server-side;
+    // re-sync so the second window closes (or stays) accordingly.
+    syncBuddyFromServer().catch(() => {});
     return true;
   });
+  ipcMain.handle('vivieen:companion-changed', () => syncBuddyFromServer());
   ipcMain.handle('vivieen:restart-backend', restartBackend);
 }
 
@@ -1654,6 +2127,7 @@ async function boot() {
   if (state.followEnconvo) enconvoMonitor.setEnabled(true);
   const metadata = await vivieenMetadata(3000);
   if (!metadata || !metadata.active) openSettings();
+  if (metadata && metadata.companion) createBuddyWindow(metadata.companion);
 }
 
 const lock = app.requestSingleInstanceLock();
@@ -1669,6 +2143,7 @@ app.on('before-quit', () => {
   quitting = true;
   globalShortcut.unregisterAll();
   stopPetPointerTracking();
+  closeBuddyWindow();
   clearTimeout(bubbleTimer);
   if (bubbleWindow && !bubbleWindow.isDestroyed()) bubbleWindow.destroy();
   if (appearanceWindow && !appearanceWindow.isDestroyed()) appearanceWindow.destroy();

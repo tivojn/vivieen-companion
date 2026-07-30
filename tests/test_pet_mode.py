@@ -127,11 +127,12 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn(".then(state=>syncShellState(state)).catch(()=>{});", renderer)
         self.assertIn("Promise.resolve(SHELL.setPetRoam(true))", renderer)
         # Double-tap verbs: chest raises opacity, a foot lowers it (floored so
-        # she can never vanish), and the idle leans docked bottom-right.
+        # she can never vanish), and the idle leans docked in the window's
+        # own corner - right for the active avatar, left for a second one.
         self.assertIn("SHELL.setPetOpacity(Math.min(1,", renderer)
         self.assertIn("SHELL.setPetOpacity(Math.max(.15,", renderer)
         self.assertIn("SHELL.dockPet()", renderer)
-        self.assertIn("drawMotionClip('idle',now,'right')", renderer)
+        self.assertIn("drawMotionClip('idle',now,PET_SIDE)", renderer)
         main = (ROOT / "electron" / "main.cjs").read_text()
         preload = (ROOT / "electron" / "preload.cjs").read_text()
         self.assertIn("vivieen:pet-dock", main)
