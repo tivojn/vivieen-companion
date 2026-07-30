@@ -131,6 +131,19 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("function pointerOverChatControls", renderer)
         self.assertIn(
             "const modalHit=pointerOverChatControls()||", renderer)
+        # Unfollowed, the bar is hover-revealed chrome: chat-visible is
+        # driven per-frame, a hidden bar claims no screen region, and the
+        # heartbeat re-send heals any shell/renderer click-through desync
+        # (the stuck-input-until-dragged bug).
+        self.assertIn("classList.toggle('chat-visible'", renderer)
+        self.assertIn("chat-open.chat-visible #bar{opacity:1", renderer)
+        self.assertIn("!classes.contains('chat-visible'))return false", renderer)
+        self.assertIn("if(now-lastHitSentAt>500){lastHitSentAt=now;SHELL.setPetHit(petHit);}", renderer)
+        # Live dictation: timesliced recording streams interim transcripts
+        # into the input field through the configured dictation model.
+        self.assertIn("rec.start(1200)", renderer)
+        self.assertIn("function interimTranscribe", renderer)
+        self.assertIn("if(recording&&r.text)txt.value=", renderer)
         self.assertIn(
             "(document.hasFocus()&&document.activeElement===txt)||txt.value.trim())lastEngagedAt=now;",
             renderer)

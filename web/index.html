@@ -157,7 +157,9 @@ html.electron.pet #gear,html.electron.pet #vz,html.electron.pet #bar{display:non
    pointer, so drag, taps, head-hold, and the right-click menu keep working
    on every visible part of the avatar - including the feet behind the bar. */
 html.electron.pet.chat-open #bar{display:flex;left:12px;right:12px;bottom:10px;
-  padding:0;background:transparent;pointer-events:none}
+  padding:0;background:transparent;pointer-events:none;
+  opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s ease}
+html.electron.pet.chat-open.chat-visible #bar{opacity:1;visibility:visible}
 html.electron.pet.chat-open #bar #monitor,
 html.electron.pet.chat-open #bar #manual{pointer-events:auto}
 html.electron.pet.chat-open #log{display:none}
@@ -442,7 +444,7 @@ const PET={enabled:true,opacity:.5,
   view:['full','three-quarter','half','bust','head','face'].includes(previewView)?previewView:'half',
   zoom:1,roamZoom:1,clickThrough:true,locked:false,roam:false,motionReady:false};
 const ROAM={enabled:false,mode:'idle',direction:1,phase:0,edge:null};
-let pointer={x:-1,y:-1},petHit=false,hitConfidence=0,dragging=false,zoomSaveTimer=0,lastHitCheck=0;
+let pointer={x:-1,y:-1},petHit=false,hitConfidence=0,dragging=false,zoomSaveTimer=0,lastHitCheck=0,lastHitSentAt=0;
 let zoomGesture=null,zoomEchoUntil=0,motionProfileZoom=null;
 let petEngaged=false,petHoverUntil=0;
 let monitorEnabled=false;
@@ -482,6 +484,12 @@ function applyMonitorState(value){
   monitorEnabled=!!monitorInfo.enabled;
   document.documentElement.classList.toggle('following-enconvo',monitorEnabled);
   if(monitorEnabled&&document.documentElement.classList.contains('chat-open'))closePetChat();
+  // Unfollowed, the chat bar is a standing feature of pet mode - but a
+  // hover-revealed one: chat-open marks it available, chat-visible (driven
+  // per-frame in loop()) decides whether it is actually on screen.
+  if(!monitorEnabled&&SHELL&&SHELL.isElectron&&PET.enabled){
+    document.documentElement.classList.add('chat-open');
+  }
   if(monitorEnabled!==wasEnabled){
     const now=performance.now()/1000;
     resetExternalViseme(Date.now());curV='sil';prevV='sil';switchAt=now;
@@ -1426,6 +1434,17 @@ function syncPetEngagement(now=performance.now()){
 function loop(now){
   requestAnimationFrame(loop);if(!ready)return;
   syncPetEngagement(now);
+  // The bar and EnConvo mark only show while she has your attention:
+  // hovering her (with a grace period to cross from her to the bar),
+  // recording, or typing. Edge idle, unhovered standing, and walking stay
+  // clean of chrome.
+  if(SHELL&&SHELL.isElectron&&PET.enabled&&!monitorEnabled){
+    document.documentElement.classList.add('chat-open');
+    document.documentElement.classList.toggle('chat-visible',
+      Boolean(petHit||now<petHoverUntil||recording||
+        document.documentElement.classList.contains('listening')||
+        (document.hasFocus()&&document.activeElement===txt)||txt.value.trim()));
+  }
   // Anything that counts as attention resets the stillness clock; after ten
   // quiet seconds the standing pet settles into the Edge Idle loop, and any
   // attention brings the live standing avatar straight back. An OPEN chat
@@ -1639,7 +1658,7 @@ async function startRec(force=false){
     return;
   }
   rec=new MediaRecorder(stream);chunks=[];
-  rec.ondataavailable=e=>chunks.push(e.data);
+  rec.ondataavailable=e=>{chunks.push(e.data);interimTranscribe();};
   rec.onstop=async()=>{
     stream.getTracks().forEach(t=>t.stop());
     const blob=new Blob(chunks,{type:rec.mimeType||'audio/webm'});
@@ -1652,17 +1671,41 @@ async function startRec(force=false){
     try{
       const fd2=new FormData();fd2.append('audio',blob,'a.webm');
       const r=await(await fetch('stt',{method:'POST',body:fd2})).json();
-      if(!r.text){
+      // The interim dictation already on screen is a fine fallback if the
+      // final pass hears nothing.
+      const heard=String(r.text||'').trim()||txt.value.trim();
+      if(!heard){
         setStatus('ready','on');ptt.disabled=monitorEnabled;
         flashPrompt('I could not hear words in that · try again');
         return;
       }
-      await turn(r.text,true);
+      txt.value='';
+      await turn(heard,true);
     }catch(e){setStatus('ready','on');ptt.disabled=monitorEnabled;}
   };
-  rec.start();recording=true;ptt.classList.add('rec');txt.classList.add('rec');
+  // Timesliced so dictation can stream: each slice re-transcribes the take
+  // so far and the words land live in the input field while you speak.
+  rec.start(1200);recording=true;ptt.classList.add('rec');txt.classList.add('rec');
   document.documentElement.classList.add('listening');
   setStatus('listening','rec');
+}
+let interimBusy=false;
+async function interimTranscribe(){
+  // Live dictation: while the head is held, keep sending the take so far
+  // through the configured dictation model and show the words in the input
+  // field. One request in flight at a time; the final pass on release is
+  // authoritative. WebM slices only decode from the first chunk, so the
+  // accumulated blob is always sent whole.
+  if(!recording||interimBusy||monitorEnabled)return;
+  const blob=new Blob(chunks,{type:(rec&&rec.mimeType)||'audio/webm'});
+  if(blob.size<3000)return;
+  interimBusy=true;
+  try{
+    const fd=new FormData();fd.append('audio',blob,'a.webm');
+    const r=await(await fetch('stt',{method:'POST',body:fd})).json();
+    if(recording&&r.text)txt.value=String(r.text).trim();
+  }catch(e){/* interim only; the final pass reports real failures */}
+  interimBusy=false;
 }
 function stopRec(){
   recWanted=false;
@@ -1683,7 +1726,9 @@ function flashPrompt(message){
 // that force-claimed EVERYTHING killed Click-Through Gaps for as long as it
 // stayed up. Transparent gaps go back to the alpha sample.
 function pointerOverChatControls(){
-  if(!document.documentElement.classList.contains('chat-open'))return false;
+  const classes=document.documentElement.classList;
+  // A hidden bar must not claim its screen region.
+  if(!classes.contains('chat-open')||!classes.contains('chat-visible'))return false;
   if(pointer.x<0||pointer.y<0)return false;
   for(const id of ['monitor','manual']){
     const control=document.getElementById(id);
@@ -1707,8 +1752,18 @@ function updatePetHit(force=false){
   else if(force)hitConfidence=sample?1:0;
   else hitConfidence=Math.max(0,Math.min(1,hitConfidence+(sample?.32:-.08)));
   const hit=hitConfidence>=.56?true:hitConfidence<=.18?false:petHit;
-  if(hit===petHit){if(hit)petHoverUntil=now+1400;return;}
+  if(hit===petHit){
+    if(hit)petHoverUntil=now+1400;
+    // Heartbeat: the shell can flip the window to click-through on its own
+    // (cursor left the window, focus dances) while this side sees "no
+    // change" and stays silent - which once left the input field dead until
+    // a drag jolted things. Re-sending the unchanged flag is free (the
+    // shell ignores no-ops) and heals any desync within half a second.
+    if(now-lastHitSentAt>500){lastHitSentAt=now;SHELL.setPetHit(petHit);}
+    return;
+  }
   petHit=hit;if(hit)petHoverUntil=now+1400;
+  lastHitSentAt=now;
   SHELL.setPetHit(hit);syncPetEngagement(now);
   // Hovering her mid-walk brings her home to the standing avatar: a short
   // dwell so a cursor merely passing through does not end the stroll.
