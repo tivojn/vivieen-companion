@@ -5,20 +5,34 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Vivieen speech</title>
   <style>
-    :root{color-scheme:light}
+    :root{color-scheme:dark}
     *{box-sizing:border-box}
     html,body{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}
-    body{display:grid;place-items:center;padding:22px 34px 42px;font-family:"Avenir Next","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased}
-    .bubble{position:relative;width:min(100%,760px);min-height:126px;display:grid;place-items:center;padding:28px 42px 30px;border:4px solid #19171c;border-radius:42px;background:linear-gradient(145deg,#fffdf7 0%,#fff8ed 100%);box-shadow:0 16px 0 rgba(20,18,24,.16),0 22px 50px rgba(20,18,24,.24),inset 0 0 0 3px #e91e79;transform:translateY(-8px)}
-    .bubble::before{content:"";position:absolute;left:50%;bottom:-33px;width:42px;height:42px;background:#fff9ef;border-right:4px solid #19171c;border-bottom:4px solid #19171c;transform:translateX(-50%) rotate(45deg);border-bottom-right-radius:9px;box-shadow:5px 5px 0 rgba(233,30,121,.9)}
-    .bubble::after{content:"VIVIEEN";position:absolute;top:-15px;left:32px;padding:5px 13px 4px;border:3px solid #19171c;border-radius:999px;background:#e91e79;color:white;font:800 12px/1 "Avenir Next",sans-serif;letter-spacing:.16em;box-shadow:3px 3px 0 #19171c}
-    #text{position:relative;z-index:1;width:100%;color:#19171c;text-align:center;text-wrap:balance;font-size:clamp(25px,3vw,38px);font-weight:750;line-height:1.22;letter-spacing:-.025em;text-shadow:0 1px 0 white;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}
-    body.medium #text{font-size:clamp(22px,2.6vw,32px)}
-    body.long #text{font-size:clamp(18px,2.15vw,27px);line-height:1.26;-webkit-line-clamp:5}
+    body{display:grid;place-items:center;padding:18px 30px 34px;
+      font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
+      -webkit-font-smoothing:antialiased}
+    /* Same glass language as the avatar's input bar: dark translucency, one
+       hairline border, no tail, no badge - the label is a thin line-art rule. */
+    .bubble{position:relative;width:min(100%,720px);padding:20px 26px 22px;
+      border:1px solid rgba(255,255,255,.14);border-radius:16px;
+      background:rgba(14,16,20,.82);backdrop-filter:blur(22px);
+      box-shadow:0 18px 48px rgba(0,0,0,.32)}
+    .head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+    .mark{flex:none;width:5px;height:5px;border-radius:50%;background:#d81f4a}
+    .name{flex:none;font:600 10px/1 inherit;letter-spacing:.3em;color:rgba(242,239,233,.5)}
+    .rule{flex:1;height:1px;background:rgba(255,255,255,.10)}
+    #text{color:#f2efe9;text-wrap:pretty;font-size:clamp(17px,2vw,24px);
+      font-weight:450;line-height:1.45;letter-spacing:-.012em;
+      display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}
+    body.medium #text{font-size:clamp(15px,1.75vw,20px)}
+    body.long #text{font-size:clamp(14px,1.5vw,17px);line-height:1.5;-webkit-line-clamp:6}
   </style>
 </head>
 <body>
-  <section class="bubble" role="status" aria-live="polite"><div id="text"></div></section>
+  <section class="bubble" role="status" aria-live="polite">
+    <div class="head" aria-hidden="true"><span class="mark"></span><span class="name">VIVIEEN</span><span class="rule"></span></div>
+    <div id="text"></div>
+  </section>
   <script>
     const text = document.getElementById('text');
     window.vivieenBubble?.onText((payload = {}) => {
