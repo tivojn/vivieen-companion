@@ -117,6 +117,13 @@ class PetInputBridgeTests(unittest.TestCase):
         # A release before the microphone resolves must not leave a ghost
         # recording running.
         self.assertIn("if(!recWanted){", renderer)
+        # The shell forces click-through when the cursor leaves the window;
+        # with the chat bar pinning petHit true the renderer never re-sent
+        # the flag on re-entry and the window went permanently dead. The
+        # interactive flag must be re-asserted on every outside->inside
+        # transition.
+        self.assertIn(
+            "if(inside&&!pointerWasInside&&petHit", renderer)
         marker = renderer.index("html.electron.pet.chat-open #bar{")
         self.assertIn("pointer-events:none", renderer[marker:marker + 220])
         self.assertIn("#bar #manual{pointer-events:auto}", renderer)
