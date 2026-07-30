@@ -352,7 +352,7 @@ class MotionPipelineTests(unittest.TestCase):
         self.assertIn("This is not a runway performance", keyframe)
         self.assertIn("Do NOT use a flat side profile", keyframe)
         self.assertIn("BOTH complete arms, elbows, wrists, and hands", keyframe)
-        self.assertIn("narrow green-screen gap around each wrist", keyframe)
+        self.assertIn("narrow background gap around each wrist", keyframe)
         self.assertIn("canonical RIGHT-SIDE full-body plate", keyframe)
         self.assertIn("canonical HD head", keyframe)
         # The office style now ships as an authored in-place loop: the
@@ -373,8 +373,12 @@ class MotionPipelineTests(unittest.TestCase):
         crossing = "{}% to {}% at constant speed".format(*default_frame["crossing"])
         self.assertNotIn(crossing, video)
         self.assertIn("color flicker", video)
-        self.assertIn("chroma-key green", keyframe)
-        self.assertIn("chroma-key green", video)
+        # White studio plates: matting runs through macOS Vision person
+        # segmentation (semantic, not color-keyed), so light skin, blonde
+        # hair, and white wardrobe survive and there is no green spill to
+        # fringe the contour. The chroma-key path remains for legacy takes.
+        self.assertIn("pure white", keyframe)
+        self.assertIn("pure white", video)
         self.assertEqual(motion.MOTION_VERSION, 9)
 
     def test_walk_style_presets_change_generation_and_validation(self):
@@ -448,8 +452,8 @@ class MotionPipelineTests(unittest.TestCase):
             composed = cv2.imread(destination, cv2.IMREAD_COLOR)
         self.assertEqual(
             (plate["height"], plate["width"]), composed.shape[:2])
-        # Green plate in the corners, subject bottom-anchored at the floor.
-        self.assertGreater(int(composed[4, 4, 1]), 180)
+        # White plate in the corners, subject bottom-anchored at the floor.
+        self.assertTrue(bool(np.all(composed[4, 4] >= 245)), composed[4, 4])
         rows = np.where((composed[:, :, 2] > 120) & (composed[:, :, 1] < 90))[0]
         self.assertGreater(rows.size, 0)
         self.assertLessEqual(plate["floor"] - int(rows.max()), 4)

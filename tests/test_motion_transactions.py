@@ -629,7 +629,7 @@ class WalkCycleContractTests(unittest.TestCase):
                 self.assertIn("EXACT first frame and the EXACT final frame",
                               prompt)
                 self.assertIn("IN PLACE", prompt)
-                self.assertIn("chroma-key green", prompt)
+                self.assertIn("pure white", prompt)
 
     def test_traversal_styles_keep_the_runway_contract(self):
         self.assertEqual(motion.walk_mode("cartwheel"), "traversal")

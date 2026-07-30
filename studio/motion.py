@@ -70,7 +70,7 @@ WALK_STYLE_PRESETS = {
             "wrists between the hip seam and mid-thigh with only a compact contralateral "
             "counter-swing. BOTH complete arms, elbows, wrists, and hands remain "
             "naturally visible because of the three-quarter torso angle, with a narrow "
-            "green-screen gap around each wrist; never spread or raise the arms to expose "
+            "background gap around each wrist; never spread or raise the arms to expose "
             "them. Catwalk influence is limited to tall posture and a slightly narrow "
             "footpath. Do NOT use a flat side profile, high knee, high front foot, heel "
             "kicked toward the calf or knee, split stride, marching, power walk, long "
@@ -81,7 +81,7 @@ WALK_STYLE_PRESETS = {
         "video": (
             "Animate the exact selected person taking a NORMAL, charming office walk in "
             "a straight line from one place on an office floor to another, moving "
-            "camera-left to camera-right across this locked green-screen frame.\n\n"
+            "camera-left to camera-right across this locked white-studio frame.\n\n"
             "PRIORITY 2 — ORDINARY OFFICE GAIT: this must look like a real office "
             "professional walking to a meeting, not performing. Use an ordinary 108–114 "
             "steps per minute, one normal shoe-length step, low toe clearance, soft "
@@ -620,7 +620,7 @@ REFERENCE AUTHORITY — Reference 1 is the generated canonical RIGHT-SIDE full-b
 
 MOVEMENT STYLE — {walk_style['label']}. {walk_style['keyframe']}
 
-COMPOSITION — one person only, complete figure centered on a vertical 2:3 canvas, locked camera at waist height, long lens, generous clean margin, no crop, no props, no text, no furniture, no floor shadow. Use a professional chroma-key green screen across the entire background and floor: saturated green only, evenly lit, with no gray, white, scenery, reflections, or green spill on the subject.
+COMPOSITION — one person only, complete figure centered on a vertical 2:3 canvas, locked camera at waist height, long lens, generous clean margin, no crop, no props, no text, no furniture, no floor shadow. Shoot against a seamless pure white studio background and floor: bright, even white only, with no cast shadow, gray, scenery, reflections, or colored light spill on the subject.
 
 Editable wardrobe receipt, subordinate to the visual references: {outfit}"""
 
@@ -634,7 +634,7 @@ IDENTITY AND WARDROBE LOCK — preserve the exact face, apparent age, hair, body
 
 OPENING POSE — one natural, balanced standing frame that a performance loop can begin and end on: weight settled, both shoes on the floor, arms relaxed and readable. This frame is the resting beat of the following act, so keep it poised rather than mid-move: {idle_pose['prompt']}
 
-COMPOSITION — one person only, full figure centered on a vertical 2:3 canvas with margin for the movement, locked camera, no crop, no props, no text, no furniture, no cast shadow. Use a professional chroma-key green screen across the entire background and floor: saturated green only, evenly lit, with no gray, white, scenery, reflections, or green spill on the subject.
+COMPOSITION — one person only, full figure centered on a vertical 2:3 canvas with margin for the movement, locked camera, no crop, no props, no text, no furniture, no cast shadow. Shoot against a seamless pure white studio background and floor: bright, even white only, with no cast shadow, gray, scenery, reflections, or colored light spill on the subject.
 
 Editable wardrobe receipt, subordinate to the visual references: {outfit}"""
     reference_note = (
@@ -651,7 +651,7 @@ IDENTITY AND WARDROBE LOCK — preserve the exact face, apparent age, hair, body
 
 POSE GEOMETRY — author the selected canonical LEFT-EDGE pose. The selected direction controls geometry only and never identity, wardrobe, styling, age, or gender: {idle_pose['prompt']} Keep at least one intentional screen-left shoulder, upper-back, or side-body contact visibly pressed to one invisible vertical wall. Preserve every selected arm, hand, hip, leg, foot, and contact arrangement exactly. The body must project naturally into the screen toward camera-right rather than lean against empty air. Never substitute an upright tree pose, ballet balance, floating lean, or unrelated fashion pose. Keep it poised and self-possessed. Both complete shoes and all limbs must remain anatomically correct.
 
-COMPOSITION — one person only, full figure centered on a vertical 2:3 canvas with enough margin for the selected edge pose, locked camera, no crop, no props, no weapons, no garter, no text, no furniture, no cast shadow. Use a professional chroma-key green screen across the entire background and floor: saturated green only, evenly lit, with no gray, white, scenery, reflections, or green spill on the subject.
+COMPOSITION — one person only, full figure centered on a vertical 2:3 canvas with enough margin for the selected edge pose, locked camera, no crop, no props, no weapons, no garter, no text, no furniture, no cast shadow. Shoot against a seamless pure white studio background and floor: bright, even white only, with no cast shadow, gray, scenery, reflections, or colored light spill on the subject.
 
 Editable wardrobe receipt, subordinate to the visual references: {outfit}"""
 
@@ -687,7 +687,7 @@ PRIORITY 0 — SEAMLESS IN-PLACE LOOP: the supplied image is the EXACT first fra
 
 PRIORITY 1 — IDENTITY, HAIR, AND WARDROBE: preserve the exact selected person's face, apparent age, body proportions, skin tone, hairline, hairstyle, outfit, materials, colors, accessories, and both complete shoes from the input keyframe in every frame. Never restyle, beautify, de-age, change clothes, change footwear, or invent a different person.
 
-CAMERA AND PLATE: locked camera with constant scale, exposure, and color; no camera motion, zoom, reframing, or cuts. The entire background and floor stay saturated chroma-key green with no scenery, shadows, reflections, text, props, gray, white, or green spill. The subject's complete full body and both shoes stay inside the frame at all times.
+CAMERA AND PLATE: locked camera with constant scale, exposure, and color; no camera motion, zoom, reframing, or cuts. The entire background and floor stay seamless pure white with no scenery, shadows, reflections, text, props, gray, or colored spill. The subject's complete full body and both shoes stay inside the frame at all times.
 
 STYLE-SPECIFIC REJECTIONS — {walk_style['reject']}
 
@@ -730,7 +730,7 @@ def _walk_video_prompt(walk_style=None, walk_frame=None):
 
 PRIORITY 1 — IDENTITY, HAIR, AND WARDROBE: preserve the exact selected person's face, apparent age, body proportions, skin tone, hairline, hairstyle, outfit, materials, colors, accessories, and both complete shoes from the input keyframe in every frame. Never restyle, beautify, de-age, change clothes, change footwear, or invent a different person.
 
-CAMERA AND PLATE: the three darker-green vertical registration lines and floor line remain exactly stationary. Camera scale, exposure, and color remain constant. The entire background and floor stay saturated chroma-key green with no scenery, shadows, reflections, text, props, gray, white, or green spill. Keep the subject's complete full body and both shoes inside frame while the subject crosses from roughly {enters}% to {exits}% at constant speed.
+CAMERA AND PLATE: the three light-gray vertical registration lines and floor line remain exactly stationary. Camera scale, exposure, and color remain constant. The entire background and floor stay seamless pure white with no scenery, shadows, reflections, text, props, gray, or colored spill. Keep the subject's complete full body and both shoes inside frame while the subject crosses from roughly {enters}% to {exits}% at constant speed.
 
 STYLE-SPECIFIC REJECTIONS — {walk_style['reject']}
 
@@ -748,7 +748,7 @@ PRIORITY — SEAMLESS IN-PLACE LOOP: the character stays at the same screen posi
 
 IDENTITY AND WARDROBE — preserve the exact person's face, apparent age, hair, body proportions, outfit, materials, colors, accessories, and both complete shoes from the input keyframe in every frame. Never restyle or invent a different person.
 
-CAMERA AND PLATE — locked camera, constant scale, exposure, and color; no cuts or zoom. The entire background and floor stay saturated chroma-key green with no scenery, shadows, reflections, text, props, gray, white, or green spill. The complete body and both shoes stay inside the frame at all times.
+CAMERA AND PLATE — locked camera, constant scale, exposure, and color; no cuts or zoom. The entire background and floor stay seamless pure white with no scenery, shadows, reflections, text, props, gray, or colored spill. The complete body and both shoes stay inside the frame at all times.
 
 Reject: identity drift, wardrobe changes, camera motion, leaving the frame, or freezing in place instead of performing."""
     contact_lock = (
@@ -760,7 +760,7 @@ Reject: identity drift, wardrobe changes, camera motion, leaving the frame, or f
         "Keep every selected screen-left shoulder, upper-back, or side-body wall contact "
         "fixed in place, and keep every floor-contacting shoe planted exactly as shown."
     )
-    return f"""Animate a subtle living hold of this exact supported edge pose with a locked camera. Preserve the exact identity, hair, outfit, materials, colors, accessories, arm arrangement, leg arrangement, contact points, and both complete shoes from the input keyframe. The selected pose direction is: {idle_pose['prompt']} Preserve a saturated chroma-key green background and floor throughout every frame, with no gray, white, scenery, reflections, cast shadow, or green spill on the subject. {contact_lock} Add only natural breathing, one soft blink, a tiny chin adjustment, and restrained fabric and hair settling. Never straighten away from the wall, become a tree pose, float without support, change which leg bears weight, uncross or cross the legs, change the arm arrangement, walk, talk, move the camera, zoom, cut, add objects, or add text. Begin and end with the exact same silhouette, limb geometry, wall contacts, and floor contacts for a seamless idle loop."""
+    return f"""Animate a subtle living hold of this exact supported edge pose with a locked camera. Preserve the exact identity, hair, outfit, materials, colors, accessories, arm arrangement, leg arrangement, contact points, and both complete shoes from the input keyframe. The selected pose direction is: {idle_pose['prompt']} Preserve a seamless pure white background and floor throughout every frame, with no gray, scenery, reflections, cast shadow, or colored spill on the subject. {contact_lock} Add only natural breathing, one soft blink, a tiny chin adjustment, and restrained fabric and hair settling. Never straighten away from the wall, become a tree pose, float without support, change which leg bears weight, uncross or cross the legs, change the arm arrangement, walk, talk, move the camera, zoom, cut, add objects, or add text. Begin and end with the exact same silhouette, limb geometry, wall contacts, and floor contacts for a seamless idle loop."""
 
 
 def _image_command(provider, references, output_dir, file_name, prompt):
@@ -946,7 +946,7 @@ def _idle_loop_keyframe(source, destination, log):
         interpolation=cv2.INTER_AREA,
     )
     canvas = np.full(
-        (plate["height"], plate["width"], 3), (0, 220, 0), dtype=np.uint8)
+        (plate["height"], plate["width"], 3), (255, 255, 255), dtype=np.uint8)
     left = max(0, (plate["width"] - person.shape[1]) // 2)
     top = max(0, plate["floor"] - person.shape[0])
     region = canvas[top:top + person.shape[0], left:left + person.shape[1]]
@@ -970,7 +970,7 @@ def _loop_walk_keyframe(source, destination, log):
         interpolation=cv2.INTER_AREA,
     )
     canvas = np.full(
-        (plate["height"], plate["width"], 3), (0, 220, 0), dtype=np.uint8)
+        (plate["height"], plate["width"], 3), (255, 255, 255), dtype=np.uint8)
     left = max(0, (plate["width"] - person.shape[1]) // 2)
     top = max(0, plate["floor"] - person.shape[0])
     region = canvas[top:top + person.shape[0], left:left + person.shape[1]]
@@ -998,10 +998,10 @@ def _wide_walk_keyframe(source, destination, log, walk_frame=None):
     plate_height = walk_frame["height"]
     floor = walk_frame["floor"]
     canvas = np.full(
-        (plate_height, plate_width, 3), (0, 220, 0), dtype=np.uint8)
+        (plate_height, plate_width, 3), (255, 255, 255), dtype=np.uint8)
     for panel_x in walk_frame["guides"]:
-        cv2.line(canvas, (panel_x, 0), (panel_x, floor - 1), (0, 182, 0), 2)
-    cv2.line(canvas, (0, floor), (plate_width, floor), (0, 168, 0), 2)
+        cv2.line(canvas, (panel_x, 0), (panel_x, floor - 1), (205, 205, 205), 2)
+    cv2.line(canvas, (0, floor), (plate_width, floor), (196, 196, 196), 2)
     # A narrow plate can start the subject far enough left that half the body
     # falls outside the frame, so keep the placement inside the runway.
     left = min(
