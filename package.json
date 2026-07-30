@@ -105,6 +105,10 @@
         "to": "native/person-cutout"
       },
       {
+        "from": ".electron-native/key-tap",
+        "to": "native/key-tap"
+      },
+      {
         "from": "LICENSE",
         "to": "docs/LICENSE.txt"
       },
