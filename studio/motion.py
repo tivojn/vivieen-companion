@@ -33,6 +33,14 @@ MAX_SHEET_FRAMES = 32
 # Gate rejections are dominated by near-misses, so a third candidate
 # meaningfully raises the odds a run ships instead of failing outright.
 MAX_CANDIDATE_ATTEMPTS = 3
+# TEMPORARY reliability mode, by explicit taste (2026-07-30): quality gates
+# reject too many honest takes, and a shipped clip with a visible loop seam
+# beats a failed generation. While True: the idle uses the FULL raw take
+# (its authored first-equals-last frame IS the seam), the in-place walk uses
+# the first half of its take with no loop search, and every quality gate on
+# those paths is demoted to a logged observation. Flip to False to restore
+# strict selection and gating; traversal styles (cartwheel) are unaffected.
+RELAXED_LOOP_SHIPPING = True
 DEFAULT_WALK_STYLE = "office"
 DEFAULT_IDLE_POSE = "back-heel"
 WALK_STYLE_PRESETS = {
@@ -2837,8 +2845,10 @@ def _process_clip(
                 "chroma key changed opaque subject colors; reject this clip")
     anchors = None
     pose_quality = None
+    relaxed = False
     if kind == "walk":
         mode = walk_mode(walk_style)
+        relaxed = RELAXED_LOOP_SHIPPING and mode == "loop"
         if mode == "loop":
             # Authored in-place loop: the footage never travels, so there is
             # no root motion to remove and the whole frame sequence is
@@ -2847,25 +2857,38 @@ def _process_clip(
         else:
             recentered, anchors = _recenter_walk_frames(alpha_frames)
         loop = walk_style["loop"]
-        gait_validation = walk_style["validation"] != "traversal"
-        selected, loop_start, loop_end, loop_alternates = _select_loop(
-            recentered, fps, loop["target"], loop["minimum"], loop["maximum"],
-            poses=poses if gait_validation else None,
-            require_pose_cycle=gait_validation,
-            pose_profile=walk_style["validation"],
-            return_candidates=True,
-        )
+        gait_validation = walk_style["validation"] != "traversal" and not relaxed
+        if relaxed:
+            # First half of the take, no loop search: the mid-take cut will
+            # snap against frame 0, and that is the accepted price for a
+            # generation that always ships. Metrics below become receipts.
+            half = max(8, len(recentered) // 2)
+            selected, loop_start, loop_end = recentered[:half], 0, half
+            loop_alternates = []
+            log(f"relaxed loop shipping: first {half} frames, gates observed only")
+        else:
+            selected, loop_start, loop_end, loop_alternates = _select_loop(
+                recentered, fps, loop["target"], loop["minimum"], loop["maximum"],
+                poses=poses if gait_validation else None,
+                require_pose_cycle=gait_validation,
+                pose_profile=walk_style["validation"],
+                return_candidates=True,
+            )
         if mode == "loop":
             drift = _inplace_drift(alpha_frames, loop_start, loop_end)
-            if drift is None:
+            if drift is None and not relaxed:
                 raise RuntimeError(
                     "could not track the walk loop's root position")
             drift_limit = alpha_frames[0].shape[1] * 0.08
-            if drift > drift_limit:
-                raise RuntimeError(
-                    f"walk loop drifts {round(drift)}px across the frame "
-                    f"(limit {round(drift_limit)}px); the character must "
-                    "walk in place; regenerate it")
+            if drift is not None and drift > drift_limit:
+                if relaxed:
+                    log(f"observed: walk drifts {round(drift)}px "
+                        f"(limit {round(drift_limit)}px); shipping anyway")
+                else:
+                    raise RuntimeError(
+                        f"walk loop drifts {round(drift)}px across the frame "
+                        f"(limit {round(drift_limit)}px); the character must "
+                        "walk in place; regenerate it")
         # The provider only gets MAX_CANDIDATE_ATTEMPTS videos, so before a
         # near-miss can reject this footage, test the other well-ranked cuts
         # of the same clip against the real gates - a slightly different
@@ -2886,19 +2909,34 @@ def _process_clip(
                     f"({closure['upper_overlap']} upper-body overlap)")
             selected, loop_start, loop_end = recentered[start:end], start, end
             break
-        pose_quality = (
-            _pose_cycle_metrics(
+        if relaxed:
+            observed = _pose_cycle_metrics(
                 poses, loop_start, loop_end,
-                profile=walk_style["validation"],
-            )
-            if gait_validation else
-            {
+                profile=walk_style["validation"])
+            pose_quality = {
+                **observed,
+                "valid": True,
+                "reason": "relaxed loop shipping: gates observed, not enforced",
+                "observed_reason": observed.get("reason"),
+                "observed_valid": observed.get("valid"),
+            }
+        elif gait_validation:
+            pose_quality = _pose_cycle_metrics(
+                poses, loop_start, loop_end,
+                profile=walk_style["validation"])
+        else:
+            pose_quality = {
                 "available": True,
                 "valid": True,
                 "reason": "traversal style skips gait-cycle constraints; "
                           "loop closure is checked separately",
             }
-        )
+    elif RELAXED_LOOP_SHIPPING:
+        # The idle's authored first-equals-last frame IS the loop seam, so
+        # the whole raw take ships uncut at full length.
+        relaxed = True
+        selected, loop_start, loop_end = alpha_frames, 0, len(alpha_frames)
+        log(f"relaxed loop shipping: full {len(alpha_frames)}-frame idle take")
     else:
         selected, loop_start, loop_end = _select_loop(
             alpha_frames, fps, 3.2, 2.0, 5.2)
@@ -2918,26 +2956,35 @@ def _process_clip(
                 f"{quality_detail}")
     extremity_quality = _extremity_integrity(
         alpha_frames, poses, loop_start, loop_end)
-    if not extremity_quality["available"]:
+    if not extremity_quality["available"] and not relaxed:
         raise RuntimeError(
             f"macOS Vision could not track enough hands and heels to validate the {kind} clip")
     if not extremity_quality["valid"]:
-        raise RuntimeError(
-            f"{kind} clip contains a disappearing hand or heel; regenerate it")
+        if relaxed:
+            log(f"observed: {extremity_quality.get('reason') or 'extremity issue'}; shipping anyway")
+        else:
+            raise RuntimeError(
+                f"{kind} clip contains a disappearing hand or heel; regenerate it")
     normalised, bounds, scale = _normalise_frames(selected, include_scale=True)
     wall_contact_quality = None
     if kind == "idle":
         wall_contact_quality = _idle_contact_quality(
             normalised, bounds, idle_validation)
-        if not wall_contact_quality["available"]:
+        if not wall_contact_quality["available"] and not relaxed:
             raise RuntimeError("could not measure the edge-idle wall contact")
-        if not wall_contact_quality["valid"]:
+        if wall_contact_quality["available"] and not wall_contact_quality["valid"]:
             detail = wall_contact_quality.get("reason") or "wall contact is unstable"
-            raise RuntimeError(f"edge-idle pose failed contact validation: {detail}")
+            if relaxed:
+                log(f"observed: {detail}; shipping anyway")
+            else:
+                raise RuntimeError(f"edge-idle pose failed contact validation: {detail}")
     closure_quality = _silhouette_closure_quality(normalised)
     if not closure_quality["valid"]:
-        raise RuntimeError(
-            f"{kind} loop does not close: {closure_quality['reason']}")
+        if relaxed:
+            log(f"observed: {kind} seam {closure_quality.get('reason') or 'does not close'}; shipping anyway")
+        else:
+            raise RuntimeError(
+                f"{kind} loop does not close: {closure_quality['reason']}")
     sheets = _pack_sheets(normalised, stage, kind)
     poster = f"{kind}-poster.png"
     cv2.imwrite(os.path.join(stage, poster), normalised[0], [cv2.IMWRITE_PNG_COMPRESSION, 9])
