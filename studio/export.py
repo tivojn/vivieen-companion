@@ -181,7 +181,7 @@ def publish_pet_assets(slug, runtime_dir=None, log=print):
                 pass
     motion_meta = _publish_motion(directory, destination, log)
     runtime.update(
-        v=max(11, int(runtime.get("v", 0))),
+        v=max(12, int(runtime.get("v", 0))),
         cutout=cutout_meta,
         body=body_meta,
         motion=motion_meta,
@@ -283,7 +283,7 @@ def export(slug, dest, quality=92, states=blink.N_STATES, log=print,
 
     timing = dict(close=blink.CLOSE, hold=blink.HOLD, open=blink.OPEN,
                   settle=blink.SETTLE, creep=blink.CREEP)
-    manifest = dict(v=11, w=W, h=H, avatar=dict(slug=slug, name=m["name"]),
+    manifest = dict(v=12, w=W, h=H, avatar=dict(slug=slug, name=m["name"]),
                     visemes=names, frames=frames, eyes=eyes, gaze=gaze, brow=brow,
                     cheek=cheek, neck=expression.neck(klm), cutout=cutout_meta,
                     body=body_meta, motion=motion_meta, blink=timing,

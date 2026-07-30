@@ -86,9 +86,9 @@ class PetInputBridgeTests(unittest.TestCase):
             expression.GAZE_DX, expression.GAZE_DX[1:])])
         self.assertGreaterEqual(max(expression.GAZE_DY), 2.0)
         server = (ROOT / "server" / "app.py").read_text()
-        self.assertIn("RUNTIME_VERSION = 11", server)
+        self.assertIn("RUNTIME_VERSION = 12", server)
         export_source = (ROOT / "studio" / "export.py").read_text()
-        self.assertIn("dict(v=11,", export_source)
+        self.assertIn("dict(v=12,", export_source)
 
     def test_body_parts_are_classified_and_react(self):
         # Clicks resolve to the nearest baked bone segment (head stays
