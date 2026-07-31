@@ -934,9 +934,12 @@ function cursorHeadFor(h){
      cursor as the head arrives. */
   const attend=gazeAttn>.02?Math.min(1,gazeAttn):0;
   if(!attend)return h;
-  h.x+=attend*cursorDir.x*12;
-  h.y+=attend*cursorDir.y*5;
-  h.r+=attend*cursorDir.x*1.0;
+  // Subtle by design: the IRIS carries the cursor, the head only hints at
+  // it. The first tuning (12/5/1.0) swung the whole head with the pointer
+  // and read as too much - a real person mostly moves their eyes.
+  h.x+=attend*cursorDir.x*4.5;
+  h.y+=attend*cursorDir.y*2;
+  h.r+=attend*cursorDir.x*0.4;
   return h;
 }
 
