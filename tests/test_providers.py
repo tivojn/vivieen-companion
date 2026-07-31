@@ -203,6 +203,29 @@ class ProviderDefaultsTests(unittest.TestCase):
             ["whisper-large-v3"],
         )
 
+    def test_failure_hint_names_the_reason_the_model_went_quiet(self):
+        # The exact strings httpx produced live 2026-07-31 when Ollama Cloud
+        # ran out of credit mid-session: Test had passed, chats then failed,
+        # and the bubble's bare "not answering" hid the 402 for hours.
+        gone = ("Client error '410 Gone' for url 'http://localhost:11434/api/chat' "
+                "For more information check: https://developer.mozilla.org/...")
+        paying = "Client error '402 Payment Required' for url 'http://localhost:11434/api/chat'"
+        self.assertEqual(P.failure_hint(paying),
+                         "the provider wants payment or sign-in for this model")
+        self.assertEqual(P.failure_hint(gone),
+                         "the provider no longer serves this model")
+        self.assertEqual(P.failure_hint("Client error '401 Unauthorized' for url 'x'"),
+                         "the provider rejected the API key")
+        self.assertEqual(P.failure_hint("ReadTimeout: timed out"),
+                         "the request timed out")
+        self.assertEqual(P.failure_hint("All connection attempts failed: connect ECONNREFUSED"),
+                         "the endpoint is unreachable")
+        self.assertEqual(P.failure_hint("something novel"), "")
+        # And the reply path speaks the hint into the bubble.
+        app_source = open(os.path.join(ROOT, "server", "app.py")).read()
+        self.assertIn("P.failure_hint(e)", app_source)
+        self.assertIn("My model is not answering — {hint}.", app_source)
+
     def test_key_validation_failures_read_plainly_and_lists_are_refreshable(self):
         # A rejected key must say so - the raw httpx text buries the status
         # behind a docs URL and the tail-keeping redactor kept only the URL.

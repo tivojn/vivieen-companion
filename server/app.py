@@ -1975,7 +1975,10 @@ async def reply(t: Turn):
         text = await P.chat(t.history[-12:], cfg["llm"], system=cfg["persona"]["system"])
     except Exception as e:
         print("[viv] llm failed:", P.safe_error(e), flush=True)
-        text = "My model is not answering. Check the provider in Settings."
+        hint = P.failure_hint(e)
+        text = (f"My model is not answering — {hint}. Check the provider in Settings."
+                if hint else
+                "My model is not answering. Check the provider in Settings.")
     if not text:
         text = "I lost that thread for a second. Say it again?"
     result = await _say(text, cfg)
