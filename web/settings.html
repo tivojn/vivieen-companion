@@ -646,6 +646,11 @@ button.btn.danger{color:#d9705f}
             <symbol id="walk-style-promenade" viewBox="0 0 52 68"><circle cx="26" cy="8" r="5"/><path d="M26 13v30M26 21l-7 14M26 21l7 14M26 43l-9 19M26 43l11 17M12 63h10M34 61h9"/><path d="M7 64h40M17 17c2-4 5-6 9-6" opacity=".35"/></symbol>
             <symbol id="walk-style-cartwheel" viewBox="0 0 52 68"><path d="M5 59h42" opacity=".35"/><path d="M9 48c7-24 23-34 38-31" stroke-dasharray="2.5 3.5" opacity=".45"/><circle cx="30" cy="26" r="4"/><path d="M27 29L18 39M21 35L9 53M21 35l6 19M27 29l12-14M27 29l18 2M9 53h8M25 54h8"/></symbol>
             <symbol id="walk-style-custom" viewBox="0 0 52 68"><path d="M11 49l2-10L35.5 16.5a4 4 0 015.6 0l1.4 1.4a4 4 0 010 5.6L20 46zM32.5 19.5l7.5 7.5M9 59h34"/><path d="M7 64h40" opacity=".35"/></symbol>
+            <symbol id="move-style-viral" viewBox="0 0 52 68"><circle cx="24" cy="12" r="5"/><path d="M25 17c3 8 2 15-1 21M25 22l-11-6M14 16l-3-7M25 22l11-3 6-8M24 38l-8 16M24 38l10 14M12 57h9M31 55h10"/><path d="M7 64h40M40 6l2-3M44 12l4-1M38 3l-1-3" opacity=".35"/></symbol>
+            <symbol id="move-style-hiphop" viewBox="0 0 52 68"><circle cx="26" cy="16" r="5"/><path d="M26 21c-1 7 0 12 1 16M26 26l-10 6 3 8M26 26l12 4-2 9M27 37l-10 12-2 10M27 37l8 13 4 9M12 61h8M36 61h9"/><path d="M7 64h40M9 26l4 2M43 22l-4 3" opacity=".35"/></symbol>
+            <symbol id="move-style-kpop" viewBox="0 0 52 68"><circle cx="23" cy="13" r="5"/><path d="M24 18c2 8 1 14-1 20M24 23l14-6 8-2M24 23l-9 8M23 38l-7 17M23 38l11 15M13 57h9M32 55h10"/><path d="M7 64h40M47 13l3 1M46 9l3-2" opacity=".35"/></symbol>
+            <symbol id="move-style-ballet" viewBox="0 0 52 68"><circle cx="22" cy="12" r="5"/><path d="M23 17c1 8 1 14 0 20M23 22l-12-3-6-4M23 22l13-4 7-6M23 37l-2 20M21 59h8M23 37c8 2 14 0 20-6"/><path d="M7 64h40" opacity=".35"/></symbol>
+            <symbol id="move-style-salsa" viewBox="0 0 52 68"><circle cx="27" cy="13" r="5"/><path d="M27 18c4 7 5 13 2 20M27 23l-9 9-8 2M27 23c6-6 9-9 9-15M29 38l-9 17M29 38l8 8 2 11M12 57h9M36 59h9"/><path d="M7 64h40M15 34l-5 6" opacity=".35"/></symbol>
             <symbol id="idle-pose-back-heel" viewBox="0 0 72 118">
               <path d="M9 4v109M6 113h61" stroke-dasharray="2.5 3.5" opacity=".42"/>
               <circle cx="31" cy="14" r="7"/><path d="M27 21c-5 10-7 23-2 37l9 20 10-3-2-27-5-26"/>
@@ -711,6 +716,24 @@ button.btn.danger{color:#d9705f}
             <div class="body-motion-actions"><div class="grow"></div><button class="btn pri" id="body-idle-generate">Generate Edge Idle</button></div>
             <p class="note" id="body-idle-status" style="margin-top:10px">Generate a full body first.</p>
           </section>
+
+          <section class="motion-section" aria-labelledby="move-section-title">
+            <div class="motion-section-head"><div><strong class="motion-section-title" id="move-section-title">Show Me Some Moves</strong><p class="motion-section-copy">A short performance she plays on demand - double-tap her hair, or pick Moves in her menu.</p></div><span class="pill" id="body-move-state">Not generated</span></div>
+            <label>Performance</label>
+            <div class="walk-style-grid" id="body-move-styles" role="group" aria-label="Choose a performance">
+              <button class="walk-style-card on" type="button" data-move-style="viral" aria-pressed="true"><svg aria-hidden="true"><use href="#move-style-viral"></use></svg><span><b>Viral TikTok</b><small>Trend choreography for the camera</small></span></button>
+              <button class="walk-style-card" type="button" data-move-style="hiphop" aria-pressed="false"><svg aria-hidden="true"><use href="#move-style-hiphop"></use></svg><span><b>Hip-hop freestyle</b><small>Grooves · pops · bounce</small></span></button>
+              <button class="walk-style-card" type="button" data-move-style="kpop" aria-pressed="false"><svg aria-hidden="true"><use href="#move-style-kpop"></use></svg><span><b>K-pop point dance</b><small>Sharp camera-ready hits</small></span></button>
+              <button class="walk-style-card" type="button" data-move-style="ballet" aria-pressed="false"><svg aria-hidden="true"><use href="#move-style-ballet"></use></svg><span><b>Ballet grace</b><small>Long lines · gentle turn</small></span></button>
+              <button class="walk-style-card" type="button" data-move-style="salsa" aria-pressed="false"><svg aria-hidden="true"><use href="#move-style-salsa"></use></svg><span><b>Salsa heat</b><small>Latin rhythm · playful spin</small></span></button>
+              <button class="walk-style-card" type="button" data-move-style="custom" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-custom"></use></svg><span><b>Custom move</b><small>Your own described performance</small></span></button>
+            </div>
+            <textarea class="idle-pose-prompt hidden" id="body-move-prompt" maxlength="600" placeholder="Example: vogue with sharp arm frames and a dramatic final pose · or: an energetic victory dance with a fist pump. Performed in place and looping back to the opening stance."></textarea>
+            <div class="body-motion-actions hidden" id="body-move-prompt-tools" style="margin-top:6px"><div class="grow"></div><button class="btn sm" id="body-move-prompt-ai" type="button" title="Type a rough idea above, and AI expands it into full choreography">✦ Draft from my gist</button></div>
+            <div class="motion-set-list hidden" id="body-move-sets" role="group" aria-label="Generated move sets"></div>
+            <div class="body-motion-actions"><div class="grow"></div><button class="btn pri" id="body-move-generate">Generate Moves</button></div>
+            <p class="note" id="body-move-status" style="margin-top:10px">Generate a full body first.</p>
+          </section>
         </div>
       </aside>
     </div>
@@ -736,10 +759,15 @@ const WALK_STYLE_LABELS = {
   custom: 'Custom gait'
 };
 const IDLE_POSE_IDS = new Set(['back-heel', 'tailored-cross', 'pocket-lean', 'heel-up', 'folded-cross', 'side-cross', 'custom']);
+const MOVE_STYLE_IDS = new Set(['viral', 'hiphop', 'kpop', 'ballet', 'salsa', 'custom']);
+const MOVE_STYLE_LABELS = {
+  viral: 'Viral TikTok', hiphop: 'Hip-hop freestyle', kpop: 'K-pop point dance',
+  ballet: 'Ballet grace', salsa: 'Salsa heat', custom: 'Custom move'
+};
 let BODY_SLUG = null, BODY_STATE = null, BODY_WATCH = null, BODY_VIEW = 'front';
 let BODY_PROMPT_FILLED = '', BODY_PROMPT_BUSY = false;
 let BODY_MODE = 'body', BODY_CYCLE = null;
-let BODY_WALK_STYLE = 'office', BODY_IDLE_POSE = 'back-heel', BODY_BUSY = false;
+let BODY_WALK_STYLE = 'office', BODY_IDLE_POSE = 'back-heel', BODY_MOVE_STYLE = 'viral', BODY_BUSY = false;
 
 if (SHELL && SHELL.isElectron) {
   $('.back').onclick = e => { e.preventDefault(); SHELL.showAvatar(); };
@@ -1524,6 +1552,22 @@ function selectWalkStyle(style, focusPrompt = false) {
   if (custom && focusPrompt) setTimeout(() => prompt.focus(), 0);
 }
 
+function selectMoveStyle(style, focusPrompt = false) {
+  if (!MOVE_STYLE_IDS.has(style)) style = 'viral';
+  BODY_MOVE_STYLE = style;
+  document.querySelectorAll('[data-move-style]').forEach(button => {
+    const selected = button.dataset.moveStyle === style;
+    button.classList.toggle('on', selected);
+    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  });
+  const custom = style === 'custom';
+  const prompt = $('#body-move-prompt');
+  prompt.classList.toggle('hidden', !custom);
+  $('#body-move-prompt-tools').classList.toggle('hidden', !custom);
+  prompt.disabled = BODY_BUSY || !custom;
+  if (custom && focusPrompt) setTimeout(() => prompt.focus(), 0);
+}
+
 function selectIdlePose(pose, focusPrompt = false) {
   if (!IDLE_POSE_IDS.has(pose)) pose = 'back-heel';
   BODY_IDLE_POSE = pose;
@@ -1545,11 +1589,11 @@ function setBodyBusy(busy) {
   const hasBody = Boolean(BODY_STATE && BODY_STATE.has_body);
   const hasVideoProvider = Boolean(BODY_STATE && BODY_STATE.video_provider);
   $('#body-generate').disabled = busy;
-  ['body-walk-generate', 'body-idle-generate'].forEach(id => {
+  ['body-walk-generate', 'body-idle-generate', 'body-move-generate'].forEach(id => {
     $('#' + id).disabled = busy || !hasBody || !hasVideoProvider;
   });
   $('#body-remove').disabled = busy;
-  document.querySelectorAll('[data-walk-style], [data-idle-pose]').forEach(button => {
+  document.querySelectorAll('[data-walk-style], [data-idle-pose], [data-move-style]').forEach(button => {
     button.disabled = busy;
   });
   document.querySelectorAll('.motion-set-use, .motion-set-delete').forEach(button => {
@@ -1557,8 +1601,10 @@ function setBodyBusy(busy) {
   });
   $('#body-motion-prompt').disabled = busy || BODY_IDLE_POSE !== 'custom';
   $('#body-walk-prompt').disabled = busy || BODY_WALK_STYLE !== 'custom';
+  $('#body-move-prompt').disabled = busy || BODY_MOVE_STYLE !== 'custom';
   $('#body-motion-prompt-ai').disabled = busy || BODY_IDLE_POSE !== 'custom';
   $('#body-walk-prompt-ai').disabled = busy || BODY_WALK_STYLE !== 'custom';
+  $('#body-move-prompt-ai').disabled = busy || BODY_MOVE_STYLE !== 'custom';
   ['body-style', 'body-pose', 'body-prompt', 'body-prompt-reset', 'body-prompt-ai'].forEach(id => {
     $('#' + id).disabled = busy;
   });
@@ -1850,6 +1896,12 @@ function renderBodyStudio() {
   BODY_IDLE_POSE = IDLE_POSE_IDS.has(savedIdlePose.id) ? savedIdlePose.id : 'back-heel';
   $('#body-motion-prompt').value = BODY_IDLE_POSE === 'custom' ? savedIdlePose.prompt || '' : '';
   selectIdlePose(BODY_IDLE_POSE);
+  const hasMove = Boolean(BODY_STATE.has_move ?? (motion.move &&
+    (motion.move.sheets || motion.move.alpha_stream)));
+  const savedMoveStyle = motion.move_style || {};
+  BODY_MOVE_STYLE = MOVE_STYLE_IDS.has(savedMoveStyle.id) ? savedMoveStyle.id : 'viral';
+  $('#body-move-prompt').value = BODY_MOVE_STYLE === 'custom' ? savedMoveStyle.prompt || '' : '';
+  selectMoveStyle(BODY_MOVE_STYLE);
   $('#body-preview').classList.toggle('hidden', !hasBody);
   $('#body-empty').classList.toggle('hidden', hasBody);
   $('#body-remove').classList.toggle('hidden', !hasBody);
@@ -1862,6 +1914,15 @@ function renderBodyStudio() {
   const idleState = $('#body-idle-state');
   idleState.textContent = hasIdle ? 'Ready' : 'Not generated';
   idleState.className = 'pill ' + (hasIdle ? 'ok' : '');
+  $('#body-move-generate').textContent = hasMove ? 'Generate a new move set' : 'Generate Moves';
+  const moveState = $('#body-move-state');
+  moveState.textContent = hasMove ? 'Ready' : 'Not generated';
+  moveState.className = 'pill ' + (hasMove ? 'ok' : '');
+  $('#body-move-status').textContent = hasMove
+    ? `Ready · ${MOVE_STYLE_LABELS[BODY_MOVE_STYLE] || 'This performance'} plays on a hair double-tap or from her menu. Generating adds a new set to the library.`
+    : hasBody
+      ? 'Ready to generate. She will perform it in place, on demand.'
+      : 'Generate the three full-body views first.';
   $('#body-walk-status').textContent = hasWalk
     ? `Ready · ${WALK_STYLE_LABELS[BODY_WALK_STYLE] || 'Horizon Walk'} controls desktop traversal. Generating adds a new set to the library.`
     : hasTurnaround
@@ -1922,7 +1983,8 @@ function motionSetCard(set) {
 }
 
 function renderMotionSets(kind) {
-  const box = $(kind === 'walk' ? '#body-walk-sets' : '#body-idle-sets');
+  const box = $(kind === 'walk' ? '#body-walk-sets'
+    : kind === 'move' ? '#body-move-sets' : '#body-idle-sets');
   const sets = ((BODY_STATE || {}).motion_sets || {})[kind] || [];
   box.classList.toggle('hidden', !sets.length);
   box.innerHTML = sets.map(motionSetCard).join('');
@@ -1952,6 +2014,7 @@ function renderBodySets() {
 function renderSetLists() {
   renderMotionSets('walk');
   renderMotionSets('idle');
+  renderMotionSets('move');
   renderBodySets();
 }
 
@@ -2147,6 +2210,12 @@ async function generateMotion(kind) {
     $('#body-walk-prompt').focus();
     return;
   }
+  const movePrompt = $('#body-move-prompt').value.trim();
+  if (kind === 'move' && BODY_MOVE_STYLE === 'custom' && movePrompt.length < 12) {
+    alert('Describe the custom move in at least 12 characters.');
+    $('#body-move-prompt').focus();
+    return;
+  }
   setBodyBusy(true);
   startBodyProgress('motion');
   let response;
@@ -2160,6 +2229,8 @@ async function generateMotion(kind) {
         walk_prompt: kind === 'walk' && BODY_WALK_STYLE === 'custom' ? walkPrompt : '',
         pose: BODY_IDLE_POSE,
         pose_prompt: kind === 'idle' && BODY_IDLE_POSE === 'custom' ? posePrompt : '',
+        move_style: BODY_MOVE_STYLE,
+        move_prompt: kind === 'move' && BODY_MOVE_STYLE === 'custom' ? movePrompt : '',
       })
     });
   } catch (error) {
@@ -2255,6 +2326,16 @@ $('#body-generate').onclick = generateBody;
 $('#body-remove').onclick = removeBody;
 $('#body-walk-generate').onclick = () => generateMotion('walk');
 $('#body-idle-generate').onclick = () => generateMotion('idle');
+$('#body-move-generate').onclick = () => generateMotion('move');
+document.querySelectorAll('[data-move-style]').forEach(button => {
+  button.onclick = () => selectMoveStyle(
+    button.dataset.moveStyle, button.dataset.moveStyle === 'custom');
+});
+$('#body-move-prompt').onfocus = () => {
+  if (BODY_MOVE_STYLE !== 'custom') selectMoveStyle('custom');
+};
+$('#body-move-prompt-ai').onclick = () =>
+  draftPromptFromGist('move', $('#body-move-prompt'), $('#body-move-prompt-ai'));
 document.querySelectorAll('[data-walk-style]').forEach(button => {
   button.onclick = () => selectWalkStyle(
     button.dataset.walkStyle, button.dataset.walkStyle === 'custom');

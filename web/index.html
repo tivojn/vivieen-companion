@@ -436,7 +436,7 @@ controlRow.addEventListener('pointerleave',()=>{
   captionRowHot=false;scheduleCaptionFold();
 });
 let M=null,IMG={},EYE={},GZ={},BW={},CK={},RB={},CUTOUT=null,BODY=null,HEADMASK=null;
-let MOTION={walk:null,idle:null},ready=false;
+let MOTION={walk:null,idle:null,move:null},ready=false;
 const faceSurface=document.createElement('canvas'),headSurface=document.createElement('canvas');
 const faceCtx=faceSurface.getContext('2d',{alpha:true}),headCtx=headSurface.getContext('2d',{alpha:true});
 const previewView=new URLSearchParams(location.search).get('view');
@@ -639,7 +639,7 @@ function routedStatus(route,fallback=''){
                 load(M.body.head_mask).then(image=>{HEADMASK=image;})]:[]),
     ...(M.body&&M.body.reactions?Object.entries(M.body.reactions).map(
       async([name,meta])=>{RB[name]=await load(meta.src);}):[]),
-    ...(M.motion?[loadMotion('walk'),loadMotion('idle')]:[])
+    ...(M.motion?[loadMotion('walk'),loadMotion('idle'),loadMotion('move')]:[])
   ]);
   const motionReady=Boolean(MOTION.walk);
   if(SHELL&&SHELL.isElectron&&typeof SHELL.setPetMotionReady==='function'){
@@ -1389,6 +1389,8 @@ function drawPetScene(now){
   const motionKind=PET.roam&&ROAM.enabled?
     (ROAM.mode==='walk'?'walk':ROAM.mode.startsWith('ledge-')?'idle':null):null;
   if(motionKind&&drawMotionClip(motionKind,now))return;
+  if(moveShowActive(now)&&drawMotionClip('move',now))return;
+  if(moveShowUntil&&now>=moveShowUntil)moveShowUntil=0;
   if(standingIdleActive(now)){
     // She settles in her bottom corner above the Dock and leans on the screen
     // edge, like a colleague stepping aside; the window docks once per
@@ -1450,7 +1452,7 @@ function loop(now){
   // attention brings the live standing avatar straight back. An OPEN chat
   // bar is not attention by itself - head-talk leaves it open for follow-ups
   // and she must still step aside - but typing in it is.
-  if(petHit||speaking||recording||dragging||REACT||gesture||
+  if(petHit||speaking||recording||dragging||REACT||gesture||now<moveShowUntil||
      (document.hasFocus()&&document.activeElement===txt)||txt.value.trim())lastEngagedAt=now;
   const ts=now/1000;
   lvl=lvl*0.55+level()*0.45;
@@ -1970,14 +1972,15 @@ function petBodyPart(x,y){
   const point=joints?canvasToBody(x,y):null;
   if(!point)return 'body';
   const at=name=>{const j=joints[name];return j?[j.x,j.y]:null;};
-  // The mask is face-exact, but people aim for the top of the head: hair
-  // must count as head too, or hold-to-talk dies on the crown. A circle
-  // around the nose sized by the nose-to-neck span covers hair and ears.
+  // The mask is face-exact, but people aim for the top of the head: the
+  // crown ring outside the mask is HAIR - it arms hold-to-talk exactly like
+  // the head, and a double-tap there is the Show Me Some Moves gesture. A
+  // circle around the nose sized by the nose-to-neck span covers it.
   {
     const nose=at('nose'),neck=at('neck');
     if(nose&&neck){
       const radius=Math.hypot(nose[0]-neck[0],nose[1]-neck[1])*1.2;
-      if(Math.hypot(point.x-nose[0],point.y-nose[1])<=radius)return 'head';
+      if(Math.hypot(point.x-nose[0],point.y-nose[1])<=radius)return 'hair';
     }
   }
   const segdist=(p,a,b)=>{
@@ -2034,7 +2037,28 @@ const STANDING_IDLE_AFTER_MS=10000,ROAM_HOVER_STOP_MS=260,DOUBLE_TAP_MS=450;
 /* Double taps are the deliberate verbs: legs start the Horizon Walk, the
    chest raises opacity, a foot lowers it. Returns true when the part had a
    double-tap action, so the second tap never also fires a reaction. */
+/* ---- Show Me Some Moves ---------------------------------------------------
+   A short performance loop played in place of the standing avatar: toggled
+   by a double-tap on the HAIR (the crown ring outside the face mask), the
+   menu row, and cancelled by any tap on her. Runs for four loops. */
+let moveShowUntil=0;
+function moveShowActive(now=performance.now()){
+  return Boolean(MOTION.move&&!PET.roam&&now<moveShowUntil);
+}
+function toggleMoveShow(){
+  const now=performance.now();
+  if(moveShowActive(now)){moveShowUntil=0;return true;}
+  if(!MOTION.move){
+    flashPrompt('No moves yet · generate Show Me Some Moves in Character Studio');
+    return false;
+  }
+  const clip=MOTION.move;
+  const seconds=Math.max(2,(Number(clip.frames)||1)/Math.max(1,Number(clip.fps)||12));
+  moveShowUntil=now+seconds*4000;
+  return true;
+}
 function petDoubleTap(part){
+  if(part==='hair'&&toggleMoveShow())return true;
   if((part==='leg_l'||part==='leg_r')&&MOTION.walk&&
      SHELL&&typeof SHELL.setPetRoam==='function'){
     Promise.resolve(SHELL.setPetRoam(true))
@@ -2103,7 +2127,8 @@ function petTapReaction(part){
   // Every tap gets an acknowledging nod; arms raise their hand and the torso
   // shrugs. Legs and feet only nod on a single tap - their whole-body tilt
   // was cancelled by taste - and answer properly on a double tap instead.
-  nods.push({t0:now,a:part==='head'?7.6:5.6,d:part==='head'?460:400,n:1});
+  const headTap=part==='head'||part==='hair';
+  nods.push({t0:now,a:headTap?7.6:5.6,d:headTap?460:400,n:1});
   nextNod=now+2400+Math.random()*2000;
   if(part==='arm_l'||part==='arm_r'){
     startLimbReaction(part);
@@ -2122,7 +2147,7 @@ cv.addEventListener('pointerdown',event=>{
   gesture={x0:event.clientX,y0:event.clientY,
     sx:event.screenX,sy:event.screenY,
     t0:performance.now(),ptt:false,
-    part,head:part==='head'};
+    part,head:part==='head'||part==='hair'};
   cv.setPointerCapture(event.pointerId);
   if(gesture.head&&canPetTalk()){
     gesture.timer=setTimeout(()=>{
@@ -2150,6 +2175,9 @@ cv.addEventListener('pointerup',event=>{
       lastTap={part:'',at:0};
       return;
     }
+    // Any tap off the hair ends a running move show (the hair keeps its
+    // double-tap toggle without the first tap eating the performance).
+    if(moveShowActive(now)&&part!=='hair')moveShowUntil=0;
     lastTap={part,at:now};
     petTapReaction(part);
   }
@@ -2229,6 +2257,9 @@ if(SHELL&&SHELL.isElectron&&typeof SHELL.onPetChat==='function')SHELL.onPetChat(
 addEventListener('keydown',event=>{
   if(event.key==='Escape'&&document.documentElement.classList.contains('chat-open'))closePetChat();
 });
+if(SHELL&&SHELL.isElectron&&typeof SHELL.onPetMoves==='function'){
+  SHELL.onPetMoves(()=>{toggleMoveShow();});
+}
 
 monitorButton.addEventListener('click',async()=>{
   if(!SHELL||monitorButton.disabled)return;

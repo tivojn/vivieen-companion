@@ -134,7 +134,7 @@ def _publish_motion(directory, destination, log):
     for name in os.listdir(destination):
         if name.startswith("motion-") and name.endswith(".webm"):
             os.remove(os.path.join(destination, name))
-    for kind in ("walk", "idle"):
+    for kind in ("walk", "idle", "move"):
         clip = dict(source.get(kind) or {})
         if not clip.get("sheets"):
             continue
