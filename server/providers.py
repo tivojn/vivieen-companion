@@ -421,14 +421,14 @@ GEMINI_TTS_VOICES = [
 def _filter_models(kind, provider, values):
     values = sorted(set(str(value) for value in values if value))
     if kind == "llm":
+        # Exclusion only, never a name allowlist: a prefix list ages the
+        # moment the vendor ships a new family (OpenAI's gpt-* allowlist
+        # would have hidden every non-gpt-named model). Drop what clearly
+        # is not a chat model and keep everything else.
         excluded = ("audio", "realtime", "tts", "transcribe", "whisper", "embedding",
-                    "image", "moderation")
-        values = [value for value in values
-                  if not any(word in value.lower() for word in excluded)]
-        if provider == "openai":
-            values = [value for value in values
-                      if value.startswith(("gpt-", "chatgpt-", "o1", "o3", "o4"))]
-        return values
+                    "image", "moderation", "dall-e", "sora", "davinci", "babbage")
+        return [value for value in values
+                if not any(word in value.lower() for word in excluded)]
     if kind == "tts" and provider == "openai":
         return [value for value in values
                 if "tts" in value.lower() or "audio" in value.lower()]
@@ -506,6 +506,20 @@ async def list_models(kind, c):
             r.raise_for_status()
             values = [model["id"] for model in r.json().get("data", [])]
             return _filter_models(kind, p, values)
+    except httpx.HTTPStatusError as exc:
+        # The raw httpx message buries the status behind a docs URL and the
+        # tail-keeping redactor then keeps only the URL - say what actually
+        # failed, plainly.
+        status = exc.response.status_code
+        if status in (401, 403):
+            reason = "the provider rejected this API key"
+        elif status == 404:
+            reason = "no models endpoint at this address - check the Endpoint field"
+        elif status == 429:
+            reason = "the provider is rate-limiting this key - try again shortly"
+        else:
+            reason = "the provider refused the request"
+        raise RuntimeError(f"{p}: {reason} (HTTP {status})") from exc
     except Exception as exc:
         raise RuntimeError(f"{p}: {_safe_error(str(exc))}") from exc
 
