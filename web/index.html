@@ -214,6 +214,23 @@ html.electron #shell{display:flex;position:fixed;z-index:90;left:0;right:0;top:0
 html.electron #status{top:54px}
 html.electron #gear{top:8px;right:112px;z-index:95;-webkit-app-region:no-drag}
 html.electron #vz{top:84px}
+/* Atelier: the desktop chrome trades neon for a champagne thread on warm
+   charcoal. Same elements, same behaviour - a token-level reskin. */
+html[data-design=atelier] #txt{border-color:rgba(201,168,106,.3);
+  background:rgba(22,20,17,.6);border-radius:0}
+html[data-design=atelier] #txt:focus{border-color:rgba(201,168,106,.6);
+  background:rgba(22,20,17,.72)}
+html[data-design=atelier] #txt.rec{border-color:rgba(201,168,106,.75);
+  box-shadow:0 0 0 3px rgba(201,168,106,.14)}
+html[data-design=atelier] #listenWave{border-radius:0;
+  border-color:rgba(201,168,106,.3);background:rgba(22,20,17,.92)}
+html[data-design=atelier] #listenWaveDot{background:#c9a86a}
+html[data-design=atelier] #listenWaveText{text-transform:uppercase;
+  letter-spacing:.14em;font-size:9.5px}
+html[data-design=atelier] #monitorTip{border-radius:0;
+  border-color:rgba(201,168,106,.3);background:rgba(22,20,17,.95)}
+html[data-design=atelier] #petBubble{border-radius:0;
+  border-color:rgba(201,168,106,.32);background:rgba(22,20,17,.85)}
 </style></head><body>
 <div id="shell"><div id="drag"></div><div id="shellBtns">
   <button class="shellBtn" id="shellPin" title="Always on top">◇</button>
@@ -249,6 +266,15 @@ Settings</a>
   </div>
 </div>
 <script>
+// The chosen design (Quiet / Atelier) is shared with Settings through
+// localStorage; the storage event keeps this long-lived window in step.
+const applyChromeDesign=value=>{
+  document.documentElement.dataset.design=value==='atelier'?'atelier':'quiet';
+};
+applyChromeDesign(localStorage.getItem('vivieen-design'));
+addEventListener('storage',event=>{
+  if(event.key==='vivieen-design')applyChromeDesign(event.newValue);
+});
 const SHELL=window.vivieen;
 const HAS_GLOBAL_PET_POINTER=Boolean(SHELL&&SHELL.onPetPointer);
 const PET_PREVIEW=new URLSearchParams(location.search).has('pet-preview');

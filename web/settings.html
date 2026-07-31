@@ -435,8 +435,105 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
   .rig-grid{grid-template-columns:1fr}.rig-visual{border-right:0;border-bottom:1px solid var(--line)}
   .rig-panel{max-height:none}.rig-foot{position:sticky;bottom:0}.rig-legend{margin-left:0}}
 .hidden{display:none!important}
+
+/* ================================================================ Atelier
+   The second design: editorial couture. Ivory paper and ink with a bronze
+   thread in the light; charcoal and champagne after dark. Serif display
+   headings (ui-serif = New York), uppercase letterspaced labels, sharp
+   corners, no glow. Same markup, same features - every rule below is an
+   override keyed off :root[data-design=atelier], so choosing "Quiet"
+   restores the other design exactly. */
+:root[data-design=atelier]{
+  --bg:#f6f3ec; --bg-sub:#efebe1; --panel:#fcfaf5; --panel-sub:#f4f0e7;
+  --line:#e0d9ca; --line-strong:#c9bfa9;
+  --ink:#1e1b16; --dim:#7c7466; --faint:#a89f8c;
+  --hover:rgba(30,27,22,.05); --press:rgba(30,27,22,.09);
+  --accent:#9a7b4f; --accent-text:#7d6138;
+  --accent-bg:rgba(154,123,79,.09); --accent-line:rgba(154,123,79,.42);
+  --ok:#5d7a52; --ok-text:#4e6a44; --ok-bg:rgba(93,122,82,.1); --ok-line:rgba(93,122,82,.35);
+  --warn:#a97e2f; --warn-text:#8d6822; --warn-bg:rgba(169,126,47,.1); --warn-line:rgba(169,126,47,.35);
+  --bad:#a4442f; --bad-text:#933b28; --bad-bg:rgba(164,68,47,.08); --bad-line:rgba(164,68,47,.35);
+  --glass:rgba(246,243,236,.88); --scrim:rgba(20,18,14,.5);
+  --checker-bg:#ece7dc; --checker-cell:#ddd6c6;
+  --stage-a:#fbf9f3; --stage-b:#e9e4d7; --thumb-bg:#ece7dc;
+  --shadow-sm:none;
+  --shadow-pop:0 2px 0 rgba(30,27,22,.06);
+  --shadow-modal:0 0 0 1px var(--line-strong),0 24px 60px rgba(30,27,22,.18);
+}
+:root[data-design=atelier][data-theme=dark]{
+  --bg:#141310; --bg-sub:#1a1815; --panel:#1c1a16; --panel-sub:#211e1a;
+  --line:#2e2a23; --line-strong:#453e31;
+  --ink:#ece7db; --dim:#9a9182; --faint:#6b6355;
+  --hover:rgba(236,231,219,.05); --press:rgba(236,231,219,.09);
+  --accent:#c9a86a; --accent-text:#d7bc85;
+  --accent-bg:rgba(201,168,106,.1); --accent-line:rgba(201,168,106,.42);
+  --ok:#7e9a6f; --ok-text:#9ab58b; --ok-bg:rgba(126,154,111,.12); --ok-line:rgba(126,154,111,.38);
+  --warn:#c49a4a; --warn-text:#d4b06a; --warn-bg:rgba(196,154,74,.12); --warn-line:rgba(196,154,74,.38);
+  --bad:#c46a52; --bad-text:#d4846e; --bad-bg:rgba(196,106,82,.12); --bad-line:rgba(196,106,82,.38);
+  --glass:rgba(20,19,16,.88); --scrim:rgba(0,0,0,.62);
+  --checker-bg:#211e1a; --checker-cell:#2b2721;
+  --stage-a:#242019; --stage-b:#121110; --thumb-bg:#0e0d0b;
+  --shadow-sm:none;
+  --shadow-pop:0 2px 0 rgba(0,0,0,.4);
+  --shadow-modal:0 0 0 1px var(--line-strong),0 28px 70px rgba(0,0,0,.6);
+}
+/* Sharp corners everywhere - the editorial page, not the rounded app. */
+:root[data-design=atelier] :is(.card,.av,.drop,button.btn,input,select,textarea,
+  .pill,.jobbox,.inherit,.mapping div,.rig-chip,.rig-dialog,.rig-stage,
+  .rig-lock,.rig-status,.walk-style-card,.idle-pose-card,.motion-set-card,
+  .motion-cycle-card,.motion-asset-card,.motion-section,.body-motion,
+  .body-provider,.body-progress,.body-identity,.motion-asset-preview,
+  .motion-cycle-stage,.motion-set-thumb,.motion-play,.motion-save,
+  .motion-set-use,.motion-set-delete,.theme-toggle,.av-rename,.av-name-input,
+  .body-progress-hint,.body-mode-tabs,.body-view-tabs,.motion-file-count,
+  .motion-library-empty,.preview-stage video){border-radius:0}
+:root[data-design=atelier] .jobbox .bar,:root[data-design=atelier] .body-progress .bar,
+:root[data-design=atelier] .jobbox .bar i,:root[data-design=atelier] .body-progress .bar i{border-radius:0}
+/* The editorial voice: serif display, uppercase whispers. */
+:root[data-design=atelier] header h1{font-family:ui-serif,"New York",Georgia,serif;
+  font-size:21px;font-weight:600;font-style:italic;letter-spacing:0}
+:root[data-design=atelier] h2{font-family:ui-serif,"New York",Georgia,serif;
+  font-size:19px;font-weight:600;letter-spacing:.01em;margin:42px 0 14px}
+:root[data-design=atelier] h2:first-child{margin-top:0}
+:root[data-design=atelier] .rig-head h3,:root[data-design=atelier] .motion-library-head h3{
+  font-family:ui-serif,"New York",Georgia,serif;font-style:italic}
+:root[data-design=atelier] label,
+:root[data-design=atelier] .body-panel h4,:root[data-design=atelier] .rig-panel h4{
+  text-transform:uppercase;letter-spacing:.14em;font-size:10px;font-weight:600;color:var(--faint)}
+:root[data-design=atelier] nav button{text-transform:uppercase;letter-spacing:.12em;
+  font-size:11px;font-weight:600;border-radius:0;padding:8px 4px;margin:0 8px;background:none}
+:root[data-design=atelier] nav button:hover{background:none;color:var(--ink)}
+:root[data-design=atelier] nav button.on{background:none;color:var(--ink);
+  box-shadow:inset 0 -2px 0 var(--accent)}
+:root[data-design=atelier] .back{text-transform:uppercase;letter-spacing:.1em;font-size:10.5px}
+/* Buttons: rectangular, ink-primary with a champagne hover thread. */
+:root[data-design=atelier] button.btn{box-shadow:none;border-color:var(--line-strong);
+  text-transform:uppercase;letter-spacing:.09em;font-size:11px;font-weight:600;padding:9px 14px}
+:root[data-design=atelier] button.btn.sm{padding:6px 10px;font-size:10px}
+:root[data-design=atelier] button.btn.pri{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+:root[data-design=atelier] button.btn.pri:hover{filter:none;background:var(--accent);border-color:var(--accent);color:#fff}
+:root[data-design=atelier] .pill{border:1px solid var(--line-strong);background:transparent;
+  color:var(--dim);border-radius:0;letter-spacing:.12em;font-weight:600;padding:3px 7px}
+:root[data-design=atelier] .pill.ok{border-color:var(--ok-line);background:transparent;color:var(--ok-text)}
+:root[data-design=atelier] .pill.warn{border-color:var(--warn-line);background:transparent;color:var(--warn-text)}
+:root[data-design=atelier] .pill.bad{border-color:var(--bad-line);background:transparent;color:var(--bad-text)}
+:root[data-design=atelier] .pill.act{border-color:var(--accent);background:var(--accent);color:#fff}
+:root[data-design=atelier] input:focus,:root[data-design=atelier] select:focus,
+:root[data-design=atelier] textarea:focus{border-color:var(--accent);box-shadow:none}
+:root[data-design=atelier] .av{box-shadow:none}
+:root[data-design=atelier] .av:hover{box-shadow:var(--shadow-pop)}
+:root[data-design=atelier] .av.active{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+:root[data-design=atelier] .drop{background:transparent;border-width:1px}
+:root[data-design=atelier] .metrics div{border-bottom-style:dotted}
+:root[data-design=atelier] .motion-library-kicker,
+:root[data-design=atelier] .motion-asset-stage{color:var(--accent-text);letter-spacing:.16em}
+:root[data-design=atelier] .body-visual:before{border-radius:0;opacity:.45}
+:root[data-design=atelier] .body-empty-mark{border-radius:0;box-shadow:none}
+:root[data-design=atelier] .savebar{border-top:1px solid var(--line-strong)}
+:root[data-design=atelier] .design-note{font-family:ui-serif,"New York",Georgia,serif;font-style:italic}
 </style>
-<script>document.documentElement.dataset.theme=localStorage.getItem('vivieen-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');</script>
+<script>document.documentElement.dataset.theme=localStorage.getItem('vivieen-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==='atelier'?'atelier':'quiet';</script>
 
 <header>
   <h1>Vivieen<span>.</span></h1>
@@ -446,6 +543,9 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
     <button data-tab="persona">Persona</button>
   </nav>
   <div class="grow"></div>
+  <button class="theme-toggle" id="design-toggle" type="button" style="width:auto;padding:0 10px;font-size:11px"
+          title="Switch between the two designs: Quiet (calm paper minimalism) and Atelier (editorial couture)"
+          aria-label="Switch interface design">Quiet</button>
   <button class="theme-toggle" id="theme-toggle" type="button" title="Switch light / dark theme" aria-label="Switch color theme">◐</button>
   <a class="back" href="/">&larr; Back to chat</a>
 </header>
@@ -811,6 +911,20 @@ $('#theme-toggle').onclick = () => {
   const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
   document.documentElement.dataset.theme = next;
   localStorage.setItem('vivieen-theme', next);
+};
+// Two complete designs over identical markup: Quiet (calm paper minimalism)
+// and Atelier (editorial couture). The choice is shared through
+// localStorage, so the pet chrome, menu, and bubble follow along live.
+function applyDesign(value) {
+  const design = value === 'atelier' ? 'atelier' : 'quiet';
+  document.documentElement.dataset.design = design;
+  $('#design-toggle').textContent = design === 'atelier' ? 'Atelier' : 'Quiet';
+}
+applyDesign(localStorage.getItem('vivieen-design'));
+$('#design-toggle').onclick = () => {
+  const next = document.documentElement.dataset.design === 'atelier' ? 'quiet' : 'atelier';
+  localStorage.setItem('vivieen-design', next);
+  applyDesign(next);
 };
 const SHELL = window.vivieen;
 let CFG = null, CAT = null, GLOBALS = {}, MEDIA_DEFAULTS = {}, ACTIVE = null, COMPANION = null, POLL = null;
