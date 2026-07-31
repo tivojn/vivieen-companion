@@ -694,7 +694,7 @@ button.btn.danger{color:#d9705f}
             <div class="body-motion-actions hidden" id="body-walk-prompt-tools" style="margin-top:6px"><div class="grow"></div><button class="btn sm" id="body-walk-prompt-ai" type="button" title="Type a rough idea above, and AI expands it into a full gait direction">✦ Draft from my gist</button></div>
             <p class="note">Uses the generated side body automatically. Identity, wardrobe, and facial rig remain locked; only the traversal changes.</p>
             <div class="motion-set-list hidden" id="body-walk-sets" role="group" aria-label="Generated Horizon Walk sets"></div>
-            <div class="body-motion-actions"><div class="grow"></div><button class="btn pri" id="body-walk-generate">Generate Horizon Walk</button></div>
+            <div class="body-motion-actions"><div class="grow"></div><button class="btn hidden" id="body-walk-recut" title="Reprocess the retained raw take through the current pipeline - no generation cost">Re-cut</button><button class="btn pri" id="body-walk-generate">Generate Horizon Walk</button></div>
             <p class="note" id="body-walk-status" style="margin-top:10px">Generate a full body first.</p>
           </section>
 
@@ -714,7 +714,7 @@ button.btn.danger{color:#d9705f}
             <div class="body-motion-actions hidden" id="body-motion-prompt-tools" style="margin-top:6px"><div class="grow"></div><button class="btn sm" id="body-motion-prompt-ai" type="button" title="Type a rough idea above, and AI expands it into a full act direction">✦ Draft from my gist</button></div>
             <p class="note">This controls Edge Idle only. It no longer regenerates or changes Horizon Walk.</p>
             <div class="motion-set-list hidden" id="body-idle-sets" role="group" aria-label="Generated Edge Idle sets"></div>
-            <div class="body-motion-actions"><div class="grow"></div><button class="btn pri" id="body-idle-generate">Generate Edge Idle</button></div>
+            <div class="body-motion-actions"><div class="grow"></div><button class="btn hidden" id="body-idle-recut" title="Reprocess the retained raw take through the current pipeline - no generation cost">Re-cut</button><button class="btn pri" id="body-idle-generate">Generate Edge Idle</button></div>
             <p class="note" id="body-idle-status" style="margin-top:10px">Generate a full body first.</p>
           </section>
 
@@ -732,7 +732,7 @@ button.btn.danger{color:#d9705f}
             <textarea class="idle-pose-prompt hidden" id="body-move-prompt" maxlength="600" placeholder="Example: vogue with sharp arm frames and a dramatic final pose · or: an energetic victory dance with a fist pump. Performed in place and looping back to the opening stance."></textarea>
             <div class="body-motion-actions hidden" id="body-move-prompt-tools" style="margin-top:6px"><div class="grow"></div><button class="btn sm" id="body-move-prompt-ai" type="button" title="Type a rough idea above, and AI expands it into full choreography">✦ Draft from my gist</button></div>
             <div class="motion-set-list hidden" id="body-move-sets" role="group" aria-label="Generated move sets"></div>
-            <div class="body-motion-actions"><div class="grow"></div><button class="btn pri" id="body-move-generate">Generate Moves</button></div>
+            <div class="body-motion-actions"><div class="grow"></div><button class="btn hidden" id="body-move-recut" title="Reprocess the retained raw take through the current pipeline - no generation cost">Re-cut</button><button class="btn pri" id="body-move-generate">Generate Moves</button></div>
             <p class="note" id="body-move-status" style="margin-top:10px">Generate a full body first.</p>
           </section>
         </div>
@@ -1590,7 +1590,8 @@ function setBodyBusy(busy) {
   const hasBody = Boolean(BODY_STATE && BODY_STATE.has_body);
   const hasVideoProvider = Boolean(BODY_STATE && BODY_STATE.video_provider);
   $('#body-generate').disabled = busy;
-  ['body-walk-generate', 'body-idle-generate', 'body-move-generate'].forEach(id => {
+  ['body-walk-generate', 'body-idle-generate', 'body-move-generate',
+   'body-walk-recut', 'body-idle-recut', 'body-move-recut'].forEach(id => {
     $('#' + id).disabled = busy || !hasBody || !hasVideoProvider;
   });
   $('#body-remove').disabled = busy;
@@ -1918,6 +1919,11 @@ function renderBodyStudio() {
   idleState.textContent = hasIdle ? 'Ready' : 'Not generated';
   idleState.className = 'pill ' + (hasIdle ? 'ok' : '');
   $('#body-move-generate').textContent = hasMove ? 'Generate a new move set' : 'Generate Moves';
+  // Re-cut reprocesses the retained raw take through the current local
+  // pipeline (e.g. the RVM matte) - free, so offer it whenever a clip exists.
+  $('#body-walk-recut').classList.toggle('hidden', !hasWalk);
+  $('#body-idle-recut').classList.toggle('hidden', !hasIdle);
+  $('#body-move-recut').classList.toggle('hidden', !hasMove);
   const moveState = $('#body-move-state');
   moveState.textContent = hasMove ? 'Ready' : 'Not generated';
   moveState.className = 'pill ' + (hasMove ? 'ok' : '');
@@ -2330,6 +2336,36 @@ $('#body-remove').onclick = removeBody;
 $('#body-walk-generate').onclick = () => generateMotion('walk');
 $('#body-idle-generate').onclick = () => generateMotion('idle');
 $('#body-move-generate').onclick = () => generateMotion('move');
+async function recutMotion(kind) {
+  setBodyBusy(true);
+  startBodyProgress('motion');
+  let response;
+  try {
+    response = await api('/api/avatar/motion/recut', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({slug: BODY_SLUG, kind})
+    });
+  } catch (error) {
+    failBodyProgress('Could not reach the local backend. Check that the Vivieen server is running, then try again.');
+    setBodyBusy(false);
+    return;
+  }
+  if (!response.started && response.reason === 'already building') {
+    setBodyBusy(true);
+    pollBody(response.job_id);
+    return;
+  }
+  if (response.detail || !response.started) {
+    resetBodyProgress();
+    alert(response.detail || response.reason || 'Unable to start the re-cut.');
+    setBodyBusy(false);
+    return;
+  }
+  pollBody(response.job_id);
+}
+$('#body-walk-recut').onclick = () => recutMotion('walk');
+$('#body-idle-recut').onclick = () => recutMotion('idle');
+$('#body-move-recut').onclick = () => recutMotion('move');
 document.querySelectorAll('[data-move-style]').forEach(button => {
   button.onclick = () => selectMoveStyle(
     button.dataset.moveStyle, button.dataset.moveStyle === 'custom');

@@ -3786,6 +3786,86 @@ def preview_keyframes(
     return previews
 
 
+def recut(avatar_dir, kind, log=print, progress=None):
+    """Reprocess one kind's RETAINED raw take through the current local
+    pipeline - matting, gates, packing - without any generation. This is how
+    an existing set picks up pipeline upgrades (like the RVM matte) for
+    free: the provider footage is already on disk in motion/raw/.
+    """
+    kind = _clean(kind, 20)
+    if kind not in {"walk", "idle", "move"}:
+        raise ValueError(f"unknown motion clip selection: {kind}")
+    destination, backup = _motion_transaction_paths(avatar_dir)
+    metadata_path = os.path.join(destination, "motion.json")
+    if not os.path.isfile(metadata_path):
+        raise RuntimeError("no motion has been generated yet")
+    with open(metadata_path, encoding="utf-8") as handle:
+        metadata = json.load(handle)
+    if not metadata.get(kind):
+        raise RuntimeError(f"no {kind} clip exists to re-cut")
+    raw_video = os.path.join(destination, "raw", f"{kind}-source.mp4")
+    if not os.path.isfile(raw_video):
+        raise RuntimeError(
+            f"the retained raw {kind} take is missing; regenerate instead")
+
+    process_options = {}
+    if kind == "walk":
+        walk_style = resolve_walk_style(metadata.get("walk_style"))
+        if walk_style["id"] != DEFAULT_WALK_STYLE:
+            process_options["walk_style"] = walk_style
+        fps = WALK_FPS
+    else:
+        fps = IDLE_FPS
+        if kind == "move":
+            process_options["idle_validation"] = "free"
+        else:
+            idle_pose = resolve_idle_pose(metadata.get("idle_pose"))
+            if idle_pose["validation"] != "back-heel":
+                process_options["idle_validation"] = idle_pose["validation"]
+
+    if os.path.exists(backup):
+        rollback_pending_build(avatar_dir)
+    _emit(progress, "alpha", 0.2, f"Re-cutting the retained {kind} take")
+    stage = tempfile.mkdtemp(prefix=".motion-stage-", dir=avatar_dir)
+    swapped = False
+    try:
+        shutil.copytree(destination, stage, dirs_exist_ok=True)
+        _remove_clip_assets(stage, kind)
+        # raw/ keeps the source take: it is the whole point of a re-cut.
+        raw_dir = os.path.join(stage, "raw")
+        os.makedirs(raw_dir, exist_ok=True)
+        for name in (f"{kind}-keyframe.png", f"{kind}-source.mp4"):
+            source_path = os.path.join(destination, "raw", name)
+            if os.path.isfile(source_path):
+                shutil.copy2(source_path, os.path.join(raw_dir, name))
+        clip = _process_clip(kind, raw_video, fps, stage, log, **process_options)
+        metadata[kind] = clip
+        metadata["updated"] = datetime.datetime.now().isoformat(
+            timespec="seconds")
+        with open(os.path.join(stage, "motion.json"), "w") as handle:
+            json.dump(metadata, handle, indent=1)
+        shutil.rmtree(backup, ignore_errors=True)
+        os.replace(destination, backup)
+        try:
+            os.replace(stage, destination)
+        except Exception:
+            if not os.path.exists(destination) and os.path.exists(backup):
+                os.replace(backup, destination)
+            raise
+        stage = None
+        swapped = True
+        _emit(progress, "done", 1.0, f"{kind} re-cut ready")
+        log(f"re-cut {kind} from the retained take")
+        return metadata
+    except Exception:
+        if swapped:
+            rollback_pending_build(avatar_dir)
+        raise
+    finally:
+        if stage and os.path.exists(stage):
+            shutil.rmtree(stage, ignore_errors=True)
+
+
 def _motion_transaction_paths(avatar_dir):
     return (
         os.path.join(avatar_dir, "motion"),
