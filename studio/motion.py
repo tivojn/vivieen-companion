@@ -970,20 +970,39 @@ def _generated_file(directory, extensions, started, stdout=""):
                        (f": {detail}" if detail else ""))
 
 
+_TRANSIENT_PROVIDER_MARKERS = (
+    "polling failed", "socket disconnected", "tls", "econnreset",
+    "connection reset", "network", "temporarily unavailable",
+    "bad gateway", "502", "503", "timed out")
+
+
 def _run(command, output_dir, extensions):
     os.makedirs(output_dir, mode=0o700, exist_ok=True)
-    started = time.time()
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        timeout=1200,
-        stdin=subprocess.DEVNULL,
-    )
-    if result.returncode:
-        detail = (result.stderr or result.stdout or "generation failed").strip()[-1600:]
-        raise RuntimeError(detail)
-    return _generated_file(output_dir, extensions, started, result.stdout)
+    for attempt in (1, 2):
+        started = time.time()
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=1200,
+            stdin=subprocess.DEVNULL,
+        )
+        try:
+            if result.returncode:
+                detail = (result.stderr or result.stdout
+                          or "generation failed").strip()[-1600:]
+                raise RuntimeError(detail)
+            return _generated_file(output_dir, extensions, started, result.stdout)
+        except RuntimeError as error:
+            # A dropped socket mid-poll is the provider's network hiccup,
+            # not a bad request: one quiet retry before surfacing it.
+            message = str(error).lower()
+            transient = any(
+                marker in message for marker in _TRANSIENT_PROVIDER_MARKERS)
+            if attempt == 1 and transient:
+                time.sleep(8)
+                continue
+            raise
 
 
 def _standard_image(source, destination):
