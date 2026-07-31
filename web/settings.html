@@ -437,12 +437,17 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .hidden{display:none!important}
 
 /* ================================================================ Atelier
-   The second design: editorial couture. Ivory paper and ink with a bronze
-   thread in the light; charcoal and champagne after dark. Serif display
-   headings (ui-serif = New York), uppercase letterspaced labels, sharp
-   corners, no glow. Same markup, same features - every rule below is an
-   override keyed off :root[data-design=atelier], so choosing "Quiet"
-   restores the other design exactly. */
+   The second design - and a second LAYOUT, not a reskin. Where Quiet is a
+   top-tabbed document, Atelier is an editorial issue: a full-height
+   contents rail on the left (numbered, serif), a wide article column,
+   avatars as full-bleed spreads instead of cards, model sections divided
+   by ink rules like magazine departments, and the studio tools with their
+   controls on the left and the stage on the right. Same DOM, same
+   features - every rule is keyed off :root[data-design=atelier], so
+   choosing "Quiet" restores the other design exactly.
+
+   Palette: ivory, ink, and a bronze thread by day; charcoal and champagne
+   after dark. Voice: ui-serif (New York) display, uppercase whispers. */
 :root[data-design=atelier]{
   --bg:#f6f3ec; --bg-sub:#efebe1; --panel:#fcfaf5; --panel-sub:#f4f0e7;
   --line:#e0d9ca; --line-strong:#c9bfa9;
@@ -477,9 +482,97 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
   --shadow-pop:0 2px 0 rgba(0,0,0,.4);
   --shadow-modal:0 0 0 1px var(--line-strong),0 28px 70px rgba(0,0,0,.6);
 }
-/* Sharp corners everywhere - the editorial page, not the rounded app. */
-:root[data-design=atelier] :is(.card,.av,.drop,button.btn,input,select,textarea,
-  .pill,.jobbox,.inherit,.mapping div,.rig-chip,.rig-dialog,.rig-stage,
+
+/* ----- the app shell: contents rail left, article right ----- */
+:root[data-design=atelier] body{display:grid;grid-template-columns:264px minmax(0,1fr)}
+:root[data-design=atelier] header{
+  position:sticky;top:0;height:100vh;z-index:9;
+  display:grid;grid-template-columns:1fr 1fr;
+  grid-template-areas:"brand brand" "nav nav" "fill fill" "design theme" "back back";
+  grid-template-rows:auto auto 1fr auto auto;
+  align-items:start;gap:0;padding:34px 26px 26px;
+  background:var(--bg-sub);backdrop-filter:none;
+  border-bottom:0;border-right:1px solid var(--line-strong)}
+:root[data-design=atelier] header h1{grid-area:brand;
+  font-family:ui-serif,"New York",Georgia,serif;font-size:30px;font-weight:600;
+  font-style:italic;letter-spacing:0;margin-bottom:34px}
+:root[data-design=atelier] nav{grid-area:nav;display:flex;flex-direction:column;
+  gap:2px;margin-left:0;counter-reset:chapter;align-items:stretch}
+:root[data-design=atelier] nav button{
+  counter-increment:chapter;display:flex;align-items:baseline;gap:12px;
+  padding:11px 2px;margin:0;border-radius:0;background:none;text-align:left;
+  font-family:ui-serif,"New York",Georgia,serif;font-size:17.5px;font-weight:500;
+  letter-spacing:.01em;text-transform:none;color:var(--dim);
+  border-bottom:1px solid var(--line)}
+:root[data-design=atelier] nav button::before{
+  content:counter(chapter,decimal-leading-zero);
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:10px;
+  font-weight:600;letter-spacing:.14em;color:var(--faint)}
+:root[data-design=atelier] nav button:hover{background:none;color:var(--ink)}
+:root[data-design=atelier] nav button.on{background:none;color:var(--ink);
+  font-style:italic;box-shadow:none}
+:root[data-design=atelier] nav button.on::before{color:var(--accent-text)}
+:root[data-design=atelier] header .grow{grid-area:fill}
+:root[data-design=atelier] #design-toggle{grid-area:design;justify-self:start}
+:root[data-design=atelier] #theme-toggle{grid-area:theme;justify-self:end}
+:root[data-design=atelier] .back{grid-area:back;margin-top:14px;padding:10px 2px 0;
+  border-top:1px solid var(--line);border-radius:0;
+  text-transform:uppercase;letter-spacing:.12em;font-size:10px}
+:root[data-design=atelier] .back:hover{background:none;color:var(--ink)}
+:root[data-design=atelier] main{max-width:1080px;margin:0;padding:58px 64px 140px}
+:root[data-design=atelier] .savebar{left:264px;padding:14px 64px;
+  border-top:1px solid var(--line-strong)}
+@media(max-width:860px){
+  :root[data-design=atelier] body{display:block}
+  :root[data-design=atelier] header{position:sticky;height:auto;
+    display:flex;align-items:center;gap:14px;padding:12px 20px;
+    border-right:0;border-bottom:1px solid var(--line-strong)}
+  :root[data-design=atelier] header h1{margin-bottom:0;font-size:22px}
+  :root[data-design=atelier] nav{flex-direction:row;gap:14px}
+  :root[data-design=atelier] nav button{border-bottom:0;padding:6px 0;font-size:15px}
+  :root[data-design=atelier] .back{border-top:0;margin-top:0}
+  :root[data-design=atelier] main{padding:30px 22px 120px}
+  :root[data-design=atelier] .savebar{left:0;padding:12px 22px}
+}
+
+/* ----- editorial departments instead of cards ----- */
+:root[data-design=atelier] h2{
+  font-family:ui-serif,"New York",Georgia,serif;font-size:30px;font-weight:600;
+  font-style:italic;letter-spacing:0;text-transform:none;margin:64px 0 14px}
+:root[data-design=atelier] h2:first-child{margin-top:0}
+:root[data-design=atelier] .card{
+  border:0;border-top:2px solid var(--ink);border-radius:0;
+  background:transparent;box-shadow:none;padding:26px 0 8px}
+:root[data-design=atelier] .inherit{border-radius:0;background:var(--panel-sub)}
+:root[data-design=atelier] .mapping div{border-radius:0;background:var(--panel)}
+
+/* ----- avatars: full-width spreads, not a card grid ----- */
+:root[data-design=atelier] .grid{
+  grid-template-columns:1fr;gap:0;border-top:2px solid var(--ink)}
+:root[data-design=atelier] .av{
+  display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);
+  border:0;border-bottom:1px solid var(--line-strong);border-radius:0;
+  background:transparent;box-shadow:none;overflow:visible}
+:root[data-design=atelier] .av:hover{box-shadow:none;background:var(--hover)}
+:root[data-design=atelier] .av.active{
+  box-shadow:inset 4px 0 0 var(--accent);background:var(--accent-bg)}
+:root[data-design=atelier] .av .thumb{aspect-ratio:3/4;border-radius:0}
+:root[data-design=atelier] .av .body{
+  display:flex;flex-direction:column;padding:24px 6px 24px 30px}
+:root[data-design=atelier] .av h3{
+  font-family:ui-serif,"New York",Georgia,serif;font-size:24px;font-weight:600;
+  font-style:italic}
+:root[data-design=atelier] .metrics{max-width:480px}
+:root[data-design=atelier] .metrics div{border-bottom:1px dotted var(--line-strong)}
+:root[data-design=atelier] .acts{margin-top:auto;padding-top:14px}
+@media(max-width:700px){
+  :root[data-design=atelier] .av{grid-template-columns:1fr}
+  :root[data-design=atelier] .av .body{padding:18px 4px}
+}
+
+/* ----- sharp geometry and the editorial voice ----- */
+:root[data-design=atelier] :is(.drop,button.btn,input,select,textarea,
+  .pill,.jobbox,.rig-chip,.rig-dialog,.rig-stage,
   .rig-lock,.rig-status,.walk-style-card,.idle-pose-card,.motion-set-card,
   .motion-cycle-card,.motion-asset-card,.motion-section,.body-motion,
   .body-provider,.body-progress,.body-identity,.motion-asset-preview,
@@ -489,48 +582,35 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
   .motion-library-empty,.preview-stage video){border-radius:0}
 :root[data-design=atelier] .jobbox .bar,:root[data-design=atelier] .body-progress .bar,
 :root[data-design=atelier] .jobbox .bar i,:root[data-design=atelier] .body-progress .bar i{border-radius:0}
-/* The editorial voice: serif display, uppercase whispers. */
-:root[data-design=atelier] header h1{font-family:ui-serif,"New York",Georgia,serif;
-  font-size:21px;font-weight:600;font-style:italic;letter-spacing:0}
-:root[data-design=atelier] h2{font-family:ui-serif,"New York",Georgia,serif;
-  font-size:19px;font-weight:600;letter-spacing:.01em;margin:42px 0 14px}
-:root[data-design=atelier] h2:first-child{margin-top:0}
 :root[data-design=atelier] .rig-head h3,:root[data-design=atelier] .motion-library-head h3{
   font-family:ui-serif,"New York",Georgia,serif;font-style:italic}
 :root[data-design=atelier] label,
 :root[data-design=atelier] .body-panel h4,:root[data-design=atelier] .rig-panel h4{
   text-transform:uppercase;letter-spacing:.14em;font-size:10px;font-weight:600;color:var(--faint)}
-:root[data-design=atelier] nav button{text-transform:uppercase;letter-spacing:.12em;
-  font-size:11px;font-weight:600;border-radius:0;padding:8px 4px;margin:0 8px;background:none}
-:root[data-design=atelier] nav button:hover{background:none;color:var(--ink)}
-:root[data-design=atelier] nav button.on{background:none;color:var(--ink);
-  box-shadow:inset 0 -2px 0 var(--accent)}
-:root[data-design=atelier] .back{text-transform:uppercase;letter-spacing:.1em;font-size:10.5px}
-/* Buttons: rectangular, ink-primary with a champagne hover thread. */
 :root[data-design=atelier] button.btn{box-shadow:none;border-color:var(--line-strong);
   text-transform:uppercase;letter-spacing:.09em;font-size:11px;font-weight:600;padding:9px 14px}
 :root[data-design=atelier] button.btn.sm{padding:6px 10px;font-size:10px}
 :root[data-design=atelier] button.btn.pri{background:var(--ink);border-color:var(--ink);color:var(--bg)}
 :root[data-design=atelier] button.btn.pri:hover{filter:none;background:var(--accent);border-color:var(--accent);color:#fff}
 :root[data-design=atelier] .pill{border:1px solid var(--line-strong);background:transparent;
-  color:var(--dim);border-radius:0;letter-spacing:.12em;font-weight:600;padding:3px 7px}
+  color:var(--dim);letter-spacing:.12em;font-weight:600;padding:3px 7px}
 :root[data-design=atelier] .pill.ok{border-color:var(--ok-line);background:transparent;color:var(--ok-text)}
 :root[data-design=atelier] .pill.warn{border-color:var(--warn-line);background:transparent;color:var(--warn-text)}
 :root[data-design=atelier] .pill.bad{border-color:var(--bad-line);background:transparent;color:var(--bad-text)}
 :root[data-design=atelier] .pill.act{border-color:var(--accent);background:var(--accent);color:#fff}
 :root[data-design=atelier] input:focus,:root[data-design=atelier] select:focus,
 :root[data-design=atelier] textarea:focus{border-color:var(--accent);box-shadow:none}
-:root[data-design=atelier] .av{box-shadow:none}
-:root[data-design=atelier] .av:hover{box-shadow:var(--shadow-pop)}
-:root[data-design=atelier] .av.active{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 :root[data-design=atelier] .drop{background:transparent;border-width:1px}
-:root[data-design=atelier] .metrics div{border-bottom-style:dotted}
 :root[data-design=atelier] .motion-library-kicker,
 :root[data-design=atelier] .motion-asset-stage{color:var(--accent-text);letter-spacing:.16em}
-:root[data-design=atelier] .body-visual:before{border-radius:0;opacity:.45}
 :root[data-design=atelier] .body-empty-mark{border-radius:0;box-shadow:none}
-:root[data-design=atelier] .savebar{border-top:1px solid var(--line-strong)}
-:root[data-design=atelier] .design-note{font-family:ui-serif,"New York",Georgia,serif;font-style:italic}
+
+/* ----- the studio tools: controls LEFT, stage RIGHT ----- */
+:root[data-design=atelier] .body-grid,:root[data-design=atelier] .rig-grid{direction:rtl}
+:root[data-design=atelier] .body-grid>*,:root[data-design=atelier] .rig-grid>*{direction:ltr}
+:root[data-design=atelier] .body-visual{border-right:0;border-left:1px solid var(--line)}
+:root[data-design=atelier] .rig-visual{border-right:0;border-left:1px solid var(--line)}
+:root[data-design=atelier] .body-visual:before{border-radius:0;opacity:.45}
 </style>
 <script>document.documentElement.dataset.theme=localStorage.getItem('vivieen-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
 document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==='atelier'?'atelier':'quiet';</script>

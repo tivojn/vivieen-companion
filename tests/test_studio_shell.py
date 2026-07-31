@@ -38,6 +38,16 @@ class SettingsMarkupTest(unittest.TestCase):
         # Quiet exactly and every feature behaves the same in both.
         self.assertIn(":root[data-design=atelier]", self.settings)
         self.assertIn('id="design-toggle"', self.settings)
+        # Atelier is a different LAYOUT, not a reskin: a full-height
+        # numbered contents rail replaces the top tabs, avatars become
+        # editorial spreads instead of a card grid, and the studio tools
+        # flip to controls-left / stage-right - all in CSS over the same
+        # DOM, so Quiet's layout returns untouched on switch.
+        self.assertIn("body{display:grid;grid-template-columns:264px", self.settings)
+        self.assertIn("counter(chapter,decimal-leading-zero)", self.settings)
+        self.assertIn(".av{\n  display:grid;grid-template-columns:minmax(220px,300px)",
+                      self.settings)
+        self.assertIn(".rig-grid{direction:rtl}", self.settings)
         self.assertIn("localStorage.setItem('vivieen-design'", self.settings)
         self.assertIn("function applyDesign", self.settings)
         for page in ("index.html", "menu.html", "bubble.html"):
