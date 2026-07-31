@@ -1566,6 +1566,12 @@ function showMenuWindow(spec, onDismiss = null) {
   menuWindow.loadURL(`${baseUrl()}/menu?electron=1`);
   menuWindow.webContents.once('did-finish-load', () => {
     if (menuWindow && !menuWindow.isDestroyed()) {
+      // Chromium persists page zoom PER ORIGIN: a zoomed Settings page (same
+      // 127.0.0.1 origin) silently zooms this window too, so the menu renders
+      // larger than it measured and the window clips its corners and last
+      // row. The menu is never user-zoomable - pin it to 1.
+      menuWindow.webContents.setZoomFactor(1);
+      menuWindow.webContents.setVisualZoomLevelLimits(1, 1);
       menuWindow.webContents.send('vivieen:menu-spec', payload);
     }
   });
@@ -2082,8 +2088,14 @@ function installIpc() {
   ipcMain.on('vivieen:menu-size', (event, size) => {
     if (!menuWindow || menuWindow.isDestroyed()
         || event.sender !== menuWindow.webContents) return;
-    const width = Math.max(160, Math.min(440, Math.round(Number(size && size.w) || 0)));
-    const height = Math.max(40, Math.min(720, Math.round(Number(size && size.h) || 0)));
+    // The renderer measures in CSS px; the window is sized in DIPs. With the
+    // zoom pinned to 1 these agree, but scale by the live factor anyway so a
+    // zoom that sneaks in can never clip the panel again.
+    const zoom = menuWindow.webContents.getZoomFactor() || 1;
+    const width = Math.max(160,
+      Math.min(440, Math.round((Number(size && size.w) || 0) * zoom)));
+    const height = Math.max(40,
+      Math.min(720, Math.round((Number(size && size.h) || 0) * zoom)));
     const area = screen.getDisplayNearestPoint(menuAnchor).workArea;
     let x = menuAnchor.x;
     let y = menuAnchor.y;

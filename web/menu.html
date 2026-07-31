@@ -93,6 +93,13 @@ MENU.onSpec(items=>{
   }
   report();
 });
+// Self-check after the shell resizes us: if the content still overflows
+// the viewport (any scaling mismatch between CSS px and window DIPs), ask
+// again - the shell folds its live zoom factor into the next answer.
+addEventListener('resize',()=>{
+  if(document.documentElement.scrollWidth>innerWidth+1||
+     document.documentElement.scrollHeight>innerHeight+1)report();
+});
 addEventListener('keydown',e=>{if(e.key==='Escape')MENU.close();});
 addEventListener('contextmenu',e=>e.preventDefault());
 </script>
