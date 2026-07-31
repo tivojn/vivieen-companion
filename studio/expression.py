@@ -51,7 +51,12 @@ GAZE_DX = ([-9.0, -7.5, -6.0, -4.8, -3.6, -2.4] +
 GAZE_DY = [-3.5, -2.5, -1.5, -0.75, -0.375, 0.0, 0.375, 0.75, 1.5, 2.5, 3.5]
 # Brow offsets, negative = knitted.  Subtle-anchor range, not big acting: half a
 # pixel apart so the runtime can snap here too rather than ghost the brow hair.
-BROW_DY = [round(-1.5 + 0.5 * i, 3) for i in range(11)]       # -1.5 .. +3.5
+# Dense near neutral for idle micro-motion, then real reach: a human brow
+# raise is ~8-14px at this scale, and the old +3.5px ceiling was measured
+# live (2026-08-01) as imperceptible - the whole upper face read as frozen
+# however hard the runtime gestured.
+BROW_DY = [-3.0, -2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 1.75, 2.5, 3.5,
+           5.0, 6.5, 8.0, 9.5]
 # Cheek raise, in px of lift at the lower lid margin.  Small on purpose - this
 # is the warmth cue that rides under speech, not a smile.
 CHEEK_UP = [0.0, 0.65, 1.3, 2.0, 2.7]

@@ -164,8 +164,17 @@ class RigProfileTests(unittest.TestCase):
         # gesture size and cadence by it, and the forehead skin band shifts
         # with the brow value instead of staying frozen under moving strips.
         self.assertIn("brows", rig.CONTROLS)
+        # Eyebrows and forehead are SEPARATE sliders (2026-08-01), and the
+        # baked brow travel reaches real human range - the old +3.5px
+        # ceiling was measured live as imperceptible on screen.
+        self.assertIn("forehead", rig.CONTROLS)
+        self.assertEqual(rig.CONTROLS["brows"]["label"], "Eyebrows")
+        self.assertEqual(rig.CONTROLS["forehead"]["label"], "Forehead")
+        from studio import expression
+        self.assertEqual(max(expression.BROW_DY), 9.5)
         for preset in rig.PRESETS.values():
             self.assertIn("brows", preset)
+            self.assertIn("forehead", preset)
         renderer = open(os.path.join(ROOT, "web", "index.html"),
                         encoding="utf-8").read()
         self.assertIn("const browGain=", renderer)
@@ -179,6 +188,11 @@ class RigProfileTests(unittest.TestCase):
         self.assertIn("foreheadFor(bv);", renderer)
         self.assertIn("const bShift=-foreheadLift", renderer)
         self.assertIn("target>foreheadLift?0.10:0.045", renderer)
+        self.assertIn("const foreheadGain=", renderer)
+        self.assertIn("const browRange=", renderer)
+        app_src = open(os.path.join(ROOT, "server", "app.py"),
+                       encoding="utf-8").read()
+        self.assertIn('forehead: float = _rig_control_field("forehead")', app_src)
         app_source = open(os.path.join(ROOT, "server", "app.py"),
                           encoding="utf-8").read()
         self.assertIn('brows: float = _rig_control_field("brows")', app_source)

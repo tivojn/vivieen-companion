@@ -557,6 +557,7 @@ class RigProfileInput(BaseModel):
     jaw: float = _rig_control_field("jaw")
     cheeks: float = _rig_control_field("cheeks")
     brows: float = _rig_control_field("brows")
+    forehead: float = _rig_control_field("forehead")
     nasolabial: float = _rig_control_field("nasolabial")
     nose: float = _rig_control_field("nose")
     teeth_lock: bool = True
