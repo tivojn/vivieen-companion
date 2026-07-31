@@ -548,6 +548,7 @@ button.btn.danger{color:#d9705f}
           <button class="rig-chip on" type="button" data-body-mode="body" role="tab">Body</button>
           <button class="rig-chip" type="button" data-body-mode="walk" role="tab">Walk <span class="mode-count" id="body-walk-file-count">0</span></button>
           <button class="rig-chip" type="button" data-body-mode="idle" role="tab">Edge Idle <span class="mode-count" id="body-idle-file-count">0</span></button>
+          <button class="rig-chip" type="button" data-body-mode="move" role="tab">Moves <span class="mode-count" id="body-move-file-count">0</span></button>
         </div>
         <div class="body-view-tabs hidden" id="body-view-tabs" role="tablist" aria-label="Full-body view">
           <button class="rig-chip on" data-body-view="front" role="tab">Front</button>
@@ -1793,7 +1794,8 @@ async function startBodyMotionCycle(kind) {
 
 function renderBodyMotionLibrary() {
   const kind = BODY_MODE;
-  const title = kind === 'walk' ? 'Horizon Walk' : 'Edge Idle';
+  const title = kind === 'walk' ? 'Horizon Walk'
+    : kind === 'move' ? 'Show Me Some Moves' : 'Edge Idle';
   const clip = BODY_STATE && BODY_STATE.motion && BODY_STATE.motion[kind];
   $('#body-motion-library-title').textContent = title;
   $('#body-motion-library-copy').textContent = clip
@@ -1806,7 +1808,7 @@ function renderBodyMotionLibrary() {
 }
 
 function setBodyMode(mode) {
-  if (!['body', 'walk', 'idle'].includes(mode)) return;
+  if (!['body', 'walk', 'idle', 'move'].includes(mode)) return;
   BODY_MODE = mode;
   renderBodyPreview();
 }
@@ -1825,6 +1827,7 @@ function renderBodyPreview() {
   $('#body-mode-tabs').classList.toggle('hidden', !hasBody);
   $('#body-walk-file-count').textContent = String((catalog.walk || []).length);
   $('#body-idle-file-count').textContent = String((catalog.idle || []).length);
+  $('#body-move-file-count').textContent = String((catalog.move || []).length);
   document.querySelectorAll('[data-body-mode]').forEach(button => {
     const selected = button.dataset.bodyMode === BODY_MODE;
     button.classList.toggle('on', selected);
