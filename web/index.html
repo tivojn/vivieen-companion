@@ -1151,6 +1151,18 @@ function browFor(now,side,lid){
   const top=3.5*Math.max(1,gain);
   return v<-1.5?-1.5:v>top?top:v;
 }
+/* The forehead is NOT the brow: heavier skin that only engages past a real
+   raise (small flicks stay brow-only), saturates instead of tracking
+   linearly, barely follows a frown, and both rises and settles a beat
+   behind. Two tissues, two behaviours - not one sliding plate. */
+let foreheadLift=0;
+function foreheadFor(bv){
+  const b=(bv.l+bv.r)/2;
+  const target=b>0.8?Math.tanh((b-0.8)*0.5)*1.8
+    :b<-0.6?Math.tanh((b+0.6)*0.4)*0.7:0;
+  foreheadLift+=(target-foreheadLift)*(target>foreheadLift?0.10:0.045);
+  return foreheadLift;
+}
 
 /* ---- cheek ----------------------------------------------------------------
    The warmth cue, and the one layer that could not be built the obvious way: a
@@ -1330,11 +1342,11 @@ function renderFaceSurface(ref,eyes,mix,h,lids,gv,bv,ck,jawPx,ts,mouthWarp){
   const lever=N.pivot-N.ref,th=h.r*Math.PI/180,kx=h.x/lever,dy=h.y;
   const Yj=N.jaw||(N.pivot-0.32*lever),Ym=N.mouth||(N.ref+0.42*lever),HK=ref.height;
   const br=-0.9*(0.5+0.5*vn(ts*0.21,12))*(0.55+0.45*vn(ts*0.07,13));
-  // The forehead moves WITH the brows: the skin band above the eyes shifts
-  // by a fraction of the brow value, so a raise wrinkles the forehead
-  // upward instead of the strips sliding over a frozen "landscape".
+  // The forehead skin band runs on its OWN damped follower (foreheadLift),
+  // decoupled from the brow strips: the brows flick fast and asymmetric,
+  // the forehead lags, saturates, and settles late - separate tissues.
   const Yf=Math.max(4,N.ref-0.40*lever),Yb=Math.max(Yf+8,N.ref-0.08*lever);
-  const bShift=bv?-(bv.l+bv.r)*0.35*(HK/1024):0;
+  const bShift=-foreheadLift*1.15*(HK/1024);
   ctx.translate(N.x,N.pivot);ctx.rotate(th);ctx.translate(-N.x,-N.pivot);
   ctx.transform(1,0,-kx,1,kx*N.pivot,0);
   // Each plate gets its OWN mouth-band stretch: warping both textures to one
@@ -1609,6 +1621,7 @@ function loop(now){
 
   const lids={l:lidFor(now,'l'),r:lidFor(now,'r')};
   const bv={l:browFor(now,'l',lids.l),r:browFor(now,'r',lids.r)};
+  foreheadFor(bv);
   const c0=cheekFor(now,(lids.l+lids.r)/2,mix);
   const ck={l:c0*CHEEK_ASYM,r:c0};
   const jawPx=jawFor(now,mix);
