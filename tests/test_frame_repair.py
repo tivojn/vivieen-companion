@@ -66,6 +66,30 @@ class FrameRepair(unittest.TestCase):
             [{"frame": r["frame"], "mode": r["mode"]}
              for r in clip["repairs"]])
 
+    def test_patch_repairs_a_multi_frame_run_against_clean_boundaries(self):
+        # The real-world case (verified live 2026-07-31): a white flash on
+        # the raised heel living across frames 1-6. Neighbours inside the
+        # run share the defect, so each frame votes against the clean
+        # frames just OUTSIDE the run instead.
+        frames = _frames()
+        for index in (3, 4, 5):
+            frames[index] = frames[index].copy()
+            frames[index][850:900, 300:360] = (255, 255, 255, 255)
+        with tempfile.TemporaryDirectory() as avatar_dir:
+            _make_clip(avatar_dir, frames)
+            metadata = motion.repair_frame(
+                avatar_dir, "idle", 3, frame_end=5, mode="patch")
+            motion.commit_pending_build(avatar_dir)
+            clip = metadata["idle"]
+            repaired = motion._unpack_clip_frames(
+                os.path.join(avatar_dir, "motion"), "idle", clip)
+        for index in (3, 4, 5):
+            self.assertEqual(0, int(repaired[index][870, 330, 3]),
+                             f"flash survived in frame {index}")
+            self.assertEqual(255, int(repaired[index][500, 350, 3]))
+        receipt = clip["repairs"][-1]
+        self.assertEqual((3, 5), (receipt["frame"], receipt["end"]))
+
     def test_drop_removes_the_frame_and_repacks(self):
         with tempfile.TemporaryDirectory() as avatar_dir:
             _make_clip(avatar_dir, _frames())
@@ -95,10 +119,14 @@ class FrameRepair(unittest.TestCase):
         window = app[marker:marker + 2200]
         self.assertIn("_publish_runtime_atomic", window)
         self.assertIn("library.archive_motion", window)
+        self.assertIn("frame_end: int | None", app)
         settings = (ROOT / "web" / "settings.html").read_text()
         self.assertIn('id="body-motion-fix"', settings)
         self.assertIn('id="body-motion-dropframe"', settings)
         self.assertIn("'/api/avatar/motion/repair'", settings)
+        # The instruction is typed in on-screen numbers: "48" or "1-6".
+        self.assertIn("or a run like 1-6", settings)
+        self.assertIn("parseInt(match[1], 10) - 1", settings)
 
 
 if __name__ == "__main__":

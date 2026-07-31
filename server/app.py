@@ -1000,7 +1000,7 @@ def _recut_thread(slug, kind, job_id):
         _finish_job(slug, job_id, failure)
 
 
-def _repair_thread(slug, kind, frame, mode, note, job_id):
+def _repair_thread(slug, kind, frame, mode, note, job_id, frame_end=None):
     writer = jlog(slug, f"repairing {kind} frame {frame}")
     previous_manifest = reg().read_manifest(slug) or {}
     motion_replaced = False
@@ -1010,6 +1010,7 @@ def _repair_thread(slug, kind, frame, mode, note, job_id):
         from studio import motion, library
         metadata = motion.repair_frame(
             reg().adir(slug), kind, frame, mode=mode, note=note, log=writer,
+            frame_end=frame_end,
             progress=lambda stage, value, label: _job_progress(
                 slug, stage, value, label, job_id=job_id))
         motion_replaced = True
@@ -1045,6 +1046,7 @@ class MotionRepairRequest(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
     kind: str = Field(pattern=r"^(walk|idle|move)$")
     frame: int = Field(ge=0, le=4096)
+    frame_end: int | None = Field(default=None, ge=0, le=4096)
     mode: str = Field(default="patch", pattern=r"^(patch|drop)$")
     note: str = Field(default="", max_length=200)
 
@@ -1064,13 +1066,14 @@ async def api_motion_repair(request: MotionRepairRequest):
         threading.Thread(
             target=_repair_thread,
             args=(request.slug, request.kind, request.frame, request.mode,
-                  request.note, job_id),
+                  request.note, job_id, request.frame_end),
             daemon=True).start()
     except BaseException as error:
         _finish_job(request.slug, job_id, getattr(error, "detail", error))
         raise
     return {"started": True, "slug": request.slug, "kind": request.kind,
-            "frame": request.frame, "mode": request.mode, "job_id": job_id}
+            "frame": request.frame, "frame_end": request.frame_end,
+            "mode": request.mode, "job_id": job_id}
 
 
 class MotionRecutRequest(BaseModel):

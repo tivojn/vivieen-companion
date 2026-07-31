@@ -2373,16 +2373,32 @@ $('#body-move-recut').onclick = () => recutMotion('move');
 // from its loop neighbours or dropped, straight from the packed frames.
 async function repairMotionFrame(mode) {
   if (!BODY_CYCLE || !BODY_CYCLE.kind) return;
-  const kind = BODY_CYCLE.kind, frame = Math.round(Number(BODY_CYCLE.frame) || 0);
+  const kind = BODY_CYCLE.kind;
+  const shown = Math.round(Number(BODY_CYCLE.frame) || 0) + 1;
+  // The instruction, in the numbers on screen: one frame ("48") or a run
+  // ("1-6") when the defect lives across several frames - a run repairs
+  // against the clean frames just outside it.
+  const verb = mode === 'drop' ? 'remove' : 'fix';
+  const spec = prompt(
+    `Frames to ${verb} - one frame like ${shown}, or a run like 1-6:`,
+    String(shown));
+  if (spec === null) return;
+  const match = String(spec).trim().match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+  if (!match) { alert('Give one frame like 48, or a run like 1-6.'); return; }
+  const frame = Math.max(0, parseInt(match[1], 10) - 1);
+  const frameEnd = match[2] ? Math.max(0, parseInt(match[2], 10) - 1) : null;
+  const span = frameEnd === null ? `frame ${frame + 1}`
+    : `frames ${frame + 1}-${frameEnd + 1}`;
   if (mode === 'drop' &&
-      !confirm(`Remove frame ${frame} from the ${kind} loop entirely?`)) return;
+      !confirm(`Remove ${span} from the ${kind} loop entirely?`)) return;
   setBodyBusy(true);
   startBodyProgress('motion');
   let response;
   try {
     response = await api('/api/avatar/motion/repair', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({slug: BODY_SLUG, kind, frame, mode})
+      body: JSON.stringify({slug: BODY_SLUG, kind, frame,
+        frame_end: frameEnd, mode})
     });
   } catch (error) {
     failBodyProgress('Could not reach the local backend. Check that the Vivieen server is running, then try again.');

@@ -3909,15 +3909,18 @@ def _unpack_clip_frames(motion_dir, kind, clip):
 
 
 def repair_frame(avatar_dir, kind, frame_index, mode="patch", note="",
-                 log=print, progress=None):
-    """Surgical fix for ONE bad frame the user has pointed at.
+                 log=print, progress=None, frame_end=None):
+    """Surgical fix for the bad frame - or RUN of frames - the user points at.
 
-    "patch" rebuilds the frame as the per-pixel temporal median of itself
-    and its loop neighbours - a one-frame flash (an alpha blob, a matte
-    dropout) loses the vote while everything real survives. "drop" removes
-    the frame outright; at 12-24fps one missing frame is imperceptible.
-    Works on the packed lossless frames, so it costs nothing and keeps the
-    approved take.
+    "patch" rebuilds each flagged frame as the per-pixel temporal median of
+    itself and the CLEAN BOUNDARY frames just outside the flagged run. For
+    one frame that is its immediate neighbours; for a run (a white flash
+    living across frames 1-6) every frame in it votes against the clean
+    boundaries, so a defect the neighbours share still loses - static
+    regions heal to the boundaries while genuinely moving regions keep
+    their own middle value. "drop" removes the flagged frames outright; at
+    12-24fps a few missing frames read as nothing. Works on the packed
+    lossless frames, so it costs nothing and keeps the approved take.
     """
     kind = _clean(kind, 20)
     if kind not in {"walk", "idle", "move"}:
@@ -3936,24 +3939,34 @@ def repair_frame(avatar_dir, kind, frame_index, mode="patch", note="",
     frames = _unpack_clip_frames(destination, kind, clip)
     total = len(frames)
     frame_index = int(frame_index)
-    if not 0 <= frame_index < total:
-        raise ValueError(f"frame {frame_index} is outside 0..{total - 1}")
-    if mode == "drop" and total < 8:
-        raise RuntimeError("too few frames to drop one")
+    frame_end = frame_index if frame_end is None else int(frame_end)
+    if frame_end < frame_index:
+        frame_index, frame_end = frame_end, frame_index
+    if not (0 <= frame_index < total and 0 <= frame_end < total):
+        raise ValueError(f"frames {frame_index}-{frame_end} are outside 0..{total - 1}")
+    run = list(range(frame_index, frame_end + 1))
+    if len(run) > total - 3:
+        raise RuntimeError("the flagged run leaves too few clean frames")
+    if mode == "drop" and total - len(run) < 8:
+        raise RuntimeError("too few frames would remain after the drop")
+    span = (f"frame {frame_index}" if frame_index == frame_end
+            else f"frames {frame_index}-{frame_end}")
 
-    _emit(progress, "repair", 0.3,
-          f"Repairing {kind} frame {frame_index} ({mode})")
+    _emit(progress, "repair", 0.3, f"Repairing {kind} {span} ({mode})")
     if mode == "patch":
-        # Loop-aware neighbours: the clip wraps, so frame 0 borrows from
-        # the last frame and vice versa.
+        # Clean boundaries live just OUTSIDE the flagged run (loop-aware):
+        # inside it, every frame may carry the defect and cannot be trusted
+        # as a voter.
         before = frames[(frame_index - 1) % total]
-        after = frames[(frame_index + 1) % total]
-        stack = np.stack([before, frames[frame_index], after]).astype(np.uint8)
-        frames[frame_index] = np.median(stack, axis=0).astype(np.uint8)
-        repaired = frames[frame_index]
-        repaired[:, :, :3][repaired[:, :, 3] == 0] = 0
+        after = frames[(frame_end + 1) % total]
+        for index in run:
+            stack = np.stack([before, frames[index], after]).astype(np.uint8)
+            repaired = np.median(stack, axis=0).astype(np.uint8)
+            repaired[:, :, :3][repaired[:, :, 3] == 0] = 0
+            frames[index] = repaired
     else:
-        frames.pop(frame_index)
+        for index in reversed(run):
+            frames.pop(index)
         total = len(frames)
 
     stage = tempfile.mkdtemp(prefix=".motion-stage-", dir=avatar_dir)
@@ -3987,16 +4000,19 @@ def repair_frame(avatar_dir, kind, frame_index, mode="patch", note="",
             clip["edge_anchors"] = _edge_anchors(frames, clip["bounds"])
         if mode == "drop":
             offsets = clip.get("travel_offsets")
-            if isinstance(offsets, list) and frame_index < len(offsets):
+            if isinstance(offsets, list):
                 offsets = list(offsets)
-                offsets.pop(frame_index)
+                for index in reversed(run):
+                    if index < len(offsets):
+                        offsets.pop(index)
                 clip["travel_offsets"] = offsets
             loop = clip.get("source_loop")
             if isinstance(loop, list) and len(loop) == 2:
-                clip["source_loop"] = [loop[0], max(loop[0] + 1, loop[1] - 1)]
+                clip["source_loop"] = [
+                    loop[0], max(loop[0] + 1, loop[1] - len(run))]
         repairs = list(clip.get("repairs") or [])
         repairs.append({
-            "frame": frame_index, "mode": mode,
+            "frame": frame_index, "end": frame_end, "mode": mode,
             "note": _clean(note, 200),
             "at": datetime.datetime.now().isoformat(timespec="seconds"),
         })
@@ -4016,9 +4032,8 @@ def repair_frame(avatar_dir, kind, frame_index, mode="patch", note="",
             raise
         stage = None
         swapped = True
-        _emit(progress, "done", 1.0, f"{kind} frame {frame_index} repaired")
-        log(f"repaired {kind} frame {frame_index} ({mode})"
-            + (f": {note}" if note else ""))
+        _emit(progress, "done", 1.0, f"{kind} {span} repaired")
+        log(f"repaired {kind} {span} ({mode})" + (f": {note}" if note else ""))
         return metadata
     except Exception:
         if swapped:
