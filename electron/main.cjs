@@ -1931,6 +1931,7 @@ function buildTrayMenu() {
     { label: 'Recover Companion', accelerator: 'CommandOrControl+Shift+0', click: recoverCompanion },
     { label: 'Restart Voice Engine', enabled: ownsBackend, click: restartBackend },
     { type: 'separator' },
+    { label: 'Check for Updates…', click: () => { void checkForUpdates(true); } },
     { label: 'Quit Vivieen', accelerator: 'CommandOrControl+Q', click: () => app.quit() },
   ]));
 }
@@ -1999,6 +2000,7 @@ function showPetMenu() {
       click: () => applyAlwaysOnTop(!state.alwaysOnTop) },
     { type: 'separator' },
     { name: 'Character Studio…', click: openSettings },
+    { name: 'Check for Updates…', click: () => { void checkForUpdates(true); } },
     { name: 'Hide Companion', click: () => mainWindow.hide() },
     { name: 'Quit Vivieen', click: () => app.quit() },
   ], () => {
@@ -2304,6 +2306,83 @@ function installPermissions() {
   );
 }
 
+// ---------------------------------------------------------------- updates
+// A check-and-click updater, not a silent installer: the app is signed but
+// not notarized, so replacing the binary behind the user's back is exactly
+// the wrong move. GitHub's latest release is the single source of truth -
+// when its tag outranks the running version, one dialog offers the DMG.
+const UPDATE_REPO = 'tivojn/vivieen-companion';
+let updatePromptedVersion = null;
+
+function versionNewer(candidate, current) {
+  const parse = (value) => String(value || '').replace(/^v/i, '')
+    .split('.').map((part) => parseInt(part, 10) || 0);
+  const a = parse(candidate);
+  const b = parse(current);
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
+  }
+  return false;
+}
+
+async function checkForUpdates(interactive = false) {
+  const current = app.getVersion();
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`,
+      { headers: { accept: 'application/vnd.github+json',
+                   'user-agent': 'vivieen-companion' } });
+    if (!response.ok) throw new Error(`GitHub answered HTTP ${response.status}`);
+    const release = await response.json();
+    const latest = String(release.tag_name || '').replace(/^v/i, '');
+    if (!latest || !versionNewer(latest, current)) {
+      if (interactive) {
+        await dialog.showMessageBox({
+          type: 'info',
+          message: `Vivieen ${current} is up to date.`,
+          detail: 'You are on the newest released version.',
+        });
+      }
+      return;
+    }
+    // The background check nags once per version per run; the menu item
+    // always answers.
+    if (!interactive && updatePromptedVersion === latest) return;
+    updatePromptedVersion = latest;
+    const dmg = (release.assets || []).find((asset) => /\.dmg$/i.test(asset.name || ''));
+    const { response: choice } = await dialog.showMessageBox({
+      type: 'info',
+      message: `Vivieen ${latest} is available`,
+      detail: `You are on ${current}. Download the new DMG, open it, and drag `
+        + 'Vivieen into Applications to upgrade.',
+      buttons: ['Download Update', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (choice === 0) {
+      await shell.openExternal((dmg && dmg.browser_download_url)
+        || release.html_url
+        || `https://github.com/${UPDATE_REPO}/releases/latest`);
+    }
+  } catch (error) {
+    writeBackendLog(`[update check failed] ${String((error && error.message) || error)}\n`);
+    if (interactive) {
+      await dialog.showMessageBox({
+        type: 'info',
+        message: 'Could not check for updates.',
+        detail: String((error && error.message) || error),
+      });
+    }
+  }
+}
+
+function scheduleUpdateChecks() {
+  if (!app.isPackaged) return;   // dev runs track git, not releases
+  setTimeout(() => { void checkForUpdates(); }, 15_000);
+  const timer = setInterval(() => { void checkForUpdates(); }, 6 * 3600 * 1000);
+  timer.unref?.();
+}
+
 async function boot() {
   state = loadState();
   createEnconvoMonitor();
@@ -2324,6 +2403,7 @@ async function boot() {
   createMainWindow();
   createTray();
   installRecoveryShortcut();
+  scheduleUpdateChecks();
   if (state.followEnconvo) enconvoMonitor.setEnabled(true);
   const metadata = await vivieenMetadata(3000);
   if (!metadata || !metadata.active) openSettings();
