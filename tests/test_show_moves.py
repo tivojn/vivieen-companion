@@ -110,6 +110,13 @@ class MoveRuntime(unittest.TestCase):
         self.assertIn("'Moves · 2×tap hair'", main)
         self.assertIn("send('vivieen:pet-moves')", main)
 
+    def test_left_preview_panel_has_a_moves_tab(self):
+        settings = (ROOT / "web" / "settings.html").read_text()
+        self.assertIn('data-body-mode="move"', settings)
+        self.assertIn('id="body-move-file-count"', settings)
+        self.assertIn("['body', 'walk', 'idle', 'move'].includes(mode)", settings)
+        self.assertIn("kind === 'move' ? 'Show Me Some Moves'", settings)
+
     def test_settings_offers_the_move_studio(self):
         settings = (ROOT / "web" / "settings.html").read_text()
         for style in ("viral", "hiphop", "kpop", "ballet", "salsa", "custom"):
