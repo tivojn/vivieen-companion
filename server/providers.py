@@ -229,6 +229,33 @@ def safe_error(error, limit=300):
     return _safe_error(str(error))[-limit:]
 
 
+def failure_hint(error):
+    """One plain clause naming why a provider call failed. The bubble is the
+    only surface the user sees; a bare 'not answering' once hid an Ollama
+    Cloud 402 (out of credit) for a whole evening."""
+    text = str(error)
+    match = re.search(r"[\s']([45]\d{2})[\s']", f" {text} ")
+    status = int(match.group(1)) if match else 0
+    if status in (401, 403):
+        return "the provider rejected the API key"
+    if status == 402:
+        return "the provider wants payment or sign-in for this model"
+    if status == 404:
+        return "the provider does not know this model"
+    if status == 410:
+        return "the provider no longer serves this model"
+    if status == 429:
+        return "the provider is rate-limiting"
+    if status >= 500:
+        return "the provider is having an outage"
+    lowered = text.lower()
+    if "timeout" in lowered or "timed out" in lowered:
+        return "the request timed out"
+    if "connect" in lowered:
+        return "the endpoint is unreachable"
+    return ""
+
+
 def _run_enconvo_json(args, timeout=60):
     if not ENCONVO or not os.path.exists(ENCONVO):
         raise RuntimeError("EnConvo CLI is not installed")
