@@ -98,7 +98,7 @@ def _eyeball_mask(shape, lm, side, s):
     mask = face.hull_mask(shape, lm, EYE[side])
     kernel_size = max(int(3 * s) | 1, 3)
     mask = cv2.erode(mask, np.ones((kernel_size, kernel_size), np.uint8))
-    alpha = cv2.GaussianBlur(mask, (0, 0), 1.6 * s).astype(np.float32) / 255.0
+    alpha = cv2.GaussianBlur(mask, (0, 0), 2.6 * s).astype(np.float32) / 255.0
 
     guard = np.zeros(shape[:2], np.uint8)
     thickness = max(int(7 * s) | 1, 3)
@@ -106,7 +106,13 @@ def _eyeball_mask(shape, lm, side, s):
         points = np.rint(lm[contour]).astype(np.int32).reshape(-1, 1, 2)
         cv2.polylines(guard, [points], False, 255, thickness=thickness,
                       lineType=cv2.LINE_AA)
-    alpha[guard > 0] = 0.0
+    # A hard-zeroed guard is a tear line under a 9px iris shift: the warp
+    # shears the iris across the cliff in single-pixel steps - the
+    # 'ruptured iris' measured live 2026-08-01 on EVERY avatar's extreme
+    # gaze tiles. Soft-lift the guard instead, so motion decays over a few
+    # pixels into the lashes; the lash line itself still holds at zero.
+    soft_guard = cv2.GaussianBlur(guard, (0, 0), 2.2 * s).astype(np.float32) / 255.0
+    alpha *= np.clip(1.0 - soft_guard * 1.15, 0.0, 1.0)
     return alpha
 
 
@@ -268,6 +274,19 @@ def build(key, lm=None, dxs=None, dys=None, brow_dys=None, ups=None,
     cups = list(CHEEK_UP if ups is None else ups)
     H, W = key.shape[:2]
     s = max(H, W) / 1024.0
+    # The travel table was tuned on a wide reference eye (iris r ~= 17px at
+    # 1024). The warp is rigid only inside 1.15r, so on a smaller iris a
+    # +-9px shift drags the iris edge past the rigid zone and TEARS it
+    # (measured live 2026-08-01: extreme-gaze tiles with fractured irises
+    # on a narrow-eyed subject). Scale the whole table to this face; the
+    # renderer follows the manifest values, so the eyes simply travel as
+    # far as THIS anatomy allows.
+    radius = min(_iris(lm, side)[1] for side in SIDES) / s
+    travel = min(1.0, max(0.45, radius / 17.0))
+    if travel < 1.0:
+        dxs = [round(dx * travel, 2) for dx in dxs]
+        dys = [round(dy * travel, 2) for dy in dys]
+        log(f"  gaze travel scaled to {travel:.2f}x (iris r {radius:.1f}px)")
 
     out = dict(gaze=dict(dxs=dxs, dys=dys), brow=dict(dys=bdys),
                cheek=dict(ups=cups))
