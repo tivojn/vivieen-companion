@@ -52,6 +52,26 @@ class MoveStyles(unittest.TestCase):
         self.assertIn("EXACT first frame and the EXACT final frame", video)
         self.assertIn("pure white", video)
 
+    def test_move_sets_are_labelled_and_can_be_active(self):
+        source = (ROOT / "studio" / "library.py").read_text()
+        # The active-pointer index must not strip the move slot on read, or
+        # a move set can never show as "In use".
+        self.assertIn('"move": active.get("move"),', source)
+        # Sets are named from their own style receipt, not idle's fallback.
+        self.assertIn('(move or {}).get("label") if kind == "move" else', source)
+        self.assertIn('"move": "Show Me Some Moves"}.get(kind, "Edge Idle")', source)
+        # And pre-fix archives recover their real name at listing time.
+        self.assertIn('if kind == "move" and label in ("", "Edge Idle"):', source)
+
+    def test_transient_provider_errors_retry_once(self):
+        source = (ROOT / "studio" / "motion.py").read_text()
+        self.assertIn("_TRANSIENT_PROVIDER_MARKERS", source)
+        self.assertIn('"socket disconnected"', source)
+        marker = source.index("def _run(command, output_dir, extensions):")
+        window = source[marker:marker + 1400]
+        self.assertIn("for attempt in (1, 2):", window)
+        self.assertIn("if attempt == 1 and transient:", window)
+
     def test_move_is_a_first_class_kind(self):
         self.assertIn("move", library.MOTION_KINDS)
         self.assertEqual(("move_style",), library._CLIP_KEYS["move"])

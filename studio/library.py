@@ -70,6 +70,7 @@ def _read_index(avatar_dir):
     return {"v": 1, "active": {
         "walk": active.get("walk"),
         "idle": active.get("idle"),
+        "move": active.get("move"),
         "body": active.get("body"),
     }}
 
@@ -194,12 +195,17 @@ def archive_motion(avatar_dir, kind):
 
     style = metadata.get("walk_style") if kind == "walk" else None
     pose = metadata.get("idle_pose") if kind == "idle" else None
+    move = metadata.get("move_style") if kind == "move" else None
     label = (
         (style or {}).get("label") if kind == "walk" else
+        (move or {}).get("label") if kind == "move" else
         (pose or {}).get("label")
-    ) or ("Horizon Walk" if kind == "walk" else "Edge Idle")
+    ) or {"walk": "Horizon Walk",
+          "move": "Show Me Some Moves"}.get(kind, "Edge Idle")
     set_id = existing or _new_set_id(
-        (style or {}).get("id") if kind == "walk" else (pose or {}).get("id"))
+        (style or {}).get("id") if kind == "walk" else
+        (move or {}).get("id") if kind == "move" else
+        (pose or {}).get("id"))
     destination = os.path.join(_motion_set_root(avatar_dir, kind), set_id)
     stage = tempfile.mkdtemp(
         prefix=".set-stage-", dir=_ensured(_motion_set_root(avatar_dir, kind)))
@@ -277,10 +283,16 @@ def list_motion_sets(avatar_dir, kind):
         reference_sha = (record.get("body_reference") or {}).get("sha256")
         style = record.get("walk_style") or {}
         pose = record.get("idle_pose") or {}
+        move = record.get("move_style") or {}
+        label = record.get("label") or ""
+        if kind == "move" and label in ("", "Edge Idle"):
+            # Sets archived before move labelling existed fell into the
+            # idle fallback; recover the real name from their receipt.
+            label = move.get("label") or "Show Me Some Moves"
         sets.append({
             "id": record["id"],
             "kind": kind,
-            "label": record.get("label") or "",
+            "label": label,
             "created": record.get("created") or "",
             "style": style.get("id"),
             "pose": pose.get("id"),
