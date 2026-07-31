@@ -1113,6 +1113,10 @@ function headAt(now){
    ones. The two brows are deliberately not identical.                        */
 let browAmp=0,browT0=-1e9,browDur=1,browEnv=0,nextBrow=performance.now()+2200;
 const BROW_ASYM=0.86+Math.random()*0.1;
+// Calibration's "Brows and forehead" slider is a live runtime amplitude:
+// 55% is the tuned default, 0 stills the brow, 100 nearly doubles it.
+const browGain=()=>Math.max(0,Math.min(2,
+  ((M&&M.rig_profile&&Number(M.rig_profile.brows))||55)/55));
 
 function planBrow(now){
   const r=Math.random();
@@ -1120,7 +1124,8 @@ function planBrow(now){
     if(r<0.52){browAmp=0.9+Math.random()*1.1;browDur=260+Math.random()*360;}
     else if(r<0.80){browAmp=2.0+Math.random()*1.3;browDur=340+Math.random()*460;}
     else{browAmp=-(0.5+Math.random()*0.9);browDur=380+Math.random()*560;}
-    nextBrow=now+650+Math.random()*1700;
+    // A livelier brow also gestures more OFTEN, not only harder.
+    nextBrow=now+(650+Math.random()*1700)/Math.max(0.55,browGain());
   }else{
     if(r<0.55){browAmp=0.5+Math.random()*0.8;browDur=420+Math.random()*700;}
     else if(r<0.82){browAmp=-(0.4+Math.random()*0.7);browDur=600+Math.random()*900;}
@@ -1137,10 +1142,11 @@ function browGesture(now){
   return browAmp*rise*f*f;
 }
 function browFor(now,side,lid){
-  const t=now/1000,k=side==='l'?BROW_ASYM:1;
+  const t=now/1000,k=side==='l'?BROW_ASYM:1,gain=browGain();
   const drift=0.20*Math.sin(t*0.31+(side==='l'?1.7:0))+0.11*Math.sin(t*0.73);
-  const v=(browGesture(now)+1.1*browEnv)*k+drift-0.4*lid;
-  return v<-1.5?-1.5:v>3.5?3.5:v;
+  const v=(browGesture(now)+1.1*browEnv)*k*gain+drift*(0.5+0.5*gain)-0.4*lid;
+  const top=3.5*Math.max(1,gain);
+  return v<-1.5?-1.5:v>top?top:v;
 }
 
 /* ---- cheek ----------------------------------------------------------------
@@ -1321,12 +1327,20 @@ function renderFaceSurface(ref,eyes,mix,h,lids,gv,bv,ck,jawPx,ts,mouthWarp){
   const lever=N.pivot-N.ref,th=h.r*Math.PI/180,kx=h.x/lever,dy=h.y;
   const Yj=N.jaw||(N.pivot-0.32*lever),Ym=N.mouth||(N.ref+0.42*lever),HK=ref.height;
   const br=-0.9*(0.5+0.5*vn(ts*0.21,12))*(0.55+0.45*vn(ts*0.07,13));
+  // The forehead moves WITH the brows: the skin band above the eyes shifts
+  // by a fraction of the brow value, so a raise wrinkles the forehead
+  // upward instead of the strips sliding over a frozen "landscape".
+  const Yf=Math.max(4,N.ref-0.40*lever),Yb=Math.max(Yf+8,N.ref-0.08*lever);
+  const bShift=bv?-(bv.l+bv.r)*0.35*(HK/1024):0;
   ctx.translate(N.x,N.pivot);ctx.rotate(th);ctx.translate(-N.x,-N.pivot);
   ctx.transform(1,0,-kx,1,kx*N.pivot,0);
   // Each plate gets its OWN mouth-band stretch: warping both textures to one
   // shared lip gap is what lets a long dissolve run without doubling teeth.
   const bandsFor=extra=>{const j=jawPx+(extra||0);
-    return [[0,Ym,dy,Ym+dy],[Ym,Yj,Ym+dy,Yj+dy+j],
+    return [[0,Yf,dy,Yf+dy+bShift],
+            [Yf,Yb,Yf+dy+bShift,Yb+dy+bShift],
+            [Yb,Ym,Yb+dy+bShift,Ym+dy],
+            [Ym,Yj,Ym+dy,Yj+dy+j],
             [Yj,N.pivot,Yj+dy+j,N.pivot+br],[N.pivot,HK,N.pivot+br,HK]];};
   const plate=(image,extra)=>{for(const band of bandsFor(extra)){
     const sourceHeight=band[1]-band[0],destinationHeight=band[3]-band[2];

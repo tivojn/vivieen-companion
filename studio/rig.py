@@ -17,6 +17,10 @@ CONTROLS = {
     "cheeks": dict(label="Cheeks", minimum=0, maximum=100,
                    safe_minimum=0, safe_maximum=70, step=1,
                    default=50, help="Speech-coupled cheek movement."),
+    "brows": dict(label="Brows and forehead", minimum=0, maximum=100,
+                  safe_minimum=20, safe_maximum=85, step=1,
+                  default=55, help="Speech-coupled brow gestures and forehead "
+                                   "lift. Applied live by the runtime."),
     "nasolabial": dict(label="Nasolabial folds", minimum=0, maximum=100,
                        safe_minimum=0, safe_maximum=70, step=1,
                        default=55, help="Motion beside the nose and mouth corners."),
@@ -25,9 +29,9 @@ CONTROLS = {
                  default=8, help="Maximum speech influence; bridge and tip stay locked."),
 }
 PRESETS = {
-    "natural": dict(lips=100, jaw=62, cheeks=50, nasolabial=55, nose=8),
-    "subtle": dict(lips=88, jaw=42, cheeks=25, nasolabial=32, nose=4),
-    "expressive": dict(lips=100, jaw=76, cheeks=65, nasolabial=68, nose=10),
+    "natural": dict(lips=100, jaw=62, cheeks=50, brows=55, nasolabial=55, nose=8),
+    "subtle": dict(lips=88, jaw=42, cheeks=25, brows=30, nasolabial=32, nose=4),
+    "expressive": dict(lips=100, jaw=76, cheeks=65, brows=80, nasolabial=68, nose=10),
 }
 REGION_GROUPS = {
     "lips": [face.OUTER_LIP],

@@ -176,8 +176,12 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .preview-stage{padding:18px;background:var(--bg-sub)}
 .preview-stage video{display:block;width:100%;max-height:calc(100vh - 190px);
   border-radius:8px;background:#000}
-.rig-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,.72fr);
+.rig-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(430px,.95fr);
   min-height:660px}
+/* Every slider visible at once: two columns, compact rows - the panel
+   should never hide half the controls behind a scroll the user has to
+   discover by accident. */
+#rig-controls{display:grid;grid-template-columns:1fr 1fr;gap:0 20px}
 .rig-visual{padding:20px;border-right:1px solid var(--line);min-width:0}
 .rig-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .rig-toolbar strong{font-size:11px;text-transform:uppercase;letter-spacing:.07em;
@@ -198,11 +202,11 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .rig-overlays input{width:auto;margin:0;accent-color:var(--accent)}
 .rig-legend{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap}
 .rig-legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
-.rig-panel{padding:22px;overflow:auto;max-height:calc(100vh - 158px)}
+.rig-panel{padding:18px 20px;overflow:auto;max-height:calc(100vh - 158px)}
 .rig-panel h4{margin:0 0 14px;font-size:11px;text-transform:uppercase;
   letter-spacing:.07em;color:var(--faint);font-weight:600}
 .rig-preset{margin-bottom:20px}
-.rig-control{padding:14px 0;border-top:1px solid var(--line)}
+.rig-control{padding:10px 0;border-top:1px solid var(--line)}
 .rig-control-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 .rig-control-head label{margin:0;color:var(--ink);font-size:13px;letter-spacing:0;
   text-transform:none}.rig-value{font:600 12px ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -218,7 +222,7 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
   border-radius:50%;border:2px solid var(--panel);box-shadow:var(--shadow-sm)}
 .rig-control input[type=range].safe::-webkit-slider-thumb{background:var(--ok)}
 .rig-control input[type=range].experimental::-webkit-slider-thumb{background:var(--accent)}
-.rig-help{color:var(--dim);font-size:11.5px}
+.rig-help{color:var(--dim);font-size:10.5px;line-height:1.35}
 .rig-range{display:flex;justify-content:space-between;gap:10px;margin-top:5px;
   font:600 10px ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase}
 .rig-range .safe{color:var(--ok-text)}.rig-range .experimental{color:var(--accent-text)}
@@ -230,6 +234,16 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
   color:var(--dim);font-size:12px;white-space:pre-wrap}
 .rig-status.ok{border-color:var(--ok-line);color:var(--ok-text);background:var(--ok-bg)}
 .rig-status.bad{border-color:var(--bad-line);color:var(--bad-text);background:var(--bad-bg)}
+/* The rebuild owns the room: the status card pulses and carries a live bar
+   so the progress is unmissable without hunting for it. */
+.rig-status.busy{border-color:var(--accent-line);background:var(--accent-bg);
+  color:var(--ink);animation:rigPulse 1.6s ease-in-out infinite}
+@keyframes rigPulse{50%{box-shadow:0 0 0 5px var(--accent-bg)}}
+@media (prefers-reduced-motion:reduce){.rig-status.busy{animation:none}}
+.rig-progress{height:4px;margin-top:8px;border-radius:2px;background:var(--press);overflow:hidden}
+.rig-progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .5s ease}
+.rig-progress.hidden{display:none}
+#preview-modal{z-index:60}
 .rig-foot{display:flex;align-items:center;gap:12px;padding:14px 22px;
   border-top:1px solid var(--line);background:var(--panel-sub)}
 .rig-foot .note{margin:0;margin-right:auto;max-width:650px}
@@ -791,10 +805,12 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
             <div class="rig-lock"><small>Upper / lower dental identity</small><b id="rig-donor">Locked</b></div>
           </div>
           <div class="rig-status" id="rig-status"></div>
+          <div class="rig-progress hidden" id="rig-progress" aria-hidden="true"><i></i></div>
         </aside>
       </div>
       <div class="rig-foot">
         <p class="note">Rebuild uses retained expression renders, runs anatomy QA in staging, and publishes only after a rollback snapshot is complete. No model credits are used.</p>
+        <button class="btn" id="rig-preview-play" type="button" title="Play the published viseme preview - right here, including straight after a rebuild">▶ Play preview</button>
         <button class="btn" id="rig-cancel">Cancel</button>
         <button class="btn pri" id="rig-apply">Validate & rebuild</button>
       </div>
@@ -3003,18 +3019,25 @@ function formatRigError(detail) {
   return 'The server rejected this profile.';
 }
 
-function rigStatus(message = '', state = '') {
+function rigStatus(message = '', state = '', percent = null) {
   const status = $('#rig-status');
-  const targets = `Targets · lip ${RIG_PROFILE.lips}% · jaw ${RIG_PROFILE.jaw}% · cheeks ${RIG_PROFILE.cheeks}% · folds ${RIG_PROFILE.nasolabial}% · nose ${RIG_PROFILE.nose}%`;
+  const brows = RIG_PROFILE.brows === undefined ? '' : ` · brows ${RIG_PROFILE.brows}%`;
+  const targets = `Targets · lip ${RIG_PROFILE.lips}% · jaw ${RIG_PROFILE.jaw}% · cheeks ${RIG_PROFILE.cheeks}%${brows} · folds ${RIG_PROFILE.nasolabial}% · nose ${RIG_PROFILE.nose}%`;
   const experimental = rigExperimentalKeys();
   const legacyBackend = Number(RIG.schema.version || 0) < 2;
   const guidance = experimental.length
     ? legacyBackend
       ? `Red experimental targets · ${experimental.join(', ')}. Restart after the active avatar build finishes to submit them.`
-      : `Red experimental targets · ${experimental.join(', ')}. They may run, but anatomy QA must pass before publication.`
+      : `Red experimental targets · ${experimental.join(', ')}. They run and publish; QA notes land as advisories.`
     : 'All targets are inside the green validated bands.';
   status.textContent = message || `${targets}\n${guidance}`;
   status.className = 'rig-status' + (state ? ' ' + state : '');
+  // The rebuild's pulse: a live bar inside the focused status card.
+  const bar = $('#rig-progress');
+  if (bar) {
+    bar.classList.toggle('hidden', state !== 'busy');
+    bar.firstElementChild.style.width = `${Math.max(3, Math.round(percent || 0))}%`;
+  }
 }
 
 function renderRigControls() {
@@ -3104,7 +3127,12 @@ async function watchRig(slug) {
   const job = progress.job;
   if (!job || !job.done) {
     const line = job && job.log && job.log.length ? job.log[job.log.length - 1] : 'Starting local recomposition…';
-    if (RIG_SLUG === slug) rigStatus(line + '\nThe published avatar remains untouched until every gate passes.');
+    const live = (job && job.progress) || {};
+    const percent = Math.round(Math.max(0, Math.min(1, Number(live.value) || 0)) * 100);
+    if (RIG_SLUG === slug) {
+      rigStatus(line + '\nThe published avatar remains untouched until every gate passes.',
+        'busy', percent);
+    }
     RIG_WATCH = setTimeout(() => watchRig(slug), 900);
     return;
   }
@@ -3146,7 +3174,10 @@ async function applyRig() {
   }
   rigStatus((experimental.length
     ? 'Validating red experimental targets'
-    : 'Validating green-band targets') + ' and creating an isolated staging bundle…');
+    : 'Validating green-band targets') + ' and creating an isolated staging bundle…',
+    'busy', 2);
+  // The progress card takes the spotlight for the whole rebuild.
+  $('#rig-status').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   const profile = {...RIG_PROFILE, teeth_lock: true,
     preset: $('#rig-preset').value || 'custom'};
   const response = await api('/api/avatar/recompose', {
@@ -3177,6 +3208,9 @@ $('#rig-preset').onchange = event => {
 });
 $('#rig-close').onclick = $('#rig-cancel').onclick = closeRig;
 $('#rig-apply').onclick = applyRig;
+// The preview lives IN the calibration room: after a rebuild lands, play it
+// on the spot instead of leaving for the avatar card.
+$('#rig-preview-play').onclick = () => { if (RIG_SLUG) openPreview(RIG_SLUG); };
 // Preview used to be a plain link straight at preview.mp4.  Same origin, so
 // the navigation guard waved it through and the settings window replaced
 // Character Studio with Chromium's own player - no chrome, no way back.  It

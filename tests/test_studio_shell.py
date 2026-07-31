@@ -31,6 +31,22 @@ class SettingsMarkupTest(unittest.TestCase):
             self.assertTrue(href.startswith("#") or href == "/",
                             "unhandled navigation link: " + href)
 
+    def test_rebuild_room_has_preview_progress_and_a_full_panel(self):
+        # 2026-08-01 usability pass: the preview plays inside the
+        # calibration room (stacked above it), the rebuild's status card
+        # pulses with a live bar and takes the spotlight, and every slider
+        # is visible at once in a two-column panel - no accidental scroll
+        # discovery.
+        self.assertIn('id="rig-preview-play"', self.settings)
+        self.assertIn("openPreview(RIG_SLUG)", self.settings)
+        self.assertIn("#preview-modal{z-index:60}", self.settings)
+        self.assertIn('id="rig-progress"', self.settings)
+        self.assertIn("'busy', percent", self.settings)
+        self.assertIn("rigPulse", self.settings)
+        self.assertIn("#rig-controls{display:grid;grid-template-columns:1fr 1fr",
+                      self.settings)
+        self.assertIn("scrollIntoView({ block: 'nearest'", self.settings)
+
     def test_calibration_sliders_have_a_live_response_preview(self):
         # WYSIWYG expectation (2026-08-01): dragging a slider must visibly
         # change the face on the stage, not just a region's glow. The stage
