@@ -186,8 +186,15 @@ class RigProfileTests(unittest.TestCase):
         # following a frown, settling a beat behind.
         self.assertIn("function foreheadFor", renderer)
         self.assertIn("foreheadFor(bv);", renderer)
-        self.assertIn("const bShift=-foreheadLift", renderer)
         self.assertIn("target>foreheadLift?0.10:0.045", renderer)
+        # Three sovereign tissues (2026-08-01): forehead warp pinned at the
+        # brow line and absorbed at the hairline; brow strips repaint their
+        # own boxes; from the brow line DOWN the plate is identity - the
+        # earlier band stretched across the eye region while eye tiles
+        # stamped at fixed positions, splitting the eyes horizontally.
+        self.assertIn("Math.min(M.brow.l.box[1],M.brow.r.box[1])", renderer)
+        self.assertIn("Math.max(-6,Math.min(2,-foreheadLift*1.15))", renderer)
+        self.assertIn("[browTop,Ym,browTop+dy,Ym+dy]", renderer)
         self.assertIn("const foreheadGain=", renderer)
         self.assertIn("const browRange=", renderer)
         app_src = open(os.path.join(ROOT, "server", "app.py"),

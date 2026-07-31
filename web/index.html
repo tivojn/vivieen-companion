@@ -1349,19 +1349,28 @@ function renderFaceSurface(ref,eyes,mix,h,lids,gv,bv,ck,jawPx,ts,mouthWarp){
   const lever=N.pivot-N.ref,th=h.r*Math.PI/180,kx=h.x/lever,dy=h.y;
   const Yj=N.jaw||(N.pivot-0.32*lever),Ym=N.mouth||(N.ref+0.42*lever),HK=ref.height;
   const br=-0.9*(0.5+0.5*vn(ts*0.21,12))*(0.55+0.45*vn(ts*0.07,13));
-  // The forehead skin band runs on its OWN damped follower (foreheadLift),
-  // decoupled from the brow strips: the brows flick fast and asymmetric,
-  // the forehead lags, saturates, and settles late - separate tissues.
-  const Yf=Math.max(4,N.ref-0.40*lever),Yb=Math.max(Yf+8,N.ref-0.08*lever);
-  const bShift=-foreheadLift*1.15*(HK/1024);
+  // THREE SOVEREIGN TISSUES. (1) The forehead: its warp lives strictly
+  // ABOVE the brow strips - pinned at the brow line, peaking mid-forehead,
+  // absorbed at the hairline - so it can never drag anything below. (2)
+  // The eyebrows: the baked strips, repainted over their own boxes. (3)
+  // The eyes: from the brow line down the plate is IDENTITY under
+  // brow/forehead motion - the earlier design stretched the band that
+  // contains the eyes while the eye tiles stamped at fixed positions,
+  // splitting the eyes horizontally.
+  const browTop=(M.brow&&M.brow.l&&M.brow.r)
+    ?Math.min(M.brow.l.box[1],M.brow.r.box[1])
+    :Math.max(4,N.ref-0.30*lever);
+  const Yf=Math.max(4,browTop-Math.max(56,0.30*lever));
+  const Ymid=(Yf+browTop)/2;
+  const bShift=Math.max(-6,Math.min(2,-foreheadLift*1.15))*(HK/1024);
   ctx.translate(N.x,N.pivot);ctx.rotate(th);ctx.translate(-N.x,-N.pivot);
   ctx.transform(1,0,-kx,1,kx*N.pivot,0);
   // Each plate gets its OWN mouth-band stretch: warping both textures to one
   // shared lip gap is what lets a long dissolve run without doubling teeth.
   const bandsFor=extra=>{const j=jawPx+(extra||0);
-    return [[0,Yf,dy,Yf+dy+bShift],
-            [Yf,Yb,Yf+dy+bShift,Yb+dy+bShift],
-            [Yb,Ym,Yb+dy+bShift,Ym+dy],
+    return [[0,Ymid,dy,Ymid+dy+bShift],
+            [Ymid,browTop,Ymid+dy+bShift,browTop+dy],
+            [browTop,Ym,browTop+dy,Ym+dy],
             [Ym,Yj,Ym+dy,Yj+dy+j],
             [Yj,N.pivot,Yj+dy+j,N.pivot+br],[N.pivot,HK,N.pivot+br,HK]];};
   const plate=(image,extra)=>{for(const band of bandsFor(extra)){
