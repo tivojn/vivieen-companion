@@ -4,28 +4,38 @@
 <style>
 /* The pet right-click menu, as its own window: native macOS menus reserve
    the right column for keyboard accelerators, so the gesture hints could
-   never right-align there. Here each row is name (left) | hint (right). */
+   never right-align there. Here each row is name (left) | hint (right).
+   Theme follows the app: the choice saved by Settings (same origin, same
+   localStorage key) wins, the system scheme otherwise. */
+:root{
+  --bg:rgba(252,252,251,.98);--line:rgba(55,53,47,.16);--ink:#37352f;
+  --dim:rgba(55,53,47,.48);--hover:rgba(55,53,47,.07);
+  --shadow:0 10px 30px rgba(15,15,15,.18)}
+:root[data-theme=dark]{
+  --bg:rgba(27,28,31,.97);--line:rgba(255,255,255,.13);--ink:#e8e7e4;
+  --dim:rgba(255,255,255,.42);--hover:rgba(255,255,255,.09);
+  --shadow:0 10px 30px rgba(0,0,0,.35)}
 html,body{margin:0;background:transparent;overflow:hidden;
   user-select:none;-webkit-user-select:none}
-#menu{display:inline-block;min-width:216px;margin:8px;padding:5px;
-  border-radius:10px;border:1px solid rgba(255,255,255,.13);
-  background:rgba(27,28,31,.97);box-shadow:0 10px 30px rgba(0,0,0,.35);
+#menu{display:inline-block;min-width:172px;margin:8px;padding:5px;
+  border-radius:10px;border:1px solid var(--line);
+  background:var(--bg);box-shadow:var(--shadow);
   font:13px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;
-  color:#e8e7e4}
-.item{display:flex;align-items:center;gap:8px;padding:5px 9px;
+  color:var(--ink)}
+.item{display:flex;align-items:center;gap:8px;padding:5px 12px 5px 9px;
   border-radius:6px;white-space:nowrap;cursor:default}
-.item.action:hover{background:rgba(255,255,255,.09)}
+.item.action:hover{background:var(--hover)}
 .item.disabled{opacity:.48}
 .check{flex:none;width:13px;font-size:11px;text-align:center}
 .name{flex:none}
-.hint{flex:1;margin-left:18px;text-align:right;
-  color:rgba(255,255,255,.42);font-size:11.5px}
-.arrow{flex:1;text-align:right;color:rgba(255,255,255,.42);font-size:10px}
-.sep{height:1px;margin:5px 9px;background:rgba(255,255,255,.09)}
+.hint{flex:1;margin-left:20px;text-align:right;color:var(--dim);font-size:11.5px}
+.arrow{flex:1;text-align:right;color:var(--dim);font-size:10px}
+.sep{height:1px;margin:5px 9px;background:var(--line)}
 .sub{display:none;padding:2px 0 3px}
 .sub.on{display:block}
 .sub .item{padding-left:30px}
 </style>
+<script>document.documentElement.dataset.theme=localStorage.getItem('vivieen-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');</script>
 <div id="menu" role="menu"></div>
 <script>
 const MENU=window.vivieenMenu;

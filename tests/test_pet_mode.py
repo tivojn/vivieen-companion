@@ -297,6 +297,10 @@ class PetInputBridgeTests(unittest.TestCase):
         menu_page = (ROOT / "web" / "menu.html").read_text()
         self.assertIn("hint.className='hint'", menu_page)
         self.assertIn("text-align:right", menu_page)
+        # The menu follows the app theme: the choice Settings saved (same
+        # origin, same localStorage key) wins, system scheme otherwise.
+        self.assertIn("localStorage.getItem('vivieen-theme')", menu_page)
+        self.assertIn(":root[data-theme=dark]", menu_page)
         package = (ROOT / "package.json").read_text()
         self.assertIn('"menu.html"', package)
         app_source = (ROOT / "server" / "app.py").read_text()
