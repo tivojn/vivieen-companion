@@ -146,7 +146,7 @@ class PetInputBridgeTests(unittest.TestCase):
         # into the input field through the configured dictation model.
         self.assertIn("rec.start(280)", renderer)
         self.assertIn("function interimTranscribe", renderer)
-        self.assertIn("if(recording&&r.text)txt.value=", renderer)
+        self.assertIn("if(recording&&r.text){txt.value=", renderer)
         self.assertIn(
             "(document.hasFocus()&&document.activeElement===txt)||txt.value.trim())lastEngagedAt=now;",
             renderer)
@@ -156,6 +156,27 @@ class PetInputBridgeTests(unittest.TestCase):
         marker = renderer.index("html.electron.pet.chat-open #bar{")
         self.assertIn("pointer-events:none", renderer[marker:marker + 220])
         self.assertIn("#bar #manual{pointer-events:auto}", renderer)
+        # Pointing at where the bar LIVES wakes it: without this, a cursor
+        # aimed straight at the EnConvo mark (no detour over the avatar)
+        # found an invisible bar that never revealed itself, so hover and
+        # click both read as dead. Waking still claims no clicks.
+        self.assertIn("function pointerOverBarZone", renderer)
+        self.assertIn("||recording||pointerOverBarZone()||", renderer)
+        # The hover label is our own element - native title tooltips are
+        # unreliable over a click-through-toggling transparent window.
+        self.assertIn('id="monitorTip"', renderer)
+        self.assertNotIn('title="Use EnConvo"', renderer)
+        # The menu speaks the user's vocabulary: couple / de-couple.
+        self.assertIn("'De-couple from EnConvo' : 'Couple to EnConvo'", main)
+        # The listening hint is the quiet chip: dot + slim bars + the word.
+        self.assertIn('id="listenWaveBars"', renderer)
+        self.assertIn('id="listenWaveText"', renderer)
+        # The field is a one-line-until-needed textarea: Enter sends,
+        # Shift+Enter breaks the line, and every programmatic value change
+        # re-sizes it.
+        self.assertIn('<textarea id="txt"', renderer)
+        self.assertIn("function autoSizeTxt", renderer)
+        self.assertIn("e.key==='Enter'&&!e.shiftKey", renderer)
 
     def test_articulation_travels_between_mouth_shapes(self):
         # Measured 2026-07-31: with the 18ms cut, EVERY transition on a

@@ -325,7 +325,7 @@ function monitorState() {
   return enconvoMonitor ? enconvoMonitor.snapshot() : {
     enabled: Boolean(state && state.followEnconvo),
     status: 'off',
-    message: 'Follow EnConvo is off.',
+    message: 'De-coupled from EnConvo.',
     processCount: 0,
     target: 'EnConvo',
   };
@@ -1783,7 +1783,7 @@ function buildTrayMenu() {
     { label: 'Settings…', accelerator: 'CommandOrControl+,', click: openSettings },
     { label: 'Size & Opacity…', click: showAppearanceWindow },
     { type: 'separator' },
-    { label: 'Follow EnConvo Audio', type: 'checkbox', checked: monitorState().enabled,
+    { label: 'Couple to EnConvo Audio', type: 'checkbox', checked: monitorState().enabled,
       click: (item) => setEnconvoMonitoring(item.checked) },
     { label: 'Always on Top', type: 'checkbox', checked: state.alwaysOnTop,
       click: (item) => applyAlwaysOnTop(item.checked) },
@@ -1833,7 +1833,7 @@ function showPetMenu() {
       mainWindow.focus();
       mainWindow.webContents.send('vivieen:pet-chat');
     } },
-    { label: followingEnconvo ? 'Unfollow EnConvo' : 'Follow EnConvo',
+    { label: followingEnconvo ? 'De-couple from EnConvo' : 'Couple to EnConvo',
       click: () => setEnconvoMonitoring(!followingEnconvo) },
     { type: 'separator' },
     { label: !petMotionReady ? 'Walk · generate first'
