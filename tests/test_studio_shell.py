@@ -31,6 +31,21 @@ class SettingsMarkupTest(unittest.TestCase):
             self.assertTrue(href.startswith("#") or href == "/",
                             "unhandled navigation link: " + href)
 
+    def test_calibration_sliders_have_a_live_response_preview(self):
+        # WYSIWYG expectation (2026-08-01): dragging a slider must visibly
+        # change the face on the stage, not just a region's glow. The stage
+        # blends the neutral keyframe with the selected pose per region at
+        # the current slider weights, re-fetches the bank after every
+        # publish (epoch-keyed bitmaps), and the success message says when
+        # the rebuilt avatar is not the one on the desk.
+        self.assertIn('id="rig-show-blend"', self.settings)
+        self.assertIn("function rigBitmap", self.settings)
+        self.assertIn("function resetRigBitmaps", self.settings)
+        self.assertIn("ctx.clip();", self.settings)
+        self.assertIn("ctx.globalAlpha = weight;", self.settings)
+        self.assertIn("'rig-show-blend', 'rig-show-mesh'", self.settings)
+        self.assertIn('press "Use this face" to see it live', self.settings)
+
     def test_two_designs_share_one_markup(self):
         # Quiet (calm paper minimalism) and Atelier (editorial couture) are
         # two complete designs over IDENTICAL markup: Atelier exists purely
