@@ -3022,7 +3022,8 @@ function formatRigError(detail) {
 function rigStatus(message = '', state = '', percent = null) {
   const status = $('#rig-status');
   const brows = RIG_PROFILE.brows === undefined ? '' : ` · brows ${RIG_PROFILE.brows}%`;
-  const targets = `Targets · lip ${RIG_PROFILE.lips}% · jaw ${RIG_PROFILE.jaw}% · cheeks ${RIG_PROFILE.cheeks}%${brows} · folds ${RIG_PROFILE.nasolabial}% · nose ${RIG_PROFILE.nose}%`;
+  const forehead = RIG_PROFILE.forehead === undefined ? '' : ` · forehead ${RIG_PROFILE.forehead}%`;
+  const targets = `Targets · lip ${RIG_PROFILE.lips}% · jaw ${RIG_PROFILE.jaw}% · cheeks ${RIG_PROFILE.cheeks}%${brows}${forehead} · folds ${RIG_PROFILE.nasolabial}% · nose ${RIG_PROFILE.nose}%`;
   const experimental = rigExperimentalKeys();
   const legacyBackend = Number(RIG.schema.version || 0) < 2;
   const guidance = experimental.length

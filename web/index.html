@@ -1116,10 +1116,15 @@ function headAt(now){
    ones. The two brows are deliberately not identical.                        */
 let browAmp=0,browT0=-1e9,browDur=1,browEnv=0,nextBrow=performance.now()+2200;
 const BROW_ASYM=0.86+Math.random()*0.1;
-// Calibration's "Brows and forehead" slider is a live runtime amplitude:
-// 55% is the tuned default, 0 stills the brow, 100 nearly doubles it.
+// Calibration's Eyebrows / Forehead sliders are SEPARATE live runtime
+// amplitudes: 55% is the tuned default, 0 stills the tissue, 100 nearly
+// doubles it. The gesture units were tuned against a 3.5px baked ceiling;
+// newer banks reach ~9.5px, so gestures scale into whatever this bank has.
 const browGain=()=>Math.max(0,Math.min(2,
   ((M&&M.rig_profile&&Number(M.rig_profile.brows))||55)/55));
+const foreheadGain=()=>Math.max(0,Math.min(2,
+  ((M&&M.rig_profile&&Number(M.rig_profile.forehead))||55)/55));
+const browRange=()=>(M&&M.brow&&M.brow.dys?Math.max(...M.brow.dys):3.5)/3.5;
 
 function planBrow(now){
   const r=Math.random();
@@ -1147,9 +1152,10 @@ function browGesture(now){
 function browFor(now,side,lid){
   const t=now/1000,k=side==='l'?BROW_ASYM:1,gain=browGain();
   const drift=0.20*Math.sin(t*0.31+(side==='l'?1.7:0))+0.11*Math.sin(t*0.73);
-  const v=(browGesture(now)+1.1*browEnv)*k*gain+drift*(0.5+0.5*gain)-0.4*lid;
-  const top=3.5*Math.max(1,gain);
-  return v<-1.5?-1.5:v>top?top:v;
+  const reach=browRange();
+  const v=((browGesture(now)+1.1*browEnv)*k*gain+drift*(0.5+0.5*gain))*reach-0.4*lid;
+  const top=3.5*reach*Math.max(1,gain);
+  return v<-1.5*reach?-1.5*reach:v>top?top:v;
 }
 /* The forehead is NOT the brow: heavier skin that only engages past a real
    raise (small flicks stay brow-only), saturates instead of tracking
@@ -1157,9 +1163,10 @@ function browFor(now,side,lid){
    behind. Two tissues, two behaviours - not one sliding plate. */
 let foreheadLift=0;
 function foreheadFor(bv){
-  const b=(bv.l+bv.r)/2;
-  const target=b>0.8?Math.tanh((b-0.8)*0.5)*1.8
-    :b<-0.6?Math.tanh((b+0.6)*0.4)*0.7:0;
+  const reach=browRange(),engage=0.8*reach;
+  const b=(bv.l+bv.r)/2,gain=foreheadGain();
+  const target=(b>engage?Math.tanh((b-engage)*0.5/reach)*1.8*reach
+    :b<-0.6*reach?Math.tanh((b+0.6*reach)*0.4/reach)*0.7*reach:0)*gain;
   foreheadLift+=(target-foreheadLift)*(target>foreheadLift?0.10:0.045);
   return foreheadLift;
 }
