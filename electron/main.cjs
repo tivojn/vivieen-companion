@@ -1313,6 +1313,11 @@ function showBuddyMenu() {
       enabled: buddyMotionReady || buddyRoam,
       click: () => applyBuddyRoam(!buddyRoam),
     },
+    { label: 'Moves · 2×tap hair', click: () => {
+      if (buddyWindow && !buddyWindow.isDestroyed()) {
+        buddyWindow.webContents.send('vivieen:pet-moves');
+      }
+    } },
     { type: 'separator' },
     { label: 'Remove from desk', click: () => { removeBuddyFromDesk(); } },
   ]).popup({ window: buddyWindow });
@@ -1835,6 +1840,11 @@ function showPetMenu() {
         : state.petRoam ? 'Walking · hover to stop' : 'Walk · 2×tap leg',
       type: 'checkbox', checked: state.petRoam, enabled: petMotionReady,
       click: (item) => applyPetRoam(item.checked) },
+    { label: 'Moves · 2×tap hair', click: () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('vivieen:pet-moves');
+      }
+    } },
     { label: 'React · tap arm or chest', enabled: false },
     { label: 'Rest · still for 10s', enabled: false },
     { type: 'separator' },

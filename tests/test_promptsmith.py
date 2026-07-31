@@ -70,7 +70,7 @@ class PromptDraftWiring(unittest.TestCase):
     def test_endpoint_exists(self):
         app = (ROOT / "server" / "app.py").read_text()
         self.assertIn('@app.post("/api/avatar/prompt/expand")', app)
-        self.assertIn('kind: str = Field(pattern=r"^(body|walk|idle)$")', app)
+        self.assertIn('kind: str = Field(pattern=r"^(body|walk|idle|move)$")', app)
 
     def test_all_three_fields_have_a_draft_button(self):
         settings = (ROOT / "web" / "settings.html").read_text()

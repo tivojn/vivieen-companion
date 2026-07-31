@@ -56,6 +56,15 @@ BRIEFS = {
         "under 500 characters. Describe only the body's movement and "
         "attitude; no props. " + _SHARED
     ),
+    "move": (
+        "You write choreography direction for a desktop avatar's short "
+        "performance loop ('Show Me Some Moves'). Expand the gist into ONE "
+        "high-energy, loopable routine performed entirely in place: opening "
+        "stance, a standout signature move, rhythm, attitude, facial "
+        "expression, and a confident finishing pose that matches the "
+        "opening so it loops. Two to four sentences under 550 characters. "
+        + _SHARED
+    ),
 }
 
 

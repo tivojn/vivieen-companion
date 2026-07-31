@@ -458,6 +458,99 @@ def _walk_frame_receipt(frame):
     }
 
 
+# ---------------------------------------------------------------- moves
+# "Show Me Some Moves": short performance loops at the same level as Horizon
+# Walk and Edge Idle. Every move is a free act - performed in place on the
+# 9:16 plate, first frame equals last frame - so the whole idle free-act
+# pipeline carries it; only the choreography prompt changes.
+MOVE_STYLES = {
+    "viral": {
+        "label": "Viral TikTok",
+        "description": "High-energy trend choreography for the camera.",
+        "prompt": (
+            "Move like a seductive TikTok star captivating a live crowd. "
+            "Execute high-energy, trend-driven choreography with crisp "
+            "transitions, animated facial expressions, and flirtatious "
+            "gestures. Keep perfect rhythm, lock eyes with the audience, and "
+            "perform as though you're shooting a viral dance trend. Start "
+            "with a powerful opening stance, incorporate a standout "
+            "signature move, and finish with a bold, confident pose."),
+    },
+    "hiphop": {
+        "label": "Hip-hop freestyle",
+        "description": "Grounded grooves, pops, and freestyle bounce.",
+        "prompt": (
+            "Freestyle like a confident hip-hop dancer owning a cypher: deep "
+            "rhythmic grooves, chest pops, shoulder bounces, sharp arm hits, "
+            "and quick in-place footwork. Stay loose and musical, ride one "
+            "steady beat, drop in a playful freeze, and finish back in a "
+            "relaxed stance with a knowing grin."),
+    },
+    "kpop": {
+        "label": "K-pop point dance",
+        "description": "Sharp, camera-ready point choreography.",
+        "prompt": (
+            "Perform razor-sharp K-pop point choreography like the center "
+            "position in a music video: precise synchronized arm points, "
+            "clean angles, quick head accents, and a signature point move "
+            "aimed straight at the camera. Keep every hit crisp and on the "
+            "beat, expressions bright and idol-confident, and end striking "
+            "an iconic final pose."),
+    },
+    "ballet": {
+        "label": "Ballet grace",
+        "description": "Elegant lines and one gentle turn, in place.",
+        "prompt": (
+            "Dance like a principal ballerina in a spotlight: rise through "
+            "demi-pointe, sweep elegant port de bras, unfold a controlled "
+            "arabesque, and turn one gentle pirouette. Keep the lines long, "
+            "the carriage regal, and the tempo serene, then settle softly "
+            "back to a poised fifth position with a graceful bow of the "
+            "head."),
+    },
+    "salsa": {
+        "label": "Salsa heat",
+        "description": "Latin rhythm, hip action, and a playful spin.",
+        "prompt": (
+            "Dance salsa like the star of a Havana club: quick basic steps "
+            "in place, rolling hip action, styled arms, flirtatious shoulder "
+            "shimmies, and one playful spin. Ride the rhythm with infectious "
+            "joy, flash a dazzling smile, and finish with a sassy "
+            "hand-on-hip pose."),
+    },
+}
+DEFAULT_MOVE_STYLE = "viral"
+
+
+def resolve_move_style(style_id=None, custom_prompt=""):
+    if isinstance(style_id, dict):
+        custom_prompt = style_id.get("prompt", custom_prompt)
+        style_id = style_id.get("id")
+    style_id = _clean(style_id, 40) or DEFAULT_MOVE_STYLE
+    if style_id == "custom":
+        prompt = _clean(custom_prompt, 600)
+        if len(prompt) < 12:
+            raise ValueError("describe the custom move in at least 12 characters")
+        return {"id": "custom", "label": "Custom move",
+                "description": "Your own described performance.",
+                "validation": "free", "prompt": prompt}
+    preset = MOVE_STYLES.get(style_id)
+    if not preset:
+        raise ValueError(f"unknown move style: {style_id}")
+    return {"id": style_id, "validation": "free", **preset}
+
+
+def _move_style_receipt(style):
+    style = resolve_move_style(style)
+    receipt = {key: style[key]
+               for key in ("id", "label", "description", "validation")}
+    if style["id"] == "custom":
+        # Two custom moves differ only by their text; the receipt is the
+        # cache signature and the reuse identity.
+        receipt["prompt"] = style["prompt"]
+    return receipt
+
+
 def resolve_idle_pose(pose_id=None, custom_prompt=""):
     if isinstance(pose_id, dict):
         custom_prompt = pose_id.get("prompt", custom_prompt)
@@ -761,6 +854,20 @@ Reject: identity drift, wardrobe changes, camera motion, leaving the frame, or f
         "fixed in place, and keep every floor-contacting shoe planted exactly as shown."
     )
     return f"""Animate a subtle living hold of this exact supported edge pose with a locked camera. Preserve the exact identity, hair, outfit, materials, colors, accessories, arm arrangement, leg arrangement, contact points, and both complete shoes from the input keyframe. The selected pose direction is: {idle_pose['prompt']} Preserve a seamless pure white background and floor throughout every frame, with no gray, scenery, reflections, cast shadow, or colored spill on the subject. {contact_lock} Add only natural breathing, one soft blink, a tiny chin adjustment, and restrained fabric and hair settling. Never straighten away from the wall, become a tree pose, float without support, change which leg bears weight, uncross or cross the legs, change the arm arrangement, walk, talk, move the camera, zoom, cut, add objects, or add text. Begin and end with the exact same silhouette, limb geometry, wall contacts, and floor contacts for a seamless idle loop."""
+
+
+def _move_keyframe_prompt(outfit, move_style=None):
+    # A move IS a custom free act: the idle free-branch contracts (opening
+    # pose, loopability, white plate) already say everything a performance
+    # keyframe needs, with the choreography text in the driver's seat.
+    move_style = resolve_move_style(move_style)
+    return _idle_keyframe_prompt(
+        outfit, False, {"id": "custom", "prompt": move_style["prompt"]})
+
+
+def _move_video_prompt(move_style=None):
+    move_style = resolve_move_style(move_style)
+    return _idle_video_prompt({"id": "custom", "prompt": move_style["prompt"]})
 
 
 def _image_command(provider, references, output_dir, file_name, prompt):
@@ -1084,10 +1191,10 @@ def _generate_videos(
                 walk_frame,
             )
             aspect_ratio = walk_frame["aspect_ratio"]
-        elif kind == "idle":
+        elif kind in ("idle", "move"):
             source_keyframe = _idle_loop_keyframe(
                 source_keyframe,
-                os.path.join(video_dir, "idle-loop-keyframe.png"),
+                os.path.join(video_dir, f"{kind}-loop-keyframe.png"),
                 log,
             )
             aspect_ratio = IDLE_PLATE["aspect_ratio"]
@@ -3142,9 +3249,9 @@ def _process_clip(
     alpha_name = f"{kind}-alpha.mov"
     alpha_path = _encode_alpha_preview(normalised, fps, os.path.join(stage, alpha_name))
     alpha_stream_name = None
-    if kind == "idle":
-        # The idle runs free (no window-position phase lock like the walk),
-        # so it can ship as GPU-decoded alpha video instead of a PNG atlas.
+    if kind in ("idle", "move"):
+        # Idle and moves run free (no window-position phase lock like the
+        # walk), so they ship as GPU-decoded alpha video, not a PNG atlas.
         candidate = f"{kind}-alpha.webm"
         if _encode_alpha_stream(
                 normalised, fps, os.path.join(stage, candidate)):
@@ -3227,10 +3334,11 @@ def _body_view_source(body_dir, body_manifest, view):
 
 def _build_context(
         avatar_dir, pose_reference, idle_pose=None, walk_style=None,
-        walk_frame=None):
+        walk_frame=None, move_style=None):
     idle_pose = resolve_idle_pose(idle_pose)
     walk_style = resolve_walk_style(walk_style)
     walk_frame = resolve_walk_frame(walk_frame)
+    move_style = resolve_move_style(move_style)
     body_dir = os.path.join(avatar_dir, "body")
     body_manifest_path = os.path.join(body_dir, "body.json")
     if not os.path.isfile(body_manifest_path):
@@ -3257,8 +3365,10 @@ def _build_context(
         "walk_keyframe": _walk_keyframe_prompt(outfit, walk_style),
         "idle_keyframe": _idle_keyframe_prompt(
             outfit, bool(pose_reference), idle_pose),
+        "move_keyframe": _move_keyframe_prompt(outfit, move_style),
         "walk_video": _walk_video_prompt(walk_style, walk_frame),
         "idle_video": _idle_video_prompt(idle_pose),
+        "move_video": _move_video_prompt(move_style),
     }
     signature_source = "\n".join((
         _sha256(front_source),
@@ -3268,6 +3378,7 @@ def _build_context(
         json.dumps(idle_pose, sort_keys=True),
         json.dumps(_walk_style_receipt(walk_style), sort_keys=True),
         json.dumps(_walk_frame_receipt(walk_frame), sort_keys=True),
+        json.dumps(_move_style_receipt(move_style), sort_keys=True),
         image_provider["command_key"], str(image_provider.get("model")),
         video_provider["command_key"], str(video_provider.get("model")),
         *prompts.values(),
@@ -3278,10 +3389,12 @@ def _build_context(
     os.makedirs(cache, mode=0o700, exist_ok=True)
     return {
         "body_source": front_source,
-        "body_sources": {"walk": side_source, "idle": front_source},
+        "body_sources": {
+            "walk": side_source, "idle": front_source, "move": front_source},
         "body_reference_views": {
             "walk": "side" if side_source != front_source else "front-legacy",
             "idle": "front",
+            "move": "front",
         },
         "identity_reference": identity_reference,
         "image_provider": image_provider,
@@ -3289,6 +3402,7 @@ def _build_context(
         "idle_pose": idle_pose,
         "walk_style": walk_style,
         "walk_frame": walk_frame,
+        "move_style": move_style,
         "prompts": prompts,
         "signature": signature,
         "cache_root": cache_root,
@@ -3483,19 +3597,21 @@ def reprocess_approved_walk(
 
 def preview_keyframes(
         avatar_dir, pose_reference=None, idle_pose=None,
-        walk_style=None, kinds=None, log=print, walk_frame=None):
+        walk_style=None, kinds=None, log=print, walk_frame=None,
+        move_style=None):
     requested_kinds = tuple(dict.fromkeys(kinds or ("walk", "idle")))
-    unknown_kinds = sorted(set(requested_kinds) - {"walk", "idle"})
+    unknown_kinds = sorted(set(requested_kinds) - {"walk", "idle", "move"})
     if not requested_kinds or unknown_kinds:
         detail = ", ".join(unknown_kinds) if unknown_kinds else "none"
         raise ValueError(f"unknown motion clip selection: {detail}")
     context = _build_context(
-        avatar_dir, pose_reference, idle_pose, walk_style, walk_frame)
+        avatar_dir, pose_reference, idle_pose, walk_style, walk_frame,
+        move_style)
     prompts = context["prompts"]
     keyframes = _generate_keyframes(
         context["cache"], context["image_provider"], context["body_sources"],
         context["identity_reference"], pose_reference,
-        {"walk": prompts["walk_keyframe"], "idle": prompts["idle_keyframe"]},
+        {kind: prompts[f"{kind}_keyframe"] for kind in requested_kinds},
         log, requested_kinds)
     preview_dir = os.path.join(avatar_dir, ".motion-preview")
     shutil.rmtree(preview_dir, ignore_errors=True)
@@ -3582,20 +3698,22 @@ def _remove_clip_assets(directory, kind):
 def build(
         avatar_dir, pose_reference=None, log=print, progress=None,
         keep_previous=False, idle_pose=None, kinds=None, walk_style=None,
-        walk_frame=None):
+        walk_frame=None, move_style=None):
     requested_kinds = tuple(dict.fromkeys(kinds or ("walk", "idle")))
-    unknown_kinds = sorted(set(requested_kinds) - {"walk", "idle"})
+    unknown_kinds = sorted(set(requested_kinds) - {"walk", "idle", "move"})
     if not requested_kinds or unknown_kinds:
         detail = ", ".join(unknown_kinds) if unknown_kinds else "none"
         raise ValueError(f"unknown motion clip selection: {detail}")
     context = _build_context(
-        avatar_dir, pose_reference, idle_pose, walk_style, walk_frame)
+        avatar_dir, pose_reference, idle_pose, walk_style, walk_frame,
+        move_style)
     body_sources = context.get("body_sources") or {
         "walk": context["body_source"],
         "idle": context["body_source"],
+        "move": context["body_source"],
     }
     body_reference_views = context.get("body_reference_views") or {
-        "walk": "front-legacy", "idle": "front-legacy"}
+        "walk": "front-legacy", "idle": "front-legacy", "move": "front-legacy"}
     identity_reference = context.get("identity_reference")
     image_provider = context["image_provider"]
     video_provider = context["video_provider"]
@@ -3604,6 +3722,8 @@ def build(
         context.get("walk_style") or walk_style)
     walk_frame = resolve_walk_frame(
         context.get("walk_frame") or walk_frame)
+    move_style = resolve_move_style(
+        context.get("move_style") or move_style)
     prompts = context["prompts"]
     signature = context["signature"]
     cache_root = context["cache_root"]
@@ -3622,12 +3742,10 @@ def build(
         retry_count = sum(rejections.values())
         retry_progress = (
             min(0.88, 0.78 + retry_count * 0.04) if retry_count else 0.0)
-        selected_label = (
-            "Horizon Walk and Edge Idle"
-            if len(requested_kinds) == 2 else
-            walk_style["label"] if requested_kinds == ("walk",) else
-            "Edge Idle"
-        )
+        kind_labels = {"walk": walk_style["label"], "idle": "Edge Idle",
+                       "move": f"Moves · {move_style['label']}"}
+        selected_label = " and ".join(
+            kind_labels[kind] for kind in requested_kinds)
         if retry_count:
             _emit(
                 progress, "retry", retry_progress,
@@ -3639,14 +3757,14 @@ def build(
                 ("s" if len(requested_kinds) > 1 else ""))
         keyframes = _generate_keyframes(
             cache, image_provider, body_sources, identity_reference, pose_reference,
-            {"walk": prompts["walk_keyframe"],
-             "idle": prompts["idle_keyframe"]}, log, requested_kinds)
+            {kind: prompts[f"{kind}_keyframe"] for kind in requested_kinds},
+            log, requested_kinds)
         if not retry_count:
             _emit(progress, "video", 0.32, f"Animating {selected_label}")
         videos = _generate_videos(
             cache, video_provider, keyframes,
-            {"walk": prompts["walk_video"],
-             "idle": prompts["idle_video"]}, log, requested_kinds,
+            {kind: prompts[f"{kind}_video"] for kind in requested_kinds},
+            log, requested_kinds,
             walk_frame, walk_style)
 
         stage = tempfile.mkdtemp(prefix=".motion-stage-", dir=avatar_dir)
@@ -3668,6 +3786,10 @@ def build(
                     IDLE_FPS, max(0.77, min(0.90, retry_progress + 0.02)),
                     "Alpha-cutting Edge Idle locally",
                 ),
+                "move": (
+                    IDLE_FPS, max(0.77, min(0.90, retry_progress + 0.02)),
+                    f"Alpha-cutting {move_style['label']} locally",
+                ),
             }
             clip_specs = (
                 (kind, *all_clip_specs[kind]) for kind in requested_kinds
@@ -3678,6 +3800,10 @@ def build(
                     process_options = {}
                     if kind == "idle" and idle_pose["validation"] != "back-heel":
                         process_options["idle_validation"] = idle_pose["validation"]
+                    if kind == "move":
+                        # Every move is a free act: centered, unmirrored,
+                        # no wall contact to validate.
+                        process_options["idle_validation"] = "free"
                     if kind == "walk" and walk_style["id"] != DEFAULT_WALK_STYLE:
                         process_options["walk_style"] = walk_style
                     clips[kind] = _process_clip(
@@ -3750,6 +3876,8 @@ def build(
                     "use": "pose geometry only",
                     "retained": False,
                 }
+            if "move" in requested_kinds:
+                metadata["move_style"] = _move_style_receipt(move_style)
             body_references = dict(metadata.get("body_references") or {})
             for kind in requested_kinds:
                 body_references[kind] = {
@@ -3759,6 +3887,8 @@ def build(
                     "use": (
                         "Horizon Walk side geometry, proportions, and wardrobe"
                         if kind == "walk" else
+                        "Show Me Some Moves proportions and wardrobe"
+                        if kind == "move" else
                         "Edge Idle proportions and wardrobe"
                     ),
                 }
@@ -3803,7 +3933,7 @@ def build(
 
 def remove(avatar_dir, kind=None):
     kind = _clean(kind, 20) or "both"
-    if kind not in {"walk", "idle", "both"}:
+    if kind not in {"walk", "idle", "move", "both"}:
         raise ValueError(f"unknown motion clip selection: {kind}")
     motion_dir = os.path.join(avatar_dir, "motion")
     cache_dir = os.path.join(avatar_dir, ".motion-cache")
@@ -3828,11 +3958,13 @@ def remove(avatar_dir, kind=None):
     metadata["prompts"] = prompts
     if kind == "walk":
         metadata.pop("walk_style", None)
+    elif kind == "move":
+        metadata.pop("move_style", None)
     else:
         metadata.pop("idle_pose", None)
         metadata.pop("reference", None)
     shutil.rmtree(cache_dir, ignore_errors=True)
-    if not any(metadata.get(name) for name in ("walk", "idle")):
+    if not any(metadata.get(name) for name in ("walk", "idle", "move")):
         shutil.rmtree(motion_dir, ignore_errors=True)
         return None
     metadata["updated"] = datetime.datetime.now().isoformat(timespec="seconds")

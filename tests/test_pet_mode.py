@@ -109,11 +109,14 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("classList.remove('listening')", renderer)
         self.assertIn("flashPrompt('Microphone blocked", renderer)
         # The face mask alone is not the head: people hold the CROWN, so a
-        # skull circle around the nose (sized by the nose-to-neck span) must
-        # classify hair as head - verified live on the desktop 2026-07-31.
+        # skull circle around the nose (sized by the nose-to-neck span)
+        # classifies the crown as HAIR - which arms hold-to-talk exactly
+        # like the head (verified live on the desktop 2026-07-31) and gives
+        # the double-tap Moves gesture its own zone.
         self.assertIn(
-            "Math.hypot(point.x-nose[0],point.y-nose[1])<=radius)return 'head'",
+            "Math.hypot(point.x-nose[0],point.y-nose[1])<=radius)return 'hair'",
             renderer)
+        self.assertIn("part,head:part==='head'||part==='hair'", renderer)
         # A release before the microphone resolves must not leave a ghost
         # recording running.
         self.assertIn("if(!recWanted){", renderer)
@@ -308,7 +311,7 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("setPetMotionReady", preload)
         self.assertIn("setPetEngaged", preload)
         self.assertIn("drawMotionClip", renderer)
-        self.assertIn("MOTION={walk:null,idle:null}", renderer)
+        self.assertIn("MOTION={walk:null,idle:null,move:null}", renderer)
         self.assertIn("speaking||recording||petHit", renderer)
         self.assertIn("elapsed / Math.max(0.1, petRoamRuntime.cycleSeconds)", main)
         self.assertIn("motionTravelDelta", main)

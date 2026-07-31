@@ -161,7 +161,7 @@ def _validate_runtime_bundle(directory, expect_motion=None):
     if runtime_motion:
         if not isinstance(runtime_motion, dict):
             raise ValueError("runtime motion metadata is missing")
-        for kind in ("walk", "idle"):
+        for kind in ("walk", "idle", "move"):
             clip = runtime_motion.get(kind)
             if not clip:
                 continue
@@ -406,7 +406,7 @@ def _body_thread(slug, options):
 
 def _motion_thread(
         slug, reference_path, job_id, idle_pose=None,
-        kinds=None, walk_style=None):
+        kinds=None, walk_style=None, move_style=None):
     writer = jlog(slug, "starting desktop motion generation")
     with _jlock:
         job = _jobs.get(slug)
@@ -433,6 +433,7 @@ def _motion_thread(
             idle_pose=idle_pose,
             kinds=kinds,
             walk_style=walk_style,
+            move_style=move_style,
             log=writer,
             progress=lambda stage, value, label: _job_progress(
                 slug, stage, value, label, job_id=job_id),
@@ -573,16 +574,18 @@ class BodyPromptRequest(BaseModel):
 
 class MotionRequest(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
-    kind: str = Field(default="both", pattern=r"^(walk|idle|both)$")
+    kind: str = Field(default="both", pattern=r"^(walk|idle|move|both)$")
     walk_style: str = Field(default="office", max_length=40)
     walk_prompt: str = Field(default="", max_length=600)
     pose: str = Field(default="back-heel", max_length=40)
     pose_prompt: str = Field(default="", max_length=600)
+    move_style: str = Field(default="viral", max_length=40)
+    move_prompt: str = Field(default="", max_length=600)
 
 
 class MotionRemoveRequest(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
-    kind: str = Field(default="both", pattern=r"^(walk|idle|both)$")
+    kind: str = Field(default="both", pattern=r"^(walk|idle|move|both)$")
 
 
 SET_ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,80}$"
@@ -590,7 +593,7 @@ SET_ID_PATTERN = r"^[a-z0-9][a-z0-9-]{0,80}$"
 
 class MotionSetRequest(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
-    kind: str = Field(pattern=r"^(walk|idle)$")
+    kind: str = Field(pattern=r"^(walk|idle|move)$")
     set_id: str = Field(pattern=SET_ID_PATTERN)
 
 
@@ -636,7 +639,7 @@ def _motion_asset_catalog(slug, directory, motion_metadata):
         catalog[kind].append(record)
         seen.add(relative)
 
-    for kind in ("walk", "idle"):
+    for kind in ("walk", "idle", "move"):
         clip = motion_metadata.get(kind) or {}
         if not clip:
             continue
@@ -827,6 +830,7 @@ async def api_body(slug: str = Query(pattern=SLUG_PATTERN)):
 
     has_walk = has_motion_clip("walk")
     has_idle = has_motion_clip("idle")
+    has_move = has_motion_clip("move")
     from studio import library
     try:
         # Adopt pre-library avatars: their canonical body and motion become
@@ -848,14 +852,15 @@ async def api_body(slug: str = Query(pattern=SLUG_PATTERN)):
             slug, directory, motion_metadata),
         "motion_sets": {
             kind: library.list_motion_sets(directory, kind)
-            for kind in ("walk", "idle")
+            for kind in ("walk", "idle", "move")
         },
         "body_sets": library.list_body_sets(directory),
         "has_body": os.path.isfile(os.path.join(directory, "body", "body.json")),
         "has_turnaround": has_turnaround,
-        "has_motion": has_walk or has_idle,
+        "has_motion": has_walk or has_idle or has_move,
         "has_walk": has_walk,
         "has_idle": has_idle,
+        "has_move": has_move,
         "provider": provider,
         "provider_error": provider_error,
         "video_provider": video_provider,
@@ -891,7 +896,7 @@ async def api_body_prompt(request: BodyPromptRequest):
 
 class PromptExpandRequest(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
-    kind: str = Field(pattern=r"^(body|walk|idle)$")
+    kind: str = Field(pattern=r"^(body|walk|idle|move)$")
     gist: str = Field(min_length=4, max_length=600)
 
 
@@ -978,21 +983,22 @@ async def api_motion_generate(request: MotionRequest):
             motion.resolve_idle_pose(request.pose, request.pose_prompt)
             if "idle" in kinds else None
         )
+        move_style = (
+            motion.resolve_move_style(request.move_style, request.move_prompt)
+            if "move" in kinds else None
+        )
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
-    label = (
-        "Validating Horizon Walk and Edge Idle"
-        if len(kinds) == 2 else
-        "Validating Horizon Walk style" if kinds == ("walk",) else
-        "Validating Edge Idle pose"
-    )
+    kind_labels = {"walk": "Horizon Walk", "idle": "Edge Idle",
+                   "move": "Show Me Some Moves"}
+    label = "Validating " + " and ".join(kind_labels[k] for k in kinds)
     job_id = _reserve_job(slug, "motion", label)
     if not job_id:
         return _already_running(slug)
     try:
         threading.Thread(
             target=_motion_thread,
-            args=(slug, None, job_id, idle_pose, kinds, walk_style),
+            args=(slug, None, job_id, idle_pose, kinds, walk_style, move_style),
             daemon=True).start()
     except BaseException as error:
         _finish_job(slug, job_id, getattr(error, "detail", error))
@@ -1002,6 +1008,7 @@ async def api_motion_generate(request: MotionRequest):
         "job_id": job_id,
         "pose": idle_pose["id"] if idle_pose else None,
         "walk_style": walk_style["id"] if walk_style else None,
+        "move_style": move_style["id"] if move_style else None,
     }
 
 

@@ -20,12 +20,13 @@ import re
 import shutil
 import tempfile
 
-MOTION_KINDS = ("walk", "idle")
+MOTION_KINDS = ("walk", "idle", "move")
 SET_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
 # Keys in motion.json owned by one clip kind rather than shared by the bundle.
 _CLIP_KEYS = {
     "walk": ("walk_style", "walk_frame"),
     "idle": ("idle_pose", "reference"),
+    "move": ("move_style",),
 }
 _SHARED_KEYS = ("signature", "image_provider", "video_provider",
                 "identity_reference")
@@ -85,7 +86,7 @@ def _set_active(avatar_dir, slot, set_id):
 
 def clear_active(avatar_dir, slot):
     """Forget the active pointer after the canonical asset was removed."""
-    if slot not in ("walk", "idle", "body"):
+    if slot not in ("walk", "idle", "move", "body"):
         raise ValueError(f"unknown library slot: {slot}")
     _set_active(avatar_dir, slot, None)
 
