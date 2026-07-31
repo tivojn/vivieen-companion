@@ -133,6 +133,21 @@ class RigProfileTests(unittest.TestCase):
         self.assertTrue(measure._aperture_within_limit(0.091, 0.09))
         self.assertFalse(measure._aperture_within_limit(0.093, 0.09))
 
+    def test_gaze_warp_never_tears_the_iris(self):
+        # 'Iris kinda ruptured' at far-left cursor (2026-08-01): the lash
+        # guard hard-zeroed the eyeball mask, and under a 9px iris shift
+        # the warp sheared the iris across that cliff in single-pixel
+        # steps - on EVERY avatar's extreme gaze tiles, only visible once
+        # the face filled the screen. The guard is soft-lifted now (the
+        # lash line itself still holds at zero), and the travel table
+        # scales down for genuinely small irises.
+        source = open(os.path.join(ROOT, "studio", "expression.py"),
+                      encoding="utf-8").read()
+        self.assertNotIn("alpha[guard > 0] = 0.0", source)
+        self.assertIn("soft_guard = cv2.GaussianBlur(guard", source)
+        self.assertIn("gaze travel scaled to", source)
+        self.assertIn("radius / 17.0", source)
+
     def test_brows_slider_drives_runtime_and_forehead(self):
         # The 'half zombie' fix (2026-08-01): brows and forehead animate
         # with speech. The Brows slider is a live runtime amplitude carried
