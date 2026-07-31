@@ -101,6 +101,39 @@ class FrameRepair(unittest.TestCase):
         self.assertEqual(9, clip["frames"])
         self.assertEqual(9, len(repaired))
 
+    def test_drop_rebalances_walk_travel_bookkeeping(self):
+        """Verified live 2026-07-31: dropping walk frames 61-72 left
+        cycle_distance owing the missing frames' travel, and the roam
+        engine paid the debt as an instant slide at every loop wrap."""
+        frames = _frames(12)
+        with tempfile.TemporaryDirectory() as avatar_dir:
+            motion_dir = _make_clip(avatar_dir, frames)
+            meta_path = os.path.join(motion_dir, "motion.json")
+            with open(meta_path) as handle:
+                metadata = json.load(handle)
+            clip = metadata["idle"]
+            step = 6.0
+            clip.update({
+                "travel_offsets": [round(i * step, 2) for i in range(12)],
+                "cycle_distance": 12 * step, "cycle_seconds": 1.0,
+                "ground_speed": 72.0, "fps": 12,
+            })
+            with open(meta_path, "w") as handle:
+                json.dump(metadata, handle)
+            result = motion.repair_frame(
+                avatar_dir, "idle", 9, frame_end=11, mode="drop")
+            motion.commit_pending_build(avatar_dir)
+        clip = result["idle"]
+        self.assertEqual(9, clip["frames"])
+        self.assertEqual(9, len(clip["travel_offsets"]))
+        self.assertAlmostEqual(9 * step, clip["cycle_distance"], places=1)
+        self.assertAlmostEqual(0.75, clip["cycle_seconds"], places=3)
+        # The wrap owes exactly one ordinary frame of travel, not the gap.
+        wrap = clip["cycle_distance"] - clip["travel_offsets"][-1]
+        self.assertAlmostEqual(step, wrap, places=1)
+        # Speed is preserved: distance and time shrank together.
+        self.assertAlmostEqual(72.0, clip["ground_speed"], places=1)
+
     def test_repair_validates_inputs(self):
         with tempfile.TemporaryDirectory() as avatar_dir:
             with self.assertRaisesRegex(RuntimeError, "no motion"):

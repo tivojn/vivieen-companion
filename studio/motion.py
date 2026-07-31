@@ -4000,12 +4000,29 @@ def repair_frame(avatar_dir, kind, frame_index, mode="patch", note="",
             clip["edge_anchors"] = _edge_anchors(frames, clip["bounds"])
         if mode == "drop":
             offsets = clip.get("travel_offsets")
-            if isinstance(offsets, list):
-                offsets = list(offsets)
-                for index in reversed(run):
-                    if index < len(offsets):
-                        offsets.pop(index)
-                clip["travel_offsets"] = offsets
+            if isinstance(offsets, list) and offsets:
+                # Cumulative distance bookkeeping must shrink WITH the
+                # frames: splicing entries alone leaves cycle_distance owing
+                # the dropped frames' travel, and the roam engine pays that
+                # debt as an instant slide at every loop wrap.
+                original = [float(value) for value in offsets]
+                count = len(original)
+                start = min(frame_index, count - 1)
+                end = min(frame_end, count - 1)
+                cycle_distance = float(
+                    clip.get("cycle_distance") or original[-1] or 0.0)
+                gap_end = original[end + 1] if end + 1 < count else cycle_distance
+                gap = max(0.0, gap_end - original[start])
+                clip["travel_offsets"] = (
+                    [round(value, 2) for value in original[:start]] +
+                    [round(value - gap, 2) for value in original[end + 1:]])
+                new_distance = max(1.0, cycle_distance - gap)
+                clip["cycle_distance"] = round(new_distance, 2)
+                fps_value = max(1, int(clip.get("fps") or 1))
+                new_seconds = len(frames) / fps_value
+                clip["cycle_seconds"] = round(new_seconds, 3)
+                clip["ground_speed"] = round(
+                    new_distance / max(0.1, new_seconds), 2)
             loop = clip.get("source_loop")
             if isinstance(loop, list) and len(loop) == 2:
                 clip["source_loop"] = [
