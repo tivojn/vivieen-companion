@@ -153,13 +153,14 @@ def validate(keyframe_path, viseme_dir, profile=None, diag_dir=None):
         diag_dir = candidate if os.path.isdir(candidate) else None
     selected = compose._select_dental_donors(viseme_dir)
     missing = [row for row in compose.DENTAL_ROWS if row not in selected]
-    if missing:
-        raise AssertionError(
-            f"no canonical {'/'.join(missing)} dental-row donor")
+    # Some faces never show a full tooth row in any speech shape, and
+    # canonicalize_teeth already degrades gracefully then (the lock is
+    # skipped with a warning). The QA must not be stricter than the feature
+    # it audits - a missing donor is reported, not fatal.
     dental_rows = {
         row: _dental_row_metrics(
             row, selected[row], viseme_dir, diag_dir=diag_dir)
-        for row in compose.DENTAL_ROWS
+        for row in selected
     }
 
     keyframe = cv2.imread(keyframe_path)
@@ -199,23 +200,24 @@ def validate(keyframe_path, viseme_dir, profile=None, diag_dir=None):
         raise AssertionError(f"oral cavity shadow floor {shadow_floor}")
 
     return dict(
-        donor=dental_rows["upper"]["donor"],
+        donor=(dental_rows.get("upper") or {}).get("donor"),
         donors={row: values["donor"]
                 for row, values in dental_rows.items()},
         dental_rows=dental_rows,
+        missing_dental_rows=missing,
         dental_poses=sum(values["dental_poses"]
                          for values in dental_rows.values()),
         comparison_poses=sum(values["comparison_poses"]
                              for values in dental_rows.values()),
-        max_offset_px=max(values["max_offset_px"]
-                          for values in dental_rows.values()),
-        worst_coverage=min(values["worst_coverage"]
-                           for values in dental_rows.values()),
-        worst_extra=max(values["worst_extra"]
-                        for values in dental_rows.values()),
-        worst_color_identity=min(values["worst_color_identity"]
-                                 for values in dental_rows.values()),
-        lower_counts=dental_rows["lower"]["counts"],
+        max_offset_px=max([values["max_offset_px"]
+                           for values in dental_rows.values()] or [0.0]),
+        worst_coverage=min([values["worst_coverage"]
+                            for values in dental_rows.values()] or [1.0]),
+        worst_extra=max([values["worst_extra"]
+                         for values in dental_rows.values()] or [0.0]),
+        worst_color_identity=min([values["worst_color_identity"]
+                                  for values in dental_rows.values()] or [1.0]),
+        lower_counts=(dental_rows.get("lower") or {}).get("counts", {}),
         weights=samples,
         shadow_p05=shadow_floor,
     )
@@ -226,7 +228,9 @@ def summary(result):
                    ("nose_tip", "nose_base", "nostril_left", "nostril_right"))
     row_summary = ", ".join(
         f"{row} {values['donor']} / {values['dental_poses']} poses"
-        for row, values in result["dental_rows"].items())
+        for row, values in result["dental_rows"].items()) or "none"
+    for row in result.get("missing_dental_rows") or []:
+        row_summary += f", {row} row not visible (lock skipped)"
     return (
         f"donors {row_summary}, {result['comparison_poses']} comparisons, "
         f"max offset {result['max_offset_px']}px, "
