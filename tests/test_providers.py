@@ -176,11 +176,16 @@ class ProviderDefaultsTests(unittest.TestCase):
         self.assertNotIn("classList.toggle('alert',!h.ollama)", html)
 
     def test_openai_lists_only_models_for_the_requested_modality(self):
+        # Exclusion only, never a name allowlist: the old gpt-* prefix list
+        # hid every newly-named family (a "luna-1" never appeared). Unknown
+        # names survive; clearly-non-chat models are dropped.
         rows = [
-            "gpt-5.6-sol", "gpt-4o-realtime-preview", "gpt-4o-mini-tts",
+            "gpt-5.6-sol", "luna-1", "gpt-4o-realtime-preview", "gpt-4o-mini-tts",
             "text-embedding-3-large", "whisper-1", "gpt-4o-mini-transcribe",
+            "dall-e-3", "sora-2", "davinci-002",
         ]
-        self.assertEqual(P._filter_models("llm", "openai", rows), ["gpt-5.6-sol"])
+        self.assertEqual(P._filter_models("llm", "openai", rows),
+                         ["gpt-5.6-sol", "luna-1"])
         self.assertEqual(
             P._filter_models("stt", "openai", rows),
             ["gpt-4o-mini-transcribe", "whisper-1"],
@@ -197,6 +202,16 @@ class ProviderDefaultsTests(unittest.TestCase):
             P._filter_models("stt", "groq", ["llama-4-scout", "whisper-large-v3"]),
             ["whisper-large-v3"],
         )
+
+    def test_key_validation_failures_read_plainly_and_lists_are_refreshable(self):
+        # A rejected key must say so - the raw httpx text buries the status
+        # behind a docs URL and the tail-keeping redactor kept only the URL.
+        source = open(os.path.join(ROOT, "server", "providers.py")).read()
+        self.assertIn("except httpx.HTTPStatusError", source)
+        self.assertIn("the provider rejected this API key", source)
+        # Once validated, the load button becomes an explicit list refresh.
+        settings = open(os.path.join(ROOT, "web", "settings.html")).read()
+        self.assertIn("'↻ Refresh models'", settings)
 
     def test_direct_provider_records_actual_route(self):
         config = {"provider": "ollama", "model": "qwen-test:latest"}

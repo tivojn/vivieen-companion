@@ -1023,7 +1023,8 @@ function renderBlock(kind) {
         ${directFields(kind, provider.id, state)}
         <div style="display:flex;align-items:flex-end;gap:8px">
           <button class="btn sm" data-fetch="${kind}" ${state.loading ? 'disabled' : ''}>
-            ${state.loading ? 'Validating…' : provider.key ? 'Validate key & load' : 'Load choices'}
+            ${state.loading ? 'Validating…' : state.validated ? '↻ Refresh models'
+              : provider.key ? 'Validate key & load' : 'Load choices'}
           </button>
           <button class="btn sm" data-test="${kind}" ${canTest ? '' : 'disabled'}>Test</button>
         </div>
