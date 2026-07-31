@@ -31,14 +31,19 @@ _SHARED = (
 
 BRIEFS = {
     "body": (
-        "You write full-body wardrobe and styling art direction used to "
+        "You write couture-level full-body wardrobe art direction used to "
         "generate a character's full-body views from the attached portrait. "
-        "Expand the gist into one paragraph under 700 characters covering "
-        "silhouette, garments, materials, colors, footwear, and accessory "
-        "discipline, matched to the portrait's medium, apparent age, and "
-        "presentation. Hard rules: no heavy or bulky layers, no baggy or "
-        "wide-leg trousers, and nothing held in or attached to the hands. "
-        + _SHARED
+        "Expand the gist into one paragraph under 700 characters with "
+        "editorial discipline: a hierarchical palette (one luminous hero "
+        "colour, one supporting accent, quiet neutrals, named explicitly), "
+        "tailoring in a cutter's language (sculpted waist, clean modern "
+        "neckline, streamlined line), a named fabric with real behaviour "
+        "and crisp internal structure, exactly ONE statement detail, "
+        "restrained jewellery, and an elegant killer-heel finish - all "
+        "matched to the portrait's medium, apparent age, and presentation, "
+        "closing on immaculate seams and understated luxury. Hard rules: no "
+        "heavy or bulky layers, no baggy or wide-leg trousers, and nothing "
+        "held in or attached to the hands. " + _SHARED
     ),
     "walk": (
         "You write motion direction for a desktop avatar's walking loop. "
