@@ -197,6 +197,27 @@ class RigProfileTests(unittest.TestCase):
         self.assertIn("[browTop,Ym,browTop+dy,Ym+dy]", renderer)
         self.assertIn("const foreheadGain=", renderer)
         self.assertIn("const browRange=", renderer)
+        # Flexible brows (2026-08-01): accents ride the SPEECH RHYTHM
+        # (every other stressed vowel onset), the pair can knit toward
+        # centre or spread via a second baked axis, single-brow gestures
+        # exist, and the calibration panel's landscape answers the
+        # Eyebrows/Forehead sliders through their own regions.
+        self.assertIn("browBeat=!browBeat;", renderer)
+        self.assertIn("function browSqueezeFor", renderer)
+        self.assertIn("browBiasL", renderer)
+        self.assertIn("nearest(sqs,browSqueezeFor(performance.now()))", renderer)
+        from studio import expression as expr
+        self.assertEqual(expr.BROW_SQ, [-1.8, 0.0, 2.4])
+        self.assertIn("brows", rig.REGION_GROUPS)
+        rig_source = open(os.path.join(ROOT, "studio", "rig.py"),
+                          encoding="utf-8").read()
+        self.assertIn('regions["forehead"]', rig_source)
+        settings = open(os.path.join(ROOT, "web", "settings.html"),
+                        encoding="utf-8").read()
+        self.assertIn("'forehead', 'brows', 'cheeks'", settings)
+        export_source = open(os.path.join(ROOT, "studio", "export.py"),
+                             encoding="utf-8").read()
+        self.assertIn('sqs=expr["brow"].get("sqs"', export_source)
         app_src = open(os.path.join(ROOT, "server", "app.py"),
                        encoding="utf-8").read()
         self.assertIn('forehead: float = _rig_control_field("forehead")', app_src)
