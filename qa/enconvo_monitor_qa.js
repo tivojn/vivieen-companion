@@ -95,7 +95,10 @@ function testExternalVisemeStability() {
     context,
   );
   const { resetExternalViseme, stabiliseExternalViseme, EXTERNAL_XFADE } = context.qa;
-  assert.equal(EXTERNAL_XFADE, 0.065);
+  // Retuned 2026-07-31 with the aperture-aligned dissolve: teeth no longer
+  // double mid-fade, so the external mouth can travel ~85ms (2.7 packets)
+  // instead of cutting - still well inside the ~125ms video-late threshold.
+  assert.equal(EXTERNAL_XFADE, 0.085);
 
   /* Native packets land every ~32ms (the tap's 25ms timer quantises to
      buffer boundaries). The vote must reject single-packet jitter AND let
@@ -186,7 +189,12 @@ function testIntegrationContract() {
   assert.match(html, /#row\.monitoring #manual/);
   assert.match(html, /stabiliseExternalViseme\(candidate,sampleTimestamp,externalAudio\.active\)/);
   assert.match(html, /if\(monitorEnabled\)return externalPose/);
-  assert.match(html, /const xfade=monitorEnabled\?EXTERNAL_XFADE:XFADE/);
+  // The external fade applies whenever the monitor owns the mouth; a local
+  // push-to-talk reply keeps its own per-pair articulation pacing.
+  assert.match(
+    html,
+    /switchFade=monitorEnabled&&!\(localSource&&track\.length\)/,
+  );
   assert.match(html, /const MONITOR_POLL_MS=16/);
   assert.match(html, /SHELL\.getEnconvoSamples\(monitorSampleSequence\)/);
   assert.match(html, /packet\.samples\.forEach\(handleMonitorSample\)/);

@@ -157,6 +157,28 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("pointer-events:none", renderer[marker:marker + 220])
         self.assertIn("#bar #manual{pointer-events:auto}", renderer)
 
+    def test_articulation_travels_between_mouth_shapes(self):
+        # Measured 2026-07-31: with the 18ms cut, EVERY transition on a
+        # realistic phoneme track had zero visible in-between frames at
+        # 60fps - a slideshow. The aperture-aligned dissolve (both plates
+        # warped to one shared lip gap so dental rows coincide mid-fade)
+        # buys 45-105ms of real travel: zero instant cuts, ~3 in-between
+        # frames per transition.
+        renderer = (ROOT / "web" / "index.html").read_text()
+        self.assertIn("const XFADE=0.055;", renderer)
+        self.assertIn("const APERTURE_V=", renderer)
+        self.assertIn("function fadeFor(from,to){", renderer)
+        self.assertIn("const EXTERNAL_XFADE=0.085;", renderer)
+        # Both plates get their OWN mouth-band stretch toward the shared gap.
+        self.assertIn("const plate=(image,extra)=>", renderer)
+        self.assertIn("mouthWarp?mouthWarp.prev:0", renderer)
+        self.assertIn("mouthWarp?mouthWarp.cur:0", renderer)
+        # Short vowels undershoot and held vowels breathe with loudness.
+        self.assertIn("curReduce=0.62+0.38*(dwell/0.11);", renderer)
+        self.assertIn("apCur*=0.86+0.20*Math.min(1,lvl*6);", renderer)
+        # The track QA invariant: dissolve midpoint meets the audio event.
+        self.assertIn("const VISUAL_LEAD=XFADE*0.5;", renderer)
+
     def test_gaze_grid_carries_directed_glances(self):
         # The iris grid keeps its quarter-pixel VOR centre and gains coarse
         # flanks wide enough that eyes-following-cursor is visible at chat
