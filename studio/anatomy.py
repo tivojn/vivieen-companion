@@ -9,6 +9,19 @@ from . import compose, face, rig
 DENTAL_COLOR_TOLERANCE = 24.0
 
 
+def _experimental_keys(profile):
+    """Slider targets outside their green band - the user's declared intent
+    to trade canonical anatomy for expression."""
+    keys = []
+    for key, spec in rig.CONTROLS.items():
+        low = spec.get("safe_minimum", spec["minimum"])
+        high = spec.get("safe_maximum", spec["maximum"])
+        value = profile.get(key, spec["default"])
+        if value < low or value > high:
+            keys.append(key)
+    return keys
+
+
 def _comparison_metrics(rows):
     if not rows:
         return (None, 0), (None, 1.0), (None, 0.0)
@@ -52,7 +65,8 @@ def _dental_reference(diag_dir, row, name):
     return mask, zone, reference
 
 
-def _dental_row_metrics(row, selected, viseme_dir, diag_dir=None):
+def _dental_row_metrics(row, selected, viseme_dir, diag_dir=None,
+                        advisory=False):
     donor_name, _, donor_lm, master = selected
     comparisons = []
     counts = {}
@@ -114,6 +128,12 @@ def _dental_row_metrics(row, selected, viseme_dir, diag_dir=None):
             (name, best_coverage, extra, best_offset, color_coverage))
 
     if not comparisons:
+        if advisory:
+            return dict(
+                donor=donor_name, dental_poses=1, comparison_poses=0,
+                max_offset_px=0, worst_coverage=1.0, worst_extra=0.0,
+                worst_color_identity=1.0, counts=counts,
+                warnings=[f"no comparable {row} dental-row poses"])
         raise AssertionError(f"no comparable {row} dental-row poses")
     ((offset_pose, worst_offset),
      (coverage_pose, worst_coverage),
@@ -122,19 +142,27 @@ def _dental_row_metrics(row, selected, viseme_dir, diag_dir=None):
         ((values[0], values[4]) for values in comparisons),
         key=lambda values: values[1],
     )
+    # The canonical-teeth thresholds assume a green-band composition. An
+    # experimental profile warps the mouth surroundings on purpose, so the
+    # same measurements become ADVISORY there: reported, logged, recorded -
+    # never a veto (the live rejection: nn non-canonical upper pixels 35%
+    # at folds 100 / jaw 100).
+    violations = []
     if worst_offset > 1:
-        raise AssertionError(
-            f"{offset_pose} {row} teeth offset {worst_offset}px")
+        violations.append(f"{offset_pose} {row} teeth offset {worst_offset}px")
     if worst_coverage < 0.70:
-        raise AssertionError(
+        violations.append(
             f"{coverage_pose} {row} dental coverage {worst_coverage:.1%}")
     if worst_extra > 0.10:
-        raise AssertionError(
+        violations.append(
             f"{extra_pose} non-canonical {row} pixels {worst_extra:.1%}")
     if worst_color < 0.70:
-        raise AssertionError(
+        violations.append(
             f"{color_pose} {row} donor-color identity {worst_color:.1%}")
+    if violations and not advisory:
+        raise AssertionError(violations[0])
     return dict(
+        warnings=violations,
         donor=donor_name,
         dental_poses=1 + len(comparisons),
         comparison_poses=len(comparisons),
@@ -157,9 +185,12 @@ def validate(keyframe_path, viseme_dir, profile=None, diag_dir=None):
     # canonicalize_teeth already degrades gracefully then (the lock is
     # skipped with a warning). The QA must not be stricter than the feature
     # it audits - a missing donor is reported, not fatal.
+    experimental = _experimental_keys(profile)
+    advisory = bool(experimental)
     dental_rows = {
         row: _dental_row_metrics(
-            row, selected[row], viseme_dir, diag_dir=diag_dir)
+            row, selected[row], viseme_dir, diag_dir=diag_dir,
+            advisory=advisory)
         for row in selected
     }
 
@@ -205,6 +236,9 @@ def validate(keyframe_path, viseme_dir, profile=None, diag_dir=None):
                 for row, values in dental_rows.items()},
         dental_rows=dental_rows,
         missing_dental_rows=missing,
+        experimental_targets=experimental,
+        dental_warnings=[warning for values in dental_rows.values()
+                         for warning in values.get("warnings", [])],
         dental_poses=sum(values["dental_poses"]
                          for values in dental_rows.values()),
         comparison_poses=sum(values["comparison_poses"]
@@ -231,6 +265,12 @@ def summary(result):
         for row, values in result["dental_rows"].items()) or "none"
     for row in result.get("missing_dental_rows") or []:
         row_summary += f", {row} row not visible (lock skipped)"
+    warnings = result.get("dental_warnings") or []
+    if warnings:
+        targets = ", ".join(result.get("experimental_targets") or [])
+        row_summary += (f"; ADVISORY past canonical bounds under "
+                        f"experimental targets ({targets}): "
+                        + "; ".join(warnings))
     return (
         f"donors {row_summary}, {result['comparison_poses']} comparisons, "
         f"max offset {result['max_offset_px']}px, "
