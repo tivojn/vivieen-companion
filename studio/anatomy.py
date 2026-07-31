@@ -210,10 +210,16 @@ def validate(keyframe_path, viseme_dir, profile=None, diag_dir=None):
     nose_limit = min(12.0, profile["nose"] + 2.0)
     if max(nose_values) > nose_limit:
         raise AssertionError(f"speech mask deforms nose {samples}")
-    lip_floor = max(78.0, profile["lips"] - 3.0)
+    # The upper-lip weight must TRACK the lips slider (within sampling
+    # slack) - the invariant is "the nose lock does not eat lip motion the
+    # user asked for", not an absolute bar. The old max(78, lips-3) floor
+    # made every deliberately low-lips profile unpublishable (live
+    # rejection: lips 0 -> 'suppresses upper lip 0.0%' against 78).
+    lip_floor = max(0.0, profile["lips"] - 3.0)
     if samples["upper_lip"] < lip_floor:
         raise AssertionError(
-            f"nose lock suppresses upper lip {samples['upper_lip']:.1f}%")
+            f"nose lock suppresses upper lip {samples['upper_lip']:.1f}% "
+            f"(lips target {profile['lips']:.0f}%)")
 
     shadow_floor = 255
     for name in compose.visemes.ORDER:
