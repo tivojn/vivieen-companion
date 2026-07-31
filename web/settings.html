@@ -449,9 +449,9 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
    Palette: ivory, ink, and a bronze thread by day; charcoal and champagne
    after dark. Voice: ui-serif (New York) display, uppercase whispers. */
 :root[data-design=atelier]{
-  --bg:#f6f3ec; --bg-sub:#efebe1; --panel:#fcfaf5; --panel-sub:#f4f0e7;
-  --line:#e0d9ca; --line-strong:#c9bfa9;
-  --ink:#1e1b16; --dim:#7c7466; --faint:#a89f8c;
+  --bg:#f7f5f0; --bg-sub:#f0ede6; --panel:#fffefb; --panel-sub:#f3f1ea;
+  --line:#e3ddd0; --line-strong:#c6bda9;
+  --ink:#201d17; --dim:#7c7466; --faint:#a49b89;
   --hover:rgba(30,27,22,.05); --press:rgba(30,27,22,.09);
   --accent:#9a7b4f; --accent-text:#7d6138;
   --accent-bg:rgba(154,123,79,.09); --accent-line:rgba(154,123,79,.42);
@@ -484,7 +484,11 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 }
 
 /* ----- the app shell: contents rail left, article right ----- */
-:root[data-design=atelier] body{display:grid;grid-template-columns:264px minmax(0,1fr)}
+/* height:auto, or the base html,body{height:100%} caps the grid at one
+   viewport and the "sticky" rail simply scrolls away - the empty beige
+   column that made the whole design look unfinished. */
+:root[data-design=atelier] body{display:grid;
+  grid-template-columns:264px minmax(0,1fr);height:auto;min-height:100vh}
 :root[data-design=atelier] header{
   position:sticky;top:0;height:100vh;z-index:9;
   display:grid;grid-template-columns:1fr 1fr;
@@ -495,7 +499,15 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
   border-bottom:0;border-right:1px solid var(--line-strong)}
 :root[data-design=atelier] header h1{grid-area:brand;
   font-family:ui-serif,"New York",Georgia,serif;font-size:30px;font-weight:600;
-  font-style:italic;letter-spacing:0;margin-bottom:34px}
+  font-style:italic;letter-spacing:0;margin-bottom:0}
+/* The masthead: an issue line under the wordmark, then a double rule -
+   the printed-page details that separate editorial from wireframe. */
+:root[data-design=atelier] header h1::after{
+  content:"An intelligent companion · No. 6";display:block;margin:10px 0 18px;
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:9.5px;
+  font-style:normal;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--faint)}
+:root[data-design=atelier] nav{border-top:3px double var(--ink);padding-top:6px}
 :root[data-design=atelier] nav{grid-area:nav;display:flex;flex-direction:column;
   gap:2px;margin-left:0;counter-reset:chapter;align-items:stretch}
 :root[data-design=atelier] nav button{
@@ -562,9 +574,28 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 :root[data-design=atelier] .av h3{
   font-family:ui-serif,"New York",Georgia,serif;font-size:24px;font-weight:600;
   font-style:italic}
-:root[data-design=atelier] .metrics{max-width:480px}
-:root[data-design=atelier] .metrics div{border-bottom:1px dotted var(--line-strong)}
-:root[data-design=atelier] .acts{margin-top:auto;padding-top:14px}
+/* The pose report as a fine printed table, not an invoice: whispered
+   labels, tabular numerals, one hairline per row. */
+:root[data-design=atelier] .metrics{max-width:460px;gap:1px 26px;font-size:11.5px}
+:root[data-design=atelier] .metrics div{border-bottom:1px solid var(--line);padding:5px 0}
+:root[data-design=atelier] .metrics span:first-child{
+  text-transform:uppercase;letter-spacing:.1em;font-size:9px;font-weight:600;
+  color:var(--faint);align-self:center}
+:root[data-design=atelier] .metrics span:last-child{
+  font-variant-numeric:tabular-nums;font-weight:500}
+/* One filled verb per spread; everything else is a quiet text action -
+   seven bordered boxes read as clutter, not couture. */
+:root[data-design=atelier] .acts{margin-top:auto;padding-top:16px;gap:4px 18px;align-items:baseline}
+:root[data-design=atelier] .acts .btn{border:0;background:none;box-shadow:none;
+  padding:4px 0;color:var(--dim);text-decoration:underline;
+  text-decoration-color:transparent;text-underline-offset:4px}
+:root[data-design=atelier] .acts .btn:hover{background:none;color:var(--ink);
+  text-decoration-color:var(--accent)}
+:root[data-design=atelier] .acts .btn.pri{background:var(--ink);border:1px solid var(--ink);
+  color:var(--bg);padding:8px 14px;text-decoration:none}
+:root[data-design=atelier] .acts .btn.pri:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+:root[data-design=atelier] .acts .btn.danger{color:var(--bad-text)}
+:root[data-design=atelier] .acts .btn:disabled{text-decoration:none}
 @media(max-width:700px){
   :root[data-design=atelier] .av{grid-template-columns:1fr}
   :root[data-design=atelier] .av .body{padding:18px 4px}
@@ -598,8 +629,12 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 :root[data-design=atelier] .pill.warn{border-color:var(--warn-line);background:transparent;color:var(--warn-text)}
 :root[data-design=atelier] .pill.bad{border-color:var(--bad-line);background:transparent;color:var(--bad-text)}
 :root[data-design=atelier] .pill.act{border-color:var(--accent);background:var(--accent);color:#fff}
+/* Fields sit on paper-white, not muddy craft beige. */
+:root[data-design=atelier] input,:root[data-design=atelier] select,
+:root[data-design=atelier] textarea{background:var(--panel);border-color:var(--line-strong)}
 :root[data-design=atelier] input:focus,:root[data-design=atelier] select:focus,
 :root[data-design=atelier] textarea:focus{border-color:var(--accent);box-shadow:none}
+:root[data-design=atelier] .savebar{background:var(--glass)}
 :root[data-design=atelier] .drop{background:transparent;border-width:1px}
 :root[data-design=atelier] .motion-library-kicker,
 :root[data-design=atelier] .motion-asset-stage{color:var(--accent-text);letter-spacing:.16em}

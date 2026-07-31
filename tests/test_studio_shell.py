@@ -43,7 +43,11 @@ class SettingsMarkupTest(unittest.TestCase):
         # editorial spreads instead of a card grid, and the studio tools
         # flip to controls-left / stage-right - all in CSS over the same
         # DOM, so Quiet's layout returns untouched on switch.
-        self.assertIn("body{display:grid;grid-template-columns:264px", self.settings)
+        self.assertIn("grid-template-columns:264px minmax(0,1fr);height:auto;min-height:100vh",
+                      self.settings)
+        # Verified on the live desktop 2026-07-31: without height:auto the
+        # base html,body{height:100%} caps the grid at one viewport and the
+        # sticky rail scrolls away, leaving an empty beige column.
         self.assertIn("counter(chapter,decimal-leading-zero)", self.settings)
         self.assertIn(".av{\n  display:grid;grid-template-columns:minmax(220px,300px)",
                       self.settings)
