@@ -3885,6 +3885,150 @@ def recut(avatar_dir, kind, log=print, progress=None):
             shutil.rmtree(stage, ignore_errors=True)
 
 
+def _unpack_clip_frames(motion_dir, kind, clip):
+    """The packed atlases are lossless RGBA: the shipped frames come back
+    out exactly, which is what makes frame surgery possible without raw
+    reprocessing."""
+    frames = []
+    width = int(clip.get("frame_width") or TARGET_WIDTH)
+    height = int(clip.get("frame_height") or TARGET_HEIGHT)
+    for sheet in clip.get("sheets") or []:
+        atlas = cv2.imread(
+            os.path.join(motion_dir, os.path.basename(str(sheet["image"]))),
+            cv2.IMREAD_UNCHANGED)
+        if atlas is None:
+            raise RuntimeError(f"packed sheet missing: {sheet['image']}")
+        columns = int(sheet["columns"])
+        for local in range(int(sheet["count"])):
+            row, column = divmod(local, columns)
+            frames.append(atlas[row * height:(row + 1) * height,
+                                column * width:(column + 1) * width].copy())
+    if not frames:
+        raise RuntimeError("no packed frames to repair")
+    return frames
+
+
+def repair_frame(avatar_dir, kind, frame_index, mode="patch", note="",
+                 log=print, progress=None):
+    """Surgical fix for ONE bad frame the user has pointed at.
+
+    "patch" rebuilds the frame as the per-pixel temporal median of itself
+    and its loop neighbours - a one-frame flash (an alpha blob, a matte
+    dropout) loses the vote while everything real survives. "drop" removes
+    the frame outright; at 12-24fps one missing frame is imperceptible.
+    Works on the packed lossless frames, so it costs nothing and keeps the
+    approved take.
+    """
+    kind = _clean(kind, 20)
+    if kind not in {"walk", "idle", "move"}:
+        raise ValueError(f"unknown motion clip selection: {kind}")
+    if mode not in {"patch", "drop"}:
+        raise ValueError(f"unknown repair mode: {mode}")
+    destination, backup = _motion_transaction_paths(avatar_dir)
+    metadata_path = os.path.join(destination, "motion.json")
+    if not os.path.isfile(metadata_path):
+        raise RuntimeError("no motion has been generated yet")
+    with open(metadata_path, encoding="utf-8") as handle:
+        metadata = json.load(handle)
+    clip = metadata.get(kind)
+    if not isinstance(clip, dict):
+        raise RuntimeError(f"no {kind} clip exists to repair")
+    frames = _unpack_clip_frames(destination, kind, clip)
+    total = len(frames)
+    frame_index = int(frame_index)
+    if not 0 <= frame_index < total:
+        raise ValueError(f"frame {frame_index} is outside 0..{total - 1}")
+    if mode == "drop" and total < 8:
+        raise RuntimeError("too few frames to drop one")
+
+    _emit(progress, "repair", 0.3,
+          f"Repairing {kind} frame {frame_index} ({mode})")
+    if mode == "patch":
+        # Loop-aware neighbours: the clip wraps, so frame 0 borrows from
+        # the last frame and vice versa.
+        before = frames[(frame_index - 1) % total]
+        after = frames[(frame_index + 1) % total]
+        stack = np.stack([before, frames[frame_index], after]).astype(np.uint8)
+        frames[frame_index] = np.median(stack, axis=0).astype(np.uint8)
+        repaired = frames[frame_index]
+        repaired[:, :, :3][repaired[:, :, 3] == 0] = 0
+    else:
+        frames.pop(frame_index)
+        total = len(frames)
+
+    stage = tempfile.mkdtemp(prefix=".motion-stage-", dir=avatar_dir)
+    swapped = False
+    try:
+        shutil.copytree(destination, stage, dirs_exist_ok=True)
+        for name in list(os.listdir(stage)):
+            if re.fullmatch(rf"{kind}-\d+\.png", name):
+                os.remove(os.path.join(stage, name))
+        clip = dict(clip)
+        clip["sheets"] = _pack_sheets(frames, stage, kind)
+        clip["frames"] = len(frames)
+        poster = clip.get("poster") or f"{kind}-poster.png"
+        cv2.imwrite(os.path.join(stage, os.path.basename(str(poster))),
+                    frames[0], [cv2.IMWRITE_PNG_COMPRESSION, 9])
+        alpha_name = clip.get("alpha_video") or f"{kind}-alpha.mov"
+        fps = int(clip.get("fps") or (WALK_FPS if kind == "walk" else IDLE_FPS))
+        _encode_alpha_preview(
+            frames, fps, os.path.join(stage, os.path.basename(str(alpha_name))))
+        if clip.get("alpha_stream"):
+            stream_name = os.path.basename(str(clip["alpha_stream"]))
+            if not _encode_alpha_stream(
+                    frames, fps, os.path.join(stage, stream_name)):
+                clip["alpha_stream"] = None
+        alphas = np.maximum.reduce(
+            [(frame[:, :, 3] > 8).astype(np.uint8) for frame in frames])
+        points = cv2.findNonZero(alphas)
+        if points is not None:
+            clip["bounds"] = [int(value) for value in cv2.boundingRect(points)]
+        if kind != "walk" and isinstance(clip.get("edge_anchors"), dict):
+            clip["edge_anchors"] = _edge_anchors(frames, clip["bounds"])
+        if mode == "drop":
+            offsets = clip.get("travel_offsets")
+            if isinstance(offsets, list) and frame_index < len(offsets):
+                offsets = list(offsets)
+                offsets.pop(frame_index)
+                clip["travel_offsets"] = offsets
+            loop = clip.get("source_loop")
+            if isinstance(loop, list) and len(loop) == 2:
+                clip["source_loop"] = [loop[0], max(loop[0] + 1, loop[1] - 1)]
+        repairs = list(clip.get("repairs") or [])
+        repairs.append({
+            "frame": frame_index, "mode": mode,
+            "note": _clean(note, 200),
+            "at": datetime.datetime.now().isoformat(timespec="seconds"),
+        })
+        clip["repairs"] = repairs
+        metadata[kind] = clip
+        metadata["updated"] = datetime.datetime.now().isoformat(
+            timespec="seconds")
+        with open(os.path.join(stage, "motion.json"), "w") as handle:
+            json.dump(metadata, handle, indent=1)
+        shutil.rmtree(backup, ignore_errors=True)
+        os.replace(destination, backup)
+        try:
+            os.replace(stage, destination)
+        except Exception:
+            if not os.path.exists(destination) and os.path.exists(backup):
+                os.replace(backup, destination)
+            raise
+        stage = None
+        swapped = True
+        _emit(progress, "done", 1.0, f"{kind} frame {frame_index} repaired")
+        log(f"repaired {kind} frame {frame_index} ({mode})"
+            + (f": {note}" if note else ""))
+        return metadata
+    except Exception:
+        if swapped:
+            rollback_pending_build(avatar_dir)
+        raise
+    finally:
+        if stage and os.path.exists(stage):
+            shutil.rmtree(stage, ignore_errors=True)
+
+
 def _motion_transaction_paths(avatar_dir):
     return (
         os.path.join(avatar_dir, "motion"),

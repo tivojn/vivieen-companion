@@ -1000,6 +1000,79 @@ def _recut_thread(slug, kind, job_id):
         _finish_job(slug, job_id, failure)
 
 
+def _repair_thread(slug, kind, frame, mode, note, job_id):
+    writer = jlog(slug, f"repairing {kind} frame {frame}")
+    previous_manifest = reg().read_manifest(slug) or {}
+    motion_replaced = False
+    runtime_published = False
+    failure = ""
+    try:
+        from studio import motion, library
+        metadata = motion.repair_frame(
+            reg().adir(slug), kind, frame, mode=mode, note=note, log=writer,
+            progress=lambda stage, value, label: _job_progress(
+                slug, stage, value, label, job_id=job_id))
+        motion_replaced = True
+        manifest = dict(previous_manifest)
+        manifest["motion"] = metadata
+        reg().write_manifest(slug, manifest)
+        _job_progress(
+            slug, "runtime", .94, "Publishing alpha motion", job_id=job_id)
+        _publish_runtime_atomic(slug, log=writer)
+        runtime_published = True
+        motion.commit_pending_build(reg().adir(slug))
+        try:
+            library.archive_motion(reg().adir(slug), kind)
+        except Exception as archive_error:
+            writer(f"could not archive the repaired set: {archive_error}")
+        _job_progress(
+            slug, "done", 1.0, f"{kind} frame {frame} repaired", job_id=job_id)
+    except Exception as error:
+        failure = str(error)
+        if motion_replaced and not runtime_published:
+            try:
+                from studio import motion
+                motion.rollback_pending_build(reg().adir(slug))
+                reg().write_manifest(slug, previous_manifest)
+            except Exception as rollback_error:
+                failure = f"{failure}; rollback: {rollback_error}"
+        writer(f"FAILED: {failure}")
+    finally:
+        _finish_job(slug, job_id, failure)
+
+
+class MotionRepairRequest(BaseModel):
+    slug: str = Field(pattern=SLUG_PATTERN)
+    kind: str = Field(pattern=r"^(walk|idle|move)$")
+    frame: int = Field(ge=0, le=4096)
+    mode: str = Field(default="patch", pattern=r"^(patch|drop)$")
+    note: str = Field(default="", max_length=200)
+
+
+@app.post("/api/avatar/motion/repair")
+async def api_motion_repair(request: MotionRepairRequest):
+    """Fix ONE flagged frame: patch it from its loop neighbours, or drop
+    it. Works on the packed lossless frames - no generation, no re-matte."""
+    if not reg().read_manifest(request.slug):
+        raise HTTPException(404, "avatar not found")
+    job_id = _reserve_job(
+        request.slug, "motion",
+        f"Repairing {request.kind} frame {request.frame}")
+    if not job_id:
+        return _already_running(request.slug)
+    try:
+        threading.Thread(
+            target=_repair_thread,
+            args=(request.slug, request.kind, request.frame, request.mode,
+                  request.note, job_id),
+            daemon=True).start()
+    except BaseException as error:
+        _finish_job(request.slug, job_id, getattr(error, "detail", error))
+        raise
+    return {"started": True, "slug": request.slug, "kind": request.kind,
+            "frame": request.frame, "mode": request.mode, "job_id": job_id}
+
+
 class MotionRecutRequest(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
     kind: str = Field(pattern=r"^(walk|idle|move)$")

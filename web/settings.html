@@ -576,6 +576,8 @@ button.btn.danger{color:#d9705f}
                 <button class="motion-play" id="body-motion-play" type="button">Pause</button>
                 <input id="body-motion-scrubber" type="range" min="0" max="0" value="0" aria-label="Animation frame">
                 <span class="motion-frame-label" id="body-motion-frame-label">Frame 1 / 1</span>
+                <button class="btn sm" id="body-motion-fix" type="button" title="Rebuild this frame from its loop neighbours - a one-frame flash loses the vote">Fix frame</button>
+                <button class="btn sm" id="body-motion-dropframe" type="button" title="Remove this frame from the loop entirely">Drop</button>
               </div>
             </div>
           </div>
@@ -1591,7 +1593,8 @@ function setBodyBusy(busy) {
   const hasVideoProvider = Boolean(BODY_STATE && BODY_STATE.video_provider);
   $('#body-generate').disabled = busy;
   ['body-walk-generate', 'body-idle-generate', 'body-move-generate',
-   'body-walk-recut', 'body-idle-recut', 'body-move-recut'].forEach(id => {
+   'body-walk-recut', 'body-idle-recut', 'body-move-recut',
+   'body-motion-fix', 'body-motion-dropframe'].forEach(id => {
     $('#' + id).disabled = busy || !hasBody || !hasVideoProvider;
   });
   $('#body-remove').disabled = busy;
@@ -2366,6 +2369,41 @@ async function recutMotion(kind) {
 $('#body-walk-recut').onclick = () => recutMotion('walk');
 $('#body-idle-recut').onclick = () => recutMotion('idle');
 $('#body-move-recut').onclick = () => recutMotion('move');
+// Frame surgery: whatever frame the scrubber is parked on can be patched
+// from its loop neighbours or dropped, straight from the packed frames.
+async function repairMotionFrame(mode) {
+  if (!BODY_CYCLE || !BODY_CYCLE.kind) return;
+  const kind = BODY_CYCLE.kind, frame = Math.round(Number(BODY_CYCLE.frame) || 0);
+  if (mode === 'drop' &&
+      !confirm(`Remove frame ${frame} from the ${kind} loop entirely?`)) return;
+  setBodyBusy(true);
+  startBodyProgress('motion');
+  let response;
+  try {
+    response = await api('/api/avatar/motion/repair', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({slug: BODY_SLUG, kind, frame, mode})
+    });
+  } catch (error) {
+    failBodyProgress('Could not reach the local backend. Check that the Vivieen server is running, then try again.');
+    setBodyBusy(false);
+    return;
+  }
+  if (!response.started && response.reason === 'already building') {
+    setBodyBusy(true);
+    pollBody(response.job_id);
+    return;
+  }
+  if (response.detail || !response.started) {
+    resetBodyProgress();
+    alert(response.detail || response.reason || 'Unable to start the repair.');
+    setBodyBusy(false);
+    return;
+  }
+  pollBody(response.job_id);
+}
+$('#body-motion-fix').onclick = () => repairMotionFrame('patch');
+$('#body-motion-dropframe').onclick = () => repairMotionFrame('drop');
 document.querySelectorAll('[data-move-style]').forEach(button => {
   button.onclick = () => selectMoveStyle(
     button.dataset.moveStyle, button.dataset.moveStyle === 'custom');
