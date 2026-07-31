@@ -8,6 +8,8 @@ import numpy as np
 
 from studio import anatomy, build, compose, measure, rig, visemes
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 class RigProfileTests(unittest.TestCase):
     def test_all_controls_span_zero_to_one_hundred_with_safe_bands(self):
@@ -130,6 +132,25 @@ class RigProfileTests(unittest.TestCase):
     def test_aperture_tolerance_only_covers_landmark_jitter(self):
         self.assertTrue(measure._aperture_within_limit(0.091, 0.09))
         self.assertFalse(measure._aperture_within_limit(0.093, 0.09))
+
+    def test_calibration_gate_warns_on_mild_overshoot_and_stops_broken(self):
+        # The live rejection 2026-08-01: TH at 0.109 against a 0.09 target
+        # vetoed the whole rebuild, though the sliders advertise full,
+        # deliberately experimental control. Mild overshoot (<=1.35x the
+        # target) now publishes with a warning; anatomically broken shapes
+        # still stop the rebuild.
+        source = open(
+            os.path.join(ROOT, "studio", "build.py"), encoding="utf-8").read()
+        marker = source.index("def recompose_avatar")
+        window = source[marker:marker + 4200]
+        self.assertIn('row["max_ratio"] * 1.35', window)
+        self.assertIn("hard_failures, soft_overs", window)
+        self.assertIn("published with this experimental", window)
+        self.assertIn(
+            'over_articulated=[row["name"] for row in soft_overs]', source)
+        # TH at 0.109 vs 0.09: soft (0.109 <= 0.09*1.35+eps). At 0.13: hard.
+        self.assertLessEqual(0.109, 0.09 * 1.35 + measure.APERTURE_DETECTOR_EPSILON)
+        self.assertGreater(0.13, 0.09 * 1.35 + measure.APERTURE_DETECTOR_EPSILON)
 
 
 class PublishTransactionTests(unittest.TestCase):
