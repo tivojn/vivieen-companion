@@ -810,6 +810,7 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
       </div>
       <div class="rig-foot">
         <p class="note">Rebuild uses retained expression renders, runs anatomy QA in staging, and publishes only after a rollback snapshot is complete. No model credits are used.</p>
+        <button class="btn hidden" id="rig-fill-gaps" type="button" title="Regenerate only the renders the original build lost - uses model credits">Generate missing renders</button>
         <button class="btn" id="rig-preview-play" type="button" title="Play the published viseme preview - right here, including straight after a rebuild">▶ Play preview</button>
         <button class="btn" id="rig-cancel">Cancel</button>
         <button class="btn pri" id="rig-apply">Validate & rebuild</button>
@@ -1061,6 +1062,7 @@ $('#design-toggle').onclick = () => {
 const SHELL = window.vivieen;
 let CFG = null, CAT = null, GLOBALS = {}, MEDIA_DEFAULTS = {}, ACTIVE = null, COMPANION = null, POLL = null;
 let RIG = null, RIG_SLUG = null, RIG_PROFILE = null, RIG_POSE = 'closed', RIG_WATCH = null;
+let RIG_GAPS = [];
 const WALK_STYLE_IDS = new Set(['office', 'runway', 'stroll', 'power', 'promenade', 'cartwheel', 'custom']);
 const WALK_STYLE_LABELS = {
   office: 'Office walk', runway: 'Runway catwalk', stroll: 'Relaxed stroll',
@@ -3022,6 +3024,12 @@ function formatRigError(detail) {
 
 function rigStatus(message = '', state = '', percent = null) {
   const status = $('#rig-status');
+  // The missing-renders reason survives slider touches.
+  if (!message && RIG_GAPS.length) {
+    message = 'Rebuild unavailable — missing retained renders: '
+      + RIG_GAPS.join(', ') + '. Press "Generate missing renders" below.';
+    state = state || 'bad';
+  }
   const brows = RIG_PROFILE.brows === undefined ? '' : ` · brows ${RIG_PROFILE.brows}%`;
   const forehead = RIG_PROFILE.forehead === undefined ? '' : ` · forehead ${RIG_PROFILE.forehead}%`;
   const targets = `Targets · lip ${RIG_PROFILE.lips}% · jaw ${RIG_PROFILE.jaw}% · cheeks ${RIG_PROFILE.cheeks}%${brows}${forehead} · folds ${RIG_PROFILE.nasolabial}% · nose ${RIG_PROFILE.nose}%`;
@@ -3087,6 +3095,7 @@ function renderRigPoses() {
 async function openRig(slug) {
   RIG_SLUG = slug;
   RIG_POSE = 'closed';
+  RIG_GAPS = [];
   resetRigBitmaps();
   $('#rig-modal').classList.add('on');
   document.body.style.overflow = 'hidden';
@@ -3110,10 +3119,22 @@ async function openRig(slug) {
   $('#rig-donor').textContent = donorLabel ? `Locked · ${donorLabel}` : 'No donors detected';
   $('#rig-preset').value = RIG_PROFILE.preset || 'custom';
   $('#rig-apply').disabled = !response.can_recompose;
+  // A silently dead button is the worst UI: keep the reason in view (the
+  // targets text used to overwrite it on the first slider touch) and
+  // offer the repair - a top-up build of ONLY the missing shapes.
+  RIG_GAPS = response.can_recompose ? [] : (response.raw_gaps || []);
+  const gapsButton = $('#rig-fill-gaps');
+  gapsButton.classList.toggle('hidden', !RIG_GAPS.length);
+  gapsButton.disabled = false;
+  if (RIG_GAPS.length) {
+    gapsButton.textContent = `Generate ${RIG_GAPS.length} missing renders`;
+  }
   renderRigControls();
   renderRigPoses();
   rigStatus(response.can_recompose ? '' :
-    'Cannot recompose: missing retained renders ' + response.raw_gaps.join(', '),
+    'Cannot rebuild yet: the original build lost renders for '
+    + RIG_GAPS.join(', ')
+    + '. Press "Generate missing renders" (uses model credits), then rebuild.',
     response.can_recompose ? '' : 'bad');
   const image = $('#rig-image');
   image.onload = drawRig;
@@ -3213,6 +3234,49 @@ $('#rig-apply').onclick = applyRig;
 // The preview lives IN the calibration room: after a rebuild lands, play it
 // on the spot instead of leaving for the avatar card.
 $('#rig-preview-play').onclick = () => { if (RIG_SLUG) openPreview(RIG_SLUG); };
+// Top-up build: regenerate ONLY the renders the original build lost, then
+// unlock Validate & Rebuild in place.
+$('#rig-fill-gaps').onclick = async () => {
+  if (!RIG_SLUG || !RIG_GAPS.length) return;
+  const button = $('#rig-fill-gaps');
+  button.disabled = true;
+  const slug = RIG_SLUG, shapes = [...RIG_GAPS];
+  rigStatus(`Regenerating ${shapes.length} lost renders (${shapes.join(', ')}) — this uses model credits and takes a few minutes.`, 'busy', 2);
+  const response = await api('/api/avatar/build', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, shapes })
+  });
+  if (response.detail || response.reason) {
+    rigStatus(formatRigError(response.detail || response.reason), 'bad');
+    button.disabled = false;
+    return;
+  }
+  markAvatarBusy(slug, 'build');
+  const watch = async () => {
+    const progress = await api('/api/avatar/progress?slug=' + encodeURIComponent(slug));
+    await tail(slug, progress);
+    const job = progress.job;
+    if (!job || !job.done) {
+      const live = (job && job.progress) || {};
+      const percent = Math.round(Math.max(0, Math.min(1, Number(live.value) || 0)) * 100);
+      const line = job && job.log && job.log.length ? job.log[job.log.length - 1] : 'Rendering…';
+      if (RIG_SLUG === slug) rigStatus(line, 'busy', percent);
+      RIG_WATCH = setTimeout(watch, 1100);
+      return;
+    }
+    if (RIG_SLUG !== slug) return;
+    if (job.error) {
+      rigStatus('Render top-up failed: ' + job.error, 'bad');
+      button.disabled = false;
+      return;
+    }
+    // Renders restored: reload the rig payload so the gate re-evaluates.
+    RIG_GAPS = [];
+    await openRig(slug);
+    note('Missing renders regenerated — Validate & Rebuild is available.');
+  };
+  watch();
+};
 // Preview used to be a plain link straight at preview.mp4.  Same origin, so
 // the navigation guard waved it through and the settings window replaced
 // Character Studio with Chromium's own player - no chrome, no way back.  It

@@ -31,6 +31,18 @@ class SettingsMarkupTest(unittest.TestCase):
             self.assertTrue(href.startswith("#") or href == "/",
                             "unhandled navigation link: " + href)
 
+    def test_lost_renders_explain_themselves_and_can_be_regenerated(self):
+        # Live case (2026-08-01, gary33): the initial build lost 4 of 16
+        # renders, so Validate & Rebuild was disabled - correctly, but
+        # silently, because the first slider touch overwrote the reason.
+        # The reason now survives every repaint, and a top-up button
+        # regenerates ONLY the missing shapes, then re-opens the gate.
+        self.assertIn('id="rig-fill-gaps"', self.settings)
+        self.assertIn("Generate ${RIG_GAPS.length} missing renders", self.settings)
+        self.assertIn("missing retained renders: '", self.settings)
+        self.assertIn("JSON.stringify({ slug, shapes })", self.settings)
+        self.assertIn("RIG_GAPS = [];", self.settings)
+
     def test_rebuild_room_has_preview_progress_and_a_full_panel(self):
         # 2026-08-01 usability pass: the preview plays inside the
         # calibration room (stacked above it), the rebuild's status card
