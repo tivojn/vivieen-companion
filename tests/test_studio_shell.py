@@ -31,6 +31,23 @@ class SettingsMarkupTest(unittest.TestCase):
             self.assertTrue(href.startswith("#") or href == "/",
                             "unhandled navigation link: " + href)
 
+    def test_two_designs_share_one_markup(self):
+        # Quiet (calm paper minimalism) and Atelier (editorial couture) are
+        # two complete designs over IDENTICAL markup: Atelier exists purely
+        # as [data-design=atelier] overrides, so switching back restores
+        # Quiet exactly and every feature behaves the same in both.
+        self.assertIn(":root[data-design=atelier]", self.settings)
+        self.assertIn('id="design-toggle"', self.settings)
+        self.assertIn("localStorage.setItem('vivieen-design'", self.settings)
+        self.assertIn("function applyDesign", self.settings)
+        for page in ("index.html", "menu.html", "bubble.html"):
+            source = read("web", page)
+            self.assertIn("data-design=atelier", source)
+            self.assertIn("vivieen-design", source)
+        # Long-lived windows follow a switch live via the storage event.
+        self.assertIn("addEventListener('storage'", read("web", "index.html"))
+        self.assertIn("addEventListener('storage'", read("web", "bubble.html"))
+
     def test_upload_stages_a_naming_step_and_names_stay_editable(self):
         # A raw file name ("IMG_4032") is a bad avatar name: a picked
         # portrait is staged, the name field gets a cleaned suggestion

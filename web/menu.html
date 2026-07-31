@@ -15,6 +15,19 @@
   --bg:rgba(27,28,31,.97);--line:rgba(255,255,255,.13);--ink:#e8e7e4;
   --dim:rgba(255,255,255,.42);--hover:rgba(255,255,255,.09);
   --shadow:0 10px 30px rgba(0,0,0,.35)}
+/* Atelier: ivory-and-bronze by day, charcoal-and-champagne after dark,
+   sharp corners, letterspaced hints. */
+:root[data-design=atelier]{
+  --bg:rgba(250,247,240,.98);--line:rgba(60,52,38,.22);--ink:#1e1b16;
+  --dim:rgba(60,52,38,.5);--hover:rgba(154,123,79,.1);
+  --shadow:0 12px 32px rgba(30,27,22,.2)}
+:root[data-design=atelier][data-theme=dark]{
+  --bg:rgba(22,20,17,.97);--line:rgba(201,168,106,.28);--ink:#ece7db;
+  --dim:rgba(236,231,219,.45);--hover:rgba(201,168,106,.12);
+  --shadow:0 12px 32px rgba(0,0,0,.5)}
+:root[data-design=atelier] #menu{border-radius:0}
+:root[data-design=atelier] .item{border-radius:0}
+:root[data-design=atelier] .hint{text-transform:uppercase;letter-spacing:.08em;font-size:9.5px}
 html,body{margin:0;background:transparent;overflow:hidden;
   user-select:none;-webkit-user-select:none}
 /* width:max-content: the panel must take its true content width even
@@ -39,7 +52,8 @@ html,body{margin:0;background:transparent;overflow:hidden;
 .sub.on{display:block}
 .sub .item{padding-left:30px}
 </style>
-<script>document.documentElement.dataset.theme=localStorage.getItem('vivieen-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');</script>
+<script>document.documentElement.dataset.theme=localStorage.getItem('vivieen-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==='atelier'?'atelier':'quiet';</script>
 <div id="menu" role="menu"></div>
 <script>
 const MENU=window.vivieenMenu;

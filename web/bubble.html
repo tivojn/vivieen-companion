@@ -56,6 +56,20 @@
     #text th,#text td{padding:4px 7px;border:1px solid rgba(255,255,255,.14);
       text-align:left;vertical-align:top}
     #text th{color:#fff;font-weight:650}
+    /* Atelier: the card goes warm charcoal with a champagne thread, and the
+       voice turns editorial - serif headings, gold mark. */
+    html[data-design=atelier] .bubble{border-radius:0;
+      border-color:rgba(201,168,106,.34);background:rgba(22,20,17,.88)}
+    html[data-design=atelier] .mark{background:#c9a86a;border-radius:0}
+    html[data-design=atelier] .name{color:rgba(236,231,219,.5)}
+    html[data-design=atelier] #text{color:#ece7db}
+    html[data-design=atelier] #text h1,html[data-design=atelier] #text h2,
+    html[data-design=atelier] #text h3,html[data-design=atelier] #text h4,
+    html[data-design=atelier] #text h5,html[data-design=atelier] #text h6{
+      font-family:ui-serif,"New York",Georgia,serif;font-style:italic;color:#f6f1e6}
+    html[data-design=atelier] #text blockquote{border-left-color:#c9a86a}
+    html[data-design=atelier] #text code{color:#e8d5ac;background:rgba(201,168,106,.12)}
+    html[data-design=atelier] #text a{color:#d7bc85;text-decoration-color:rgba(215,188,133,.5)}
   </style>
 </head>
 <body>
@@ -64,6 +78,13 @@
     <div id="text"></div>
   </section>
   <script>
+    const applyBubbleDesign = value => {
+      document.documentElement.dataset.design = value === 'atelier' ? 'atelier' : 'quiet';
+    };
+    applyBubbleDesign(localStorage.getItem('vivieen-design'));
+    addEventListener('storage', event => {
+      if (event.key === 'vivieen-design') applyBubbleDesign(event.newValue);
+    });
     const text = document.getElementById('text');
     /* The same DOM-built markdown renderer as the chat caption in
        index.html: every piece of text lands via textContent, so a reply can
