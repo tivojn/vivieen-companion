@@ -133,6 +133,25 @@ class RigProfileTests(unittest.TestCase):
         self.assertTrue(measure._aperture_within_limit(0.091, 0.09))
         self.assertFalse(measure._aperture_within_limit(0.093, 0.09))
 
+    def test_brows_slider_drives_runtime_and_forehead(self):
+        # The 'half zombie' fix (2026-08-01): brows and forehead animate
+        # with speech. The Brows slider is a live runtime amplitude carried
+        # on rig_profile in the runtime manifest; the renderer scales both
+        # gesture size and cadence by it, and the forehead skin band shifts
+        # with the brow value instead of staying frozen under moving strips.
+        self.assertIn("brows", rig.CONTROLS)
+        for preset in rig.PRESETS.values():
+            self.assertIn("brows", preset)
+        renderer = open(os.path.join(ROOT, "web", "index.html"),
+                        encoding="utf-8").read()
+        self.assertIn("const browGain=", renderer)
+        self.assertIn("M.rig_profile&&Number(M.rig_profile.brows)", renderer)
+        self.assertIn("const bShift=bv?", renderer)
+        self.assertIn("/Math.max(0.55,browGain())", renderer)
+        app_source = open(os.path.join(ROOT, "server", "app.py"),
+                          encoding="utf-8").read()
+        self.assertIn('brows: float = _rig_control_field("brows")', app_source)
+
     def test_upper_lip_floor_tracks_the_lips_slider(self):
         # Fourth live rejection 2026-08-01: lips at 0 hit 'nose lock
         # suppresses upper lip 0.0%' against a hardcoded 78% floor. The
