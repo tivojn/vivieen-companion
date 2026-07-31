@@ -144,6 +144,16 @@ class RigProfileTests(unittest.TestCase):
         self.assertNotIn("max(78.0", source)
         self.assertIn('max(0.0, profile["lips"] - 3.0)', source)
         self.assertIn("lips target", source)
+        # Sixth live rejection: Nose at 100% could never pass min(12,
+        # nose+2). Under experimental profiles the nose, lip, and shadow
+        # checks flag with the suggested green band instead of raising;
+        # green-band profiles still raise, with the suggestion included.
+        self.assertIn("def flag(message, suggestion):", source)
+        self.assertIn("structure_warnings", source)
+        self.assertIn("speech mask reaches the nose", source)
+        settings = open(os.path.join(ROOT, "web", "settings.html"),
+                        encoding="utf-8").read()
+        self.assertIn("line.includes('ADVISORY')", settings)
 
     def test_dental_qa_is_advisory_under_experimental_targets(self):
         # Third live rejection 2026-08-01: 'nn non-canonical upper pixels
@@ -188,17 +198,17 @@ class RigProfileTests(unittest.TestCase):
         window = source[marker:marker + 4200]
         self.assertIn('row["max_ratio"] * 1.35', window)
         self.assertIn("hard_failures, soft_overs", window)
-        self.assertIn("published with this experimental", window)
-        # Fifth live rejection 2026-08-01: TH 0.124 grazed the per-viseme
-        # hard ceiling (0.09*1.35=0.1235) under maxed sliders. Experimental
-        # profiles fail hard only past ABSOLUTE anatomy - the widest
-        # legitimate speech shape - not 1.35x a closure's tiny target.
-        self.assertIn("widest = max(ratio for ratio, _ in visemes.TARGETS.values())",
-                      window)
-        self.assertIn("widest * 1.35", window)
-        widest = max(ratio for ratio, _ in visemes.TARGETS.values())
-        self.assertGreater(
-            widest * 1.35 + measure.APERTURE_DETECTOR_EPSILON, 0.124)
+        self.assertIn("- published with this ", window)
+        # The final contract (2026-08-01, after six live rejections):
+        # extreme sliders are a decision, never a defect. An experimental
+        # profile is NEVER blocked by articulation - every overshoot
+        # publishes as an ADVISORY that names the suggested green bands.
+        self.assertIn("NEVER blocked by articulation", window)
+        self.assertIn("if experimental:", window)
+        self.assertIn("_band_suggestion(experimental)", window)
+        self.assertEqual(
+            build._band_suggestion(["nose"]),
+            "Nose base and nostrils 0–12%")
         self.assertIn(
             'over_articulated=[row["name"] for row in soft_overs]', source)
         # TH at 0.109 vs 0.09: soft (0.109 <= 0.09*1.35+eps). At 0.13: hard.

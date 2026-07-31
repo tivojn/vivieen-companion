@@ -205,21 +205,40 @@ def validate(keyframe_path, viseme_dir, profile=None, diag_dir=None):
         masks["mouth"], face_mask, max(keyframe.shape[:2]) / 1024.0,
         profile)
     samples = rig.sampled_weights(mouth_alpha, key_landmarks)
+
+    # An extreme profile is a decision, never a defect: outside the green
+    # bands every profile-shaped check below reports instead of raising,
+    # and every message names the suggested green band so a red line
+    # teaches rather than blocks.
+    structure_warnings = []
+
+    def flag(message, suggestion):
+        text = f"{message} — suggested: {suggestion}"
+        if advisory:
+            structure_warnings.append(text)
+        else:
+            raise AssertionError(text)
+
+    nose_spec = rig.CONTROLS["nose"]
+    nose_band = (f"{nose_spec['label']} within "
+                 f"{nose_spec.get('safe_minimum', 0):.0f}–"
+                 f"{nose_spec.get('safe_maximum', 100):.0f}%")
     nose_values = [samples[key] for key in
                    ("nose_tip", "nose_base", "nostril_left", "nostril_right")]
     nose_limit = min(12.0, profile["nose"] + 2.0)
     if max(nose_values) > nose_limit:
-        raise AssertionError(f"speech mask deforms nose {samples}")
+        flag(f"speech mask reaches the nose {samples}", nose_band)
     # The upper-lip weight must TRACK the lips slider (within sampling
     # slack) - the invariant is "the nose lock does not eat lip motion the
-    # user asked for", not an absolute bar. The old max(78, lips-3) floor
-    # made every deliberately low-lips profile unpublishable (live
-    # rejection: lips 0 -> 'suppresses upper lip 0.0%' against 78).
+    # user asked for", not an absolute bar.
+    lips_spec = rig.CONTROLS["lips"]
     lip_floor = max(0.0, profile["lips"] - 3.0)
     if samples["upper_lip"] < lip_floor:
-        raise AssertionError(
-            f"nose lock suppresses upper lip {samples['upper_lip']:.1f}% "
-            f"(lips target {profile['lips']:.0f}%)")
+        flag(f"nose lock suppresses upper lip {samples['upper_lip']:.1f}% "
+             f"(lips target {profile['lips']:.0f}%)",
+             f"{lips_spec['label']} within "
+             f"{lips_spec.get('safe_minimum', 0):.0f}–"
+             f"{lips_spec.get('safe_maximum', 100):.0f}%")
 
     shadow_floor = 255
     for name in compose.visemes.ORDER:
@@ -239,7 +258,8 @@ def validate(keyframe_path, viseme_dir, profile=None, diag_dir=None):
         shadow_floor = min(
             shadow_floor, int(np.percentile(value[cavity], 5)))
     if shadow_floor < 60:
-        raise AssertionError(f"oral cavity shadow floor {shadow_floor}")
+        flag(f"oral cavity shadow floor {shadow_floor}",
+             "ease the sliders toward their green bands and rebuild")
 
     return dict(
         donor=(dental_rows.get("upper") or {}).get("donor"),
@@ -248,6 +268,7 @@ def validate(keyframe_path, viseme_dir, profile=None, diag_dir=None):
         dental_rows=dental_rows,
         missing_dental_rows=missing,
         experimental_targets=experimental,
+        structure_warnings=structure_warnings,
         dental_warnings=[warning for values in dental_rows.values()
                          for warning in values.get("warnings", [])],
         dental_poses=sum(values["dental_poses"]
@@ -276,7 +297,8 @@ def summary(result):
         for row, values in result["dental_rows"].items()) or "none"
     for row in result.get("missing_dental_rows") or []:
         row_summary += f", {row} row not visible (lock skipped)"
-    warnings = result.get("dental_warnings") or []
+    warnings = ((result.get("dental_warnings") or [])
+                + (result.get("structure_warnings") or []))
     if warnings:
         targets = ", ".join(result.get("experimental_targets") or [])
         row_summary += (f"; ADVISORY past canonical bounds under "
