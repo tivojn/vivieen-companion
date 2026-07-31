@@ -2044,6 +2044,12 @@ async def bubble():
                         headers={"Cache-Control": "no-store"})
 
 
+@app.get("/menu")
+async def pet_menu():
+    return HTMLResponse(open(os.path.join(WEB, "menu.html")).read(),
+                        headers={"Cache-Control": "no-store"})
+
+
 @app.get("/appearance")
 async def appearance():
     return HTMLResponse(open(os.path.join(WEB, "appearance.html")).read(),

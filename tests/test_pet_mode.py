@@ -100,7 +100,7 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("monitorEnabled?", window)
         # The menu row reflects that both modes talk from the head.
         main = (ROOT / "electron" / "main.cjs").read_text()
-        self.assertIn("'Talk · hold head or type'", main)
+        self.assertIn("followingEnconvo ? 'hold head' : 'hold head or type'", main)
         # Listening must be visible (soundwave pill + pulsing field), a mic
         # refusal must surface in the field, and the open bar must never
         # swallow drag / taps / the right-click menu on the avatar herself.
@@ -285,10 +285,22 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("vivieen:pet-dock", main)
         self.assertIn("dockedPetBounds(size, area, 0)", main)
         self.assertIn("dockPet", preload)
-        # Menu rows carry their gesture hints.
-        for hint in ("Talk · hold head", "Walk · 2×tap leg",
-                     "Opacity + · 2×tap chest", "Opacity − · 2×tap foot"):
-            self.assertIn(hint, main)
+        # Menu rows split name (left) from gesture hint (right): a native
+        # macOS Menu reserves the right column for accelerators, so the
+        # menu is our own window (web/menu.html) fed a {name, hint} spec.
+        for name, hint in (("Talk", "hold head"), ("Walk", "2×tap leg"),
+                           ("Opacity +", "2×tap chest"),
+                           ("Opacity −", "2×tap foot")):
+            self.assertIn(f"name: '{name}', hint: '{hint}'", main)
+        self.assertIn("function showMenuWindow", main)
+        self.assertIn("vivieen:menu-spec", main)
+        menu_page = (ROOT / "web" / "menu.html").read_text()
+        self.assertIn("hint.className='hint'", menu_page)
+        self.assertIn("text-align:right", menu_page)
+        package = (ROOT / "package.json").read_text()
+        self.assertIn('"menu.html"', package)
+        app_source = (ROOT / "server" / "app.py").read_text()
+        self.assertIn('@app.get("/menu")', app_source)
         self.assertIn("ROAM_HOVER_STOP_MS", renderer)
         self.assertIn("SHELL.setPetRoam(false)", renderer)
         # The stillness clock resets on every kind of attention.

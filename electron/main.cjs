@@ -1324,27 +1324,27 @@ async function removeBuddyFromDesk() {
 
 function showBuddyMenu() {
   if (!buddyWindow || buddyWindow.isDestroyed()) return;
-  Menu.buildFromTemplate([
-    { label: `Second avatar · ${buddySlug || ''}`, enabled: false },
+  showMenuWindow([
+    { name: 'Second avatar', hint: buddySlug || '', enabled: false },
     { type: 'separator' },
-    { label: 'Talk · hold head', enabled: false },
-    { label: 'Walk · 2×tap leg', enabled: false },
-    { label: 'Opacity + · 2×tap chest', enabled: false },
-    { label: 'Opacity − · 2×tap foot', enabled: false },
+    { name: 'Talk', hint: 'hold head', enabled: false },
+    { name: 'Walk', hint: '2×tap leg', enabled: false },
+    { name: 'Opacity +', hint: '2×tap chest', enabled: false },
+    { name: 'Opacity −', hint: '2×tap foot', enabled: false },
     { type: 'separator' },
     {
-      label: buddyRoam ? 'Return to standing' : 'Start walking',
+      name: buddyRoam ? 'Return to standing' : 'Start walking',
       enabled: buddyMotionReady || buddyRoam,
       click: () => applyBuddyRoam(!buddyRoam),
     },
-    { label: 'Moves · 2×tap hair', click: () => {
+    { name: 'Moves', hint: '2×tap hair', click: () => {
       if (buddyWindow && !buddyWindow.isDestroyed()) {
         buddyWindow.webContents.send('vivieen:pet-moves');
       }
     } },
     { type: 'separator' },
-    { label: 'Remove from desk', click: () => { removeBuddyFromDesk(); } },
-  ]).popup({ window: buddyWindow });
+    { name: 'Remove from desk', click: () => { removeBuddyFromDesk(); } },
+  ]);
 }
 
 function createBuddyWindow(slug) {
@@ -1496,6 +1496,76 @@ function sendPendingBubble() {
   positionSpeechBubble();
   bubbleWindow.webContents.send('vivieen:bubble-text', { text: pendingBubble });
   bubbleWindow.showInactive();
+}
+
+/* The pet right-click menu is our own window, not a native Menu: macOS
+   reserves a menu's right-hand column for keyboard accelerators, so the
+   gesture hints ("2×tap leg") could never right-align there. Each spec item
+   is { name, hint, type, checked, enabled, submenu, click }; clicks stay in
+   this process, keyed by generated ids. */
+let menuWindow = null;
+let menuActions = new Map();
+let menuDismiss = null;
+let menuAnchor = { x: 0, y: 0 };
+let menuSequence = 0;
+
+function closeMenuWindow(runDismiss = true) {
+  const window = menuWindow;
+  menuWindow = null;
+  menuActions = new Map();
+  const dismiss = menuDismiss;
+  menuDismiss = null;
+  if (window && !window.isDestroyed()) window.destroy();
+  if (runDismiss && typeof dismiss === 'function') dismiss();
+}
+
+function showMenuWindow(spec, onDismiss = null) {
+  closeMenuWindow(false);
+  menuAnchor = screen.getCursorScreenPoint();
+  menuDismiss = onDismiss;
+  const serialize = (items) => items.filter(Boolean).map((item) => {
+    if (item.type === 'separator') return { type: 'separator' };
+    const entry = {
+      id: '', name: String(item.name || ''), hint: String(item.hint || ''),
+      type: item.type || 'normal', checked: Boolean(item.checked),
+      enabled: item.enabled !== false, submenu: null,
+    };
+    if (typeof item.click === 'function') {
+      entry.id = `m${++menuSequence}`;
+      menuActions.set(entry.id, item.click);
+    }
+    if (Array.isArray(item.submenu)) entry.submenu = serialize(item.submenu);
+    return entry;
+  });
+  const payload = serialize(spec);
+  menuWindow = new BrowserWindow({
+    x: menuAnchor.x, y: menuAnchor.y, width: 280, height: 320, show: false,
+    frame: false, transparent: true, backgroundColor: '#00000000',
+    roundedCorners: false, hasShadow: false, resizable: false, movable: false,
+    minimizable: false, maximizable: false, fullscreenable: false,
+    skipTaskbar: true, acceptFirstMouse: true, alwaysOnTop: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'menu-preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      webviewTag: false,
+      allowRunningInsecureContent: false,
+      spellcheck: false,
+    },
+  });
+  menuWindow.setAlwaysOnTop(true, 'pop-up-menu');
+  menuWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  guardNavigation(menuWindow, 'menu');
+  menuWindow.loadURL(`${baseUrl()}/menu?electron=1`);
+  menuWindow.webContents.once('did-finish-load', () => {
+    if (menuWindow && !menuWindow.isDestroyed()) {
+      menuWindow.webContents.send('vivieen:menu-spec', payload);
+    }
+  });
+  // Anywhere else takes focus -> the menu is dismissed, like a native one.
+  menuWindow.on('blur', () => closeMenuWindow());
 }
 
 function createSpeechBubbleWindow() {
@@ -1838,7 +1908,7 @@ function petViewItems() {
     ['Face', 'face'],
   ];
   return views.map(([label, value]) => ({
-    label,
+    name: label,
     type: 'radio',
     checked: state.petView === value,
     click: () => applyPetView(value),
@@ -1848,63 +1918,62 @@ function petViewItems() {
 function showPetMenu() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const followingEnconvo = monitorState().enabled;
-  // Short one-row labels; " · " carries the gesture that does the same thing.
-  const menu = Menu.buildFromTemplate([
+  // Name on the left, the gesture that does the same thing on the right.
+  showMenuWindow([
     // Holding the head talks either way; unfollowed adds the typed chat bar.
-    { label: followingEnconvo ? 'Talk · hold head' : 'Talk · hold head or type', click: () => {
-      if (followingEnconvo) {
-        void triggerEnconvoVoiceCommand();
-        return;
-      }
-      mainWindow.show();
-      mainWindow.focus();
-      mainWindow.webContents.send('vivieen:pet-chat');
-    } },
-    { label: followingEnconvo ? 'De-couple from EnConvo' : 'Couple to EnConvo',
+    { name: 'Talk', hint: followingEnconvo ? 'hold head' : 'hold head or type',
+      click: () => {
+        if (followingEnconvo) {
+          void triggerEnconvoVoiceCommand();
+          return;
+        }
+        mainWindow.show();
+        mainWindow.focus();
+        mainWindow.webContents.send('vivieen:pet-chat');
+      } },
+    { name: followingEnconvo ? 'De-couple from EnConvo' : 'Couple to EnConvo',
       click: () => setEnconvoMonitoring(!followingEnconvo) },
     { type: 'separator' },
-    { label: !petMotionReady ? 'Walk · generate first'
-        : state.petRoam ? 'Walking · hover to stop' : 'Walk · 2×tap leg',
+    { name: state.petRoam ? 'Walking' : 'Walk',
+      hint: !petMotionReady ? 'generate first'
+        : state.petRoam ? 'hover to stop' : '2×tap leg',
       type: 'checkbox', checked: state.petRoam, enabled: petMotionReady,
-      click: (item) => applyPetRoam(item.checked) },
-    { label: 'Moves · 2×tap hair', click: () => {
+      click: () => applyPetRoam(!state.petRoam) },
+    { name: 'Moves', hint: '2×tap hair', click: () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('vivieen:pet-moves');
       }
     } },
-    { label: 'React · tap arm or chest', enabled: false },
-    { label: 'Rest · still for 10s', enabled: false },
+    { name: 'React', hint: 'tap arm or chest', enabled: false },
+    { name: 'Rest', hint: 'still for 10s', enabled: false },
     { type: 'separator' },
-    { label: 'Opacity + · 2×tap chest',
+    { name: 'Opacity +', hint: '2×tap chest',
       click: () => applyPetOpacity(Math.min(1, state.petOpacity + 0.12)) },
-    { label: 'Opacity − · 2×tap foot',
+    { name: 'Opacity −', hint: '2×tap foot',
       click: () => applyPetOpacity(Math.max(0.15, state.petOpacity - 0.12)) },
-    { label: 'Size & Opacity…', click: showAppearanceWindow },
-    { label: 'View', enabled: !state.petRoam, submenu: petViewItems() },
+    { name: 'Size & Opacity…', click: showAppearanceWindow },
+    { name: 'View', enabled: !state.petRoam, submenu: petViewItems() },
     { type: 'separator' },
-    { label: 'Click-Through Gaps', type: 'checkbox', checked: state.petClickThrough,
-      click: (item) => applyPetClickThrough(item.checked) },
-    { label: 'Lock Position', type: 'checkbox', checked: state.petLocked,
-      enabled: !state.petRoam, click: (item) => applyPetLock(item.checked) },
-    { label: 'Always on Top', type: 'checkbox', checked: state.alwaysOnTop,
-      click: (item) => applyAlwaysOnTop(item.checked) },
+    { name: 'Click-Through Gaps', type: 'checkbox', checked: state.petClickThrough,
+      click: () => applyPetClickThrough(!state.petClickThrough) },
+    { name: 'Lock Position', type: 'checkbox', checked: state.petLocked,
+      enabled: !state.petRoam, click: () => applyPetLock(!state.petLocked) },
+    { name: 'Always on Top', type: 'checkbox', checked: state.alwaysOnTop,
+      click: () => applyAlwaysOnTop(!state.alwaysOnTop) },
     { type: 'separator' },
-    { label: 'Character Studio…', click: openSettings },
-    { label: 'Hide Companion', click: () => mainWindow.hide() },
-    { label: 'Quit Vivieen', click: () => app.quit() },
-  ]);
-  menu.popup({
-    window: mainWindow,
-    callback: () => {
-      const point = screen.getCursorScreenPoint();
-      const bounds = mainWindow.getBounds();
-      mainWindow.webContents.send('vivieen:pet-pointer', {
-        x: point.x - bounds.x,
-        y: point.y - bounds.y,
-        inside: point.x >= bounds.x && point.x < bounds.x + bounds.width
-          && point.y >= bounds.y && point.y < bounds.y + bounds.height,
-      });
-    },
+    { name: 'Character Studio…', click: openSettings },
+    { name: 'Hide Companion', click: () => mainWindow.hide() },
+    { name: 'Quit Vivieen', click: () => app.quit() },
+  ], () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const point = screen.getCursorScreenPoint();
+    const bounds = mainWindow.getBounds();
+    mainWindow.webContents.send('vivieen:pet-pointer', {
+      x: point.x - bounds.x,
+      y: point.y - bounds.y,
+      inside: point.x >= bounds.x && point.x < bounds.x + bounds.width
+        && point.y >= bounds.y && point.y < bounds.y + bounds.height,
+    });
   });
 }
 
@@ -2004,6 +2073,31 @@ function installIpc() {
   ipcMain.on('vivieen:pet-hit', (event, value) => {
     if (isBuddySender(event)) setBuddyHit(Boolean(value));
     else if (mainWindow && event.sender === mainWindow.webContents) setPetHit(Boolean(value), 'renderer-alpha');
+  });
+  ipcMain.on('vivieen:menu-size', (event, size) => {
+    if (!menuWindow || menuWindow.isDestroyed()
+        || event.sender !== menuWindow.webContents) return;
+    const width = Math.max(160, Math.min(380, Math.round(Number(size && size.w) || 0)));
+    const height = Math.max(40, Math.min(680, Math.round(Number(size && size.h) || 0)));
+    const area = screen.getDisplayNearestPoint(menuAnchor).workArea;
+    let x = menuAnchor.x;
+    let y = menuAnchor.y;
+    if (x + width > area.x + area.width - 8) x = Math.max(area.x + 8, menuAnchor.x - width);
+    if (y + height > area.y + area.height - 8) {
+      y = Math.max(area.y + 8, area.y + area.height - height - 8);
+    }
+    menuWindow.setBounds({ x: Math.round(x), y: Math.round(y), width, height }, false);
+    menuWindow.show();
+  });
+  ipcMain.on('vivieen:menu-action', (event, id) => {
+    if (!menuWindow || event.sender !== menuWindow.webContents) return;
+    const action = menuActions.get(String(id));
+    closeMenuWindow();
+    if (typeof action === 'function') action();
+  });
+  ipcMain.on('vivieen:menu-close', (event) => {
+    if (!menuWindow || event.sender !== menuWindow.webContents) return;
+    closeMenuWindow();
   });
   ipcMain.on('vivieen:pet-control-rects', (event, value) => {
     const rects = (Array.isArray(value) ? value : []).slice(0, 8)

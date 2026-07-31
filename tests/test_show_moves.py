@@ -129,7 +129,7 @@ class MoveRuntime(unittest.TestCase):
         preload = (ROOT / "electron" / "preload.cjs").read_text()
         self.assertIn("vivieen:pet-moves", preload)
         main = (ROOT / "electron" / "main.cjs").read_text()
-        self.assertIn("'Moves · 2×tap hair'", main)
+        self.assertIn("name: 'Moves', hint: '2×tap hair'", main)
         self.assertIn("send('vivieen:pet-moves')", main)
 
     def test_left_preview_panel_has_a_moves_tab(self):

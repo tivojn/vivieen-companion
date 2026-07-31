@@ -1,0 +1,82 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Vivieen Menu</title>
+<style>
+/* The pet right-click menu, as its own window: native macOS menus reserve
+   the right column for keyboard accelerators, so the gesture hints could
+   never right-align there. Here each row is name (left) | hint (right). */
+html,body{margin:0;background:transparent;overflow:hidden;
+  user-select:none;-webkit-user-select:none}
+#menu{display:inline-block;min-width:216px;margin:8px;padding:5px;
+  border-radius:10px;border:1px solid rgba(255,255,255,.13);
+  background:rgba(27,28,31,.97);box-shadow:0 10px 30px rgba(0,0,0,.35);
+  font:13px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;
+  color:#e8e7e4}
+.item{display:flex;align-items:center;gap:8px;padding:5px 9px;
+  border-radius:6px;white-space:nowrap;cursor:default}
+.item.action:hover{background:rgba(255,255,255,.09)}
+.item.disabled{opacity:.48}
+.check{flex:none;width:13px;font-size:11px;text-align:center}
+.name{flex:none}
+.hint{flex:1;margin-left:18px;text-align:right;
+  color:rgba(255,255,255,.42);font-size:11.5px}
+.arrow{flex:1;text-align:right;color:rgba(255,255,255,.42);font-size:10px}
+.sep{height:1px;margin:5px 9px;background:rgba(255,255,255,.09)}
+.sub{display:none;padding:2px 0 3px}
+.sub.on{display:block}
+.sub .item{padding-left:30px}
+</style>
+<div id="menu" role="menu"></div>
+<script>
+const MENU=window.vivieenMenu;
+const root=document.getElementById('menu');
+function row(item){
+  const el=document.createElement('div');
+  el.className='item'+(item.enabled&&(item.id||item.submenu)?' action':'')
+    +(item.enabled?'':' disabled');
+  el.setAttribute('role','menuitem');
+  const check=document.createElement('span');check.className='check';
+  check.textContent=item.checked?(item.type==='radio'?'●':'✓'):'';
+  const name=document.createElement('span');name.className='name';
+  name.textContent=item.name||'';
+  el.append(check,name);
+  if(item.submenu){
+    const arrow=document.createElement('span');arrow.className='arrow';
+    arrow.textContent='▾';el.append(arrow);
+  }else{
+    const hint=document.createElement('span');hint.className='hint';
+    hint.textContent=item.hint||'';el.append(hint);
+  }
+  return el;
+}
+function report(){
+  const box=root.getBoundingClientRect();
+  MENU.size({w:Math.ceil(box.width)+16,h:Math.ceil(box.height)+16});
+}
+MENU.onSpec(items=>{
+  root.textContent='';
+  for(const item of items||[]){
+    if(item.type==='separator'){
+      const sep=document.createElement('div');sep.className='sep';
+      root.append(sep);continue;
+    }
+    const el=row(item);
+    root.append(el);
+    if(item.submenu){
+      const sub=document.createElement('div');sub.className='sub';
+      for(const child of item.submenu){
+        const childEl=row(child);
+        if(child.enabled&&child.id)childEl.onclick=()=>MENU.action(child.id);
+        sub.append(childEl);
+      }
+      root.append(sub);
+      if(item.enabled)el.onclick=()=>{sub.classList.toggle('on');report();};
+    }else if(item.enabled&&item.id){
+      el.onclick=()=>MENU.action(item.id);
+    }
+  }
+  report();
+});
+addEventListener('keydown',e=>{if(e.key==='Escape')MENU.close();});
+addEventListener('contextmenu',e=>e.preventDefault());
+</script>
