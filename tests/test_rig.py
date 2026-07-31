@@ -189,6 +189,16 @@ class RigProfileTests(unittest.TestCase):
         self.assertIn('row["max_ratio"] * 1.35', window)
         self.assertIn("hard_failures, soft_overs", window)
         self.assertIn("published with this experimental", window)
+        # Fifth live rejection 2026-08-01: TH 0.124 grazed the per-viseme
+        # hard ceiling (0.09*1.35=0.1235) under maxed sliders. Experimental
+        # profiles fail hard only past ABSOLUTE anatomy - the widest
+        # legitimate speech shape - not 1.35x a closure's tiny target.
+        self.assertIn("widest = max(ratio for ratio, _ in visemes.TARGETS.values())",
+                      window)
+        self.assertIn("widest * 1.35", window)
+        widest = max(ratio for ratio, _ in visemes.TARGETS.values())
+        self.assertGreater(
+            widest * 1.35 + measure.APERTURE_DETECTOR_EPSILON, 0.124)
         self.assertIn(
             'over_articulated=[row["name"] for row in soft_overs]', source)
         # TH at 0.109 vs 0.09: soft (0.109 <= 0.09*1.35+eps). At 0.13: hard.

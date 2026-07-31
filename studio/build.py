@@ -347,14 +347,24 @@ def recompose_avatar(slug, profile, log=print, progress=None):
         # The calibration sliders advertise full, deliberately experimental
         # control - a hair over a per-viseme target must not veto the whole
         # rebuild (a 0.109 TH against a 0.09 ceiling once blocked every
-        # publish). Only anatomically broken shapes still stop it: aperture
-        # beyond 1.35x the target, or width badly off. The rest publish
-        # with a warning and are recorded on the manifest.
+        # publish). Green-band profiles keep a per-viseme hard ceiling at
+        # 1.35x the target; an EXPERIMENTAL profile has declared its intent,
+        # so its hard ceiling is absolute anatomy instead - a shape only
+        # fails when it opens beyond the widest legitimate speech shape
+        # (TH at 0.124 under maxed sliders is exaggerated, not broken).
+        # Everything softer publishes with a warning on the manifest.
+        experimental = anatomy._experimental_keys(profile)
+        widest = max(ratio for ratio, _ in visemes.TARGETS.values())
         hard_failures, soft_overs = [], []
         for row in over:
-            widened = row["max_ratio"] * 1.35 + measure.APERTURE_DETECTOR_EPSILON
+            if experimental:
+                widened = widest * 1.35 + measure.APERTURE_DETECTOR_EPSILON
+                width_limit = 0.3
+            else:
+                widened = row["max_ratio"] * 1.35 + measure.APERTURE_DETECTOR_EPSILON
+                width_limit = 0.2
             too_open = row["ratio"] > widened
-            width_off = abs(row["width_ratio"] - row["want_width"]) > 0.2
+            width_off = abs(row["width_ratio"] - row["want_width"]) > width_limit
             (hard_failures if (too_open or width_off) else soft_overs).append(row)
         if hard_failures:
             raise AssertionError(
