@@ -21,11 +21,18 @@
     .mark{flex:none;width:5px;height:5px;border-radius:50%;background:#d81f4a}
     .name{flex:none;font:600 10px/1 inherit;letter-spacing:.3em;color:rgba(242,239,233,.5)}
     .rule{flex:1;height:1px;background:rgba(255,255,255,.10)}
+    /* Scrollable, not clamped: a long markdown reply (a story, a briefing)
+       reads to the end. The shell holds the auto-hide while the cursor is
+       on the card. */
     #text{color:#f2efe9;text-wrap:pretty;font-size:clamp(17px,2vw,24px);
       font-weight:450;line-height:1.45;letter-spacing:-.012em;
-      display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}
+      max-height:calc(100vh - 128px);overflow-y:auto;overscroll-behavior:contain;
+      scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.22) transparent}
+    #text::-webkit-scrollbar{width:6px}
+    #text::-webkit-scrollbar-track{background:transparent}
+    #text::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22);border-radius:6px}
     body.medium #text{font-size:clamp(15px,1.75vw,20px)}
-    body.long #text{font-size:clamp(14px,1.5vw,17px);line-height:1.5;-webkit-line-clamp:7}
+    body.long #text{font-size:clamp(14px,1.5vw,17px);line-height:1.5}
     /* Markdown blocks, in the bubble's own quiet palette. The model is asked
        to speak plainly, but when a reply arrives as markdown it must read as
        markdown, not as raw asterisks and fences. */
@@ -178,9 +185,13 @@
       const value = String(payload.text || '').trim();
       text.textContent = '';
       renderMarkdown(value, text);
+      text.scrollTop = 0;
       document.body.classList.toggle('medium', value.length > 130 && value.length <= 260);
       document.body.classList.toggle('long', value.length > 260);
     });
+    // Reading pauses the auto-hide; leaving grants a short grace.
+    document.addEventListener('mouseenter', () => window.vivieenBubble?.hold(true));
+    document.addEventListener('mouseleave', () => window.vivieenBubble?.hold(false));
   </script>
 </body>
 </html>

@@ -1485,7 +1485,11 @@ function positionSpeechBubble() {
   if (!bubbleWindow || bubbleWindow.isDestroyed()) return;
   const area = speechBubbleDisplay().workArea;
   const width = Math.min(820, Math.max(440, area.width - 96));
-  const height = Math.min(300, Math.max(220, Math.round(area.height * 0.28)));
+  // A long reply (a story, a briefing) gets a taller card before it starts
+  // scrolling; short spoken lines keep the compact one.
+  const tall = (pendingBubble || '').length > 420;
+  const height = Math.min(tall ? 440 : 300,
+    Math.max(220, Math.round(area.height * (tall ? 0.42 : 0.28))));
   bubbleWindow.setBounds({
     x: Math.round(area.x + (area.width - width) / 2),
     y: Math.round(area.y + (area.height - height) * 0.42),
@@ -1608,7 +1612,8 @@ function createSpeechBubbleWindow() {
   });
   bubbleWindow.setAlwaysOnTop(true, 'floating');
   bubbleWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  bubbleWindow.setIgnoreMouseEvents(true);
+  // Interactive (but never focusable): long markdown replies scroll, and a
+  // wheel can only reach a window that accepts mouse events.
   guardNavigation(bubbleWindow, 'bubble');
   bubbleWindow.loadURL(`${baseUrl()}/bubble?electron=1`);
   bubbleWindow.webContents.once('did-finish-load', sendPendingBubble);
@@ -1636,6 +1641,23 @@ function showSpeechBubble(value) {
     pendingBubble = '';
     if (bubbleWindow && !bubbleWindow.isDestroyed()) bubbleWindow.hide();
   }, visibleMs);
+  bubbleTimer.unref?.();
+}
+
+function holdSpeechBubble(reading) {
+  // The cursor is on the bubble: someone is reading or scrolling, so the
+  // auto-hide waits. Leaving grants a short grace, then the card goes.
+  clearTimeout(bubbleTimer);
+  bubbleTimer = null;
+  if (reading) return;
+  if (!pendingBubble) {
+    if (bubbleWindow && !bubbleWindow.isDestroyed()) bubbleWindow.hide();
+    return;
+  }
+  bubbleTimer = setTimeout(() => {
+    pendingBubble = '';
+    if (bubbleWindow && !bubbleWindow.isDestroyed()) bubbleWindow.hide();
+  }, 4000);
   bubbleTimer.unref?.();
 }
 
@@ -2072,6 +2094,10 @@ function installIpc() {
     if (isBuddySender(event)) return triggerEnconvoVoiceCommand();
     if (!mainWindow || event.sender !== mainWindow.webContents) return { ok: false };
     return triggerEnconvoVoiceCommand();
+  });
+  ipcMain.on('vivieen:bubble-hold', (event, value) => {
+    if (!bubbleWindow || event.sender !== bubbleWindow.webContents) return;
+    holdSpeechBubble(Boolean(value));
   });
   ipcMain.on('vivieen:show-speech-bubble', (event, value) => {
     if (isBuddySender(event)

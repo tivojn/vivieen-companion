@@ -456,6 +456,13 @@ class PetInputBridgeTests(unittest.TestCase):
         # lists and fences into one unparseable line).
         self.assertIn("function renderMarkdown", bubble)
         self.assertIn("renderMarkdown(value, text)", bubble)
+        # Long replies scroll instead of clamping, the window accepts mouse
+        # events so the wheel can reach it, and reading holds the auto-hide.
+        self.assertIn("overflow-y:auto", bubble)
+        self.assertNotIn("-webkit-line-clamp", bubble)
+        self.assertIn("vivieen:bubble-hold", main)
+        self.assertIn("function holdSpeechBubble", main)
+        self.assertNotIn("bubbleWindow.setIgnoreMouseEvents(true)", main)
         marker = main.index("function showSpeechBubble")
         self.assertIn("replace(/\\r\\n?/g, '\\n')", main[marker:marker + 400])
         self.assertNotIn("replace(/\\s+/g, ' ')", main[marker:marker + 400])
