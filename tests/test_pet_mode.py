@@ -431,6 +431,33 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertNotIn("stride*direction*width", renderer)
         self.assertNotIn("PET_ROAM_SPEED", main)
 
+    def test_update_check_offers_the_newer_github_dmg(self):
+        # Check-and-click, not a silent installer: the app is signed but not
+        # notarized, so it POINTS at the newer DMG instead of replacing its
+        # own binary. Background check on launch + every 6h in packaged
+        # builds only; a menu row answers on demand in both menus.
+        main = (ROOT / "electron" / "main.cjs").read_text()
+        self.assertIn("function checkForUpdates", main)
+        self.assertIn("releases/latest", main)
+        self.assertIn("/\\.dmg$/i", main)
+        self.assertIn("scheduleUpdateChecks()", main)
+        self.assertIn("if (!app.isPackaged) return", main)
+        self.assertIn("'Check for Updates…', click", main)
+        self.assertIn("name: 'Check for Updates…'", main)
+        # The real comparator, run under node.
+        import subprocess
+        script = (
+            "const s=require('fs').readFileSync(process.argv[1],'utf8');"
+            "const m=s.match(/function versionNewer[\\s\\S]*?\\n}/);"
+            "const fn=new Function('return '+m[0])();"
+            "console.log(JSON.stringify([fn('0.7.0','0.6.0'),fn('v0.6.1','0.6.0'),"
+            "fn('0.6.0','0.6.0'),fn('0.5.9','0.6.0'),fn('1.0.0','0.9.9')]));"
+        )
+        out = subprocess.run(
+            ["node", "-e", script, str(ROOT / "electron" / "main.cjs")],
+            capture_output=True, text=True)
+        self.assertEqual(json.loads(out.stdout), [True, True, False, False, True])
+
     def test_enconvo_is_default_and_double_click_uses_detached_bubble(self):
         main = (ROOT / "electron" / "main.cjs").read_text()
         native = (ROOT / "electron" / "native" / "enconvo_audio_tap.swift").read_text()
