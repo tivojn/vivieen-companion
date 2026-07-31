@@ -161,8 +161,15 @@ class RigProfileTests(unittest.TestCase):
                         encoding="utf-8").read()
         self.assertIn("const browGain=", renderer)
         self.assertIn("M.rig_profile&&Number(M.rig_profile.brows)", renderer)
-        self.assertIn("const bShift=bv?", renderer)
         self.assertIn("/Math.max(0.55,browGain())", renderer)
+        # Brow and forehead are SEPARATE tissues (2026-08-01): the strips
+        # flick fast and asymmetric; the forehead runs its own damped
+        # follower - engaged only past a real raise, saturating, barely
+        # following a frown, settling a beat behind.
+        self.assertIn("function foreheadFor", renderer)
+        self.assertIn("foreheadFor(bv);", renderer)
+        self.assertIn("const bShift=-foreheadLift", renderer)
+        self.assertIn("target>foreheadLift?0.10:0.045", renderer)
         app_source = open(os.path.join(ROOT, "server", "app.py"),
                           encoding="utf-8").read()
         self.assertIn('brows: float = _rig_control_field("brows")', app_source)
