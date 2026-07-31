@@ -455,11 +455,9 @@ def _motion_thread(
         except Exception as archive_error:
             writer(f"could not archive the motion set: {archive_error}")
         selected = tuple(kinds or ("walk", "idle"))
-        label = (
-            "Horizon Walk and Edge Idle"
-            if len(selected) == 2 else
-            "Horizon Walk" if selected == ("walk",) else "Edge Idle"
-        )
+        kind_labels = {"walk": "Horizon Walk", "idle": "Edge Idle",
+                       "move": "Show Me Some Moves"}
+        label = " and ".join(kind_labels[k] for k in selected)
         _job_progress(
             slug, "done", 1.0, f"{label} ready", job_id=job_id)
         writer(f"{label} and standing interaction are ready")
@@ -959,6 +957,78 @@ async def api_body_generate(request: BodyRequest):
     return {
         "started": True, "slug": request.slug, "kind": "body",
         "job_id": job_id}
+
+
+def _recut_thread(slug, kind, job_id):
+    writer = jlog(slug, f"re-cutting the retained {kind} take")
+    previous_manifest = reg().read_manifest(slug) or {}
+    motion_replaced = False
+    runtime_published = False
+    failure = ""
+    try:
+        from studio import motion, library
+        metadata = motion.recut(
+            reg().adir(slug), kind, log=writer,
+            progress=lambda stage, value, label: _job_progress(
+                slug, stage, value, label, job_id=job_id))
+        motion_replaced = True
+        manifest = dict(previous_manifest)
+        manifest["motion"] = metadata
+        reg().write_manifest(slug, manifest)
+        _job_progress(
+            slug, "runtime", .94, "Publishing alpha motion", job_id=job_id)
+        _publish_runtime_atomic(slug, log=writer)
+        runtime_published = True
+        motion.commit_pending_build(reg().adir(slug))
+        try:
+            library.archive_motion(reg().adir(slug), kind)
+        except Exception as archive_error:
+            writer(f"could not archive the re-cut set: {archive_error}")
+        _job_progress(slug, "done", 1.0, f"{kind} re-cut ready", job_id=job_id)
+        writer(f"{kind} re-cut is live")
+    except Exception as error:
+        failure = str(error)
+        if motion_replaced and not runtime_published:
+            try:
+                from studio import motion
+                motion.rollback_pending_build(reg().adir(slug))
+                reg().write_manifest(slug, previous_manifest)
+            except Exception as rollback_error:
+                failure = f"{failure}; rollback: {rollback_error}"
+        writer(f"FAILED: {failure}")
+    finally:
+        _finish_job(slug, job_id, failure)
+
+
+class MotionRecutRequest(BaseModel):
+    slug: str = Field(pattern=SLUG_PATTERN)
+    kind: str = Field(pattern=r"^(walk|idle|move)$")
+
+
+@app.post("/api/avatar/motion/recut")
+async def api_motion_recut(request: MotionRecutRequest):
+    """Reprocess the retained raw take through the current local pipeline -
+    no generation spend; how existing sets pick up matte upgrades."""
+    slug = request.slug
+    if not reg().read_manifest(slug):
+        raise HTTPException(404, "avatar not found")
+    raw = os.path.join(
+        reg().adir(slug), "motion", "raw", f"{request.kind}-source.mp4")
+    if not os.path.isfile(raw):
+        raise HTTPException(400, "no retained raw take for this clip; generate first")
+    job_id = _reserve_job(
+        slug, "motion", f"Re-cutting {request.kind} from the retained take")
+    if not job_id:
+        return _already_running(slug)
+    try:
+        threading.Thread(
+            target=_recut_thread, args=(slug, request.kind, job_id),
+            daemon=True).start()
+    except BaseException as error:
+        _finish_job(slug, job_id, getattr(error, "detail", error))
+        raise
+    return {"started": True, "slug": slug, "kind": request.kind,
+            "job_id": job_id}
 
 
 @app.post("/api/avatar/motion/generate")
