@@ -763,6 +763,7 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
             <canvas id="rig-canvas"></canvas>
           </div>
           <div class="rig-overlays">
+            <label title="Approximate, instant: the neutral face with this pose blended in per region at your slider weights. Validate &amp; Rebuild composes the final bank."><input type="checkbox" id="rig-show-blend" checked> Live response</label>
             <label><input type="checkbox" id="rig-show-mesh" checked> 478 landmarks</label>
             <label><input type="checkbox" id="rig-show-regions" checked> Influence regions</label>
             <label><input type="checkbox" id="rig-show-teeth" checked> Canonical teeth</label>
@@ -2826,6 +2827,25 @@ function rigImage(pose = RIG_POSE) {
   return `/files/${encodeURIComponent(RIG_SLUG)}/visemes/v_${encodeURIComponent(pose)}.jpg?t=${Date.now()}`;
 }
 
+/* Bitmaps for the live-response blend. Keyed by pose and epoch: the epoch
+   bumps after every publish so the stage re-fetches the new bank instead of
+   compositing stale frames. */
+let RIG_BITMAPS = {}, RIG_EPOCH = 0;
+function rigBitmap(key, url) {
+  let entry = RIG_BITMAPS[key];
+  if (!entry) {
+    entry = new Image();
+    entry.onload = drawRig;
+    entry.src = url;
+    RIG_BITMAPS[key] = entry;
+  }
+  return entry.complete && entry.naturalWidth ? entry : null;
+}
+function resetRigBitmaps() {
+  RIG_BITMAPS = {};
+  RIG_EPOCH += 1;
+}
+
 function closeRig() {
   $('#rig-modal').classList.remove('on');
   document.body.style.overflow = '';
@@ -2846,6 +2866,37 @@ function drawRig() {
   const canvas = $('#rig-canvas'), ctx = canvas.getContext('2d');
   canvas.width = RIG.width; canvas.height = RIG.height;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Live response: the neutral keyframe with the selected pose blended in
+  // per region at the CURRENT slider weights - what the sliders will do,
+  // seen while dragging them. Approximate (the real compose feathers
+  // seams and locks teeth); Validate & Rebuild makes the true bank.
+  const wantBlend = $('#rig-show-blend').checked;
+  if (wantBlend) {
+    const base = `/files/${encodeURIComponent(RIG_SLUG)}`;
+    const keyframe = rigBitmap(`k${RIG_EPOCH}`, `${base}/keyframe.png?e=${RIG_EPOCH}`);
+    const pose = rigBitmap(`p${RIG_EPOCH}-${RIG_POSE}`,
+      `${base}/visemes/v_${encodeURIComponent(RIG_POSE)}.jpg?e=${RIG_EPOCH}`);
+    if (keyframe && pose) {
+      $('#rig-image').style.visibility = 'hidden';
+      ctx.drawImage(keyframe, 0, 0, canvas.width, canvas.height);
+      ['cheeks', 'jaw', 'nasolabial', 'lips', 'nose'].forEach(name => {
+        const weight = Math.max(0, Math.min(1, (RIG_PROFILE[name] || 0) / 100));
+        if (!weight) return;
+        (RIG.regions[name] || []).forEach(polygon => {
+          ctx.save();
+          rigPolygon(ctx, polygon, canvas.width, canvas.height);
+          ctx.clip();
+          ctx.globalAlpha = weight;
+          ctx.drawImage(pose, 0, 0, canvas.width, canvas.height);
+          ctx.restore();
+        });
+      });
+      ctx.globalAlpha = 1;
+    }
+  } else {
+    $('#rig-image').style.visibility = '';
+  }
 
   if ($('#rig-show-regions').checked) {
     ['cheeks', 'jaw', 'nasolabial', 'lips', 'nose', 'locked'].forEach(name => {
@@ -3011,6 +3062,7 @@ function renderRigPoses() {
 async function openRig(slug) {
   RIG_SLUG = slug;
   RIG_POSE = 'closed';
+  resetRigBitmaps();
   $('#rig-modal').classList.add('on');
   document.body.style.overflow = 'hidden';
   $('#rig-loading').classList.remove('hidden');
@@ -3061,12 +3113,17 @@ async function watchRig(slug) {
     if (RIG_SLUG === slug) rigStatus('Rebuild rejected: ' + job.error + '\nThe previous avatar is still published.', 'bad');
     note('Calibration failed; the live avatar was not changed.');
   } else {
+    const onDesk = ACTIVE === slug;
     if (RIG_SLUG === slug) {
-      rigStatus('Anatomy QA passed. The calibrated runtime is published and the prior bundle is saved for rollback.', 'ok');
+      rigStatus('Anatomy QA passed. The calibrated runtime is published and the prior bundle is saved for rollback.'
+        + (onDesk ? '' : '\nThis avatar is not on the desk yet — close this panel and press "Use this face" to see it live.'), 'ok');
+      resetRigBitmaps();
       $('#rig-image').src = rigImage();
+      drawRig();
     }
-    if (ACTIVE === slug && SHELL && SHELL.isElectron) await SHELL.avatarChanged();
-    note('Calibration passed and the new runtime is active.');
+    if (onDesk && SHELL && SHELL.isElectron) await SHELL.avatarChanged();
+    note(onDesk ? 'Calibration passed and the new runtime is active.'
+      : 'Calibration passed. Activate the avatar (Use this face) to put it on the desk.');
   }
 }
 
@@ -3108,7 +3165,7 @@ $('#rig-preset').onchange = event => {
   drawRig();
   rigStatus();
 };
-['rig-show-mesh', 'rig-show-regions', 'rig-show-teeth'].forEach(id => {
+['rig-show-blend', 'rig-show-mesh', 'rig-show-regions', 'rig-show-teeth'].forEach(id => {
   $('#' + id).onchange = drawRig;
 });
 $('#rig-close').onclick = $('#rig-cancel').onclick = closeRig;
