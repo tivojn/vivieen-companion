@@ -133,6 +133,25 @@ class RigProfileTests(unittest.TestCase):
         self.assertTrue(measure._aperture_within_limit(0.091, 0.09))
         self.assertFalse(measure._aperture_within_limit(0.093, 0.09))
 
+    def test_dental_qa_is_advisory_under_experimental_targets(self):
+        # Third live rejection 2026-08-01: 'nn non-canonical upper pixels
+        # 35.0%' at folds 100 / jaw 100. Sliders outside their green bands
+        # are the user's declared intent to trade canonical anatomy for
+        # expression, so the canonical-teeth thresholds turn ADVISORY there
+        # (reported, logged, recorded on the manifest). Green-band profiles
+        # keep every strict gate.
+        self.assertEqual(anatomy._experimental_keys(rig.PRESETS["natural"]), [])
+        self.assertEqual(
+            anatomy._experimental_keys(
+                dict(rig.PRESETS["natural"], jaw=100, nasolabial=100)),
+            ["jaw", "nasolabial"])
+        source = open(os.path.join(ROOT, "studio", "anatomy.py"),
+                      encoding="utf-8").read()
+        self.assertIn("if violations and not advisory:", source)
+        self.assertIn("advisory=advisory", source)
+        self.assertIn("dental_warnings", source)
+        self.assertIn("ADVISORY past canonical bounds", source)
+
     def test_missing_dental_donor_is_reported_not_fatal(self):
         # The live rejection 2026-08-01, second act: a face whose speech
         # shapes never expose a full tooth row failed with 'no canonical
