@@ -576,6 +576,7 @@ button.btn.danger{color:#d9705f}
                 <button class="motion-play" id="body-motion-play" type="button">Pause</button>
                 <input id="body-motion-scrubber" type="range" min="0" max="0" value="0" aria-label="Animation frame">
                 <span class="motion-frame-label" id="body-motion-frame-label">Frame 1 / 1</span>
+                <input id="body-motion-frames" size="7" placeholder="48 or 1-6" title="Which frames: one like 48, or a run like 1-6. Empty = the frame on screen." style="height:30px;padding:0 9px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--ink);font:11px ui-monospace,SFMono-Regular,Menlo,monospace">
                 <button class="btn sm" id="body-motion-fix" type="button" title="Rebuild this frame from its loop neighbours - a one-frame flash loses the vote">Fix frame</button>
                 <button class="btn sm" id="body-motion-dropframe" type="button" title="Remove this frame from the loop entirely">Drop</button>
               </div>
@@ -1594,7 +1595,7 @@ function setBodyBusy(busy) {
   $('#body-generate').disabled = busy;
   ['body-walk-generate', 'body-idle-generate', 'body-move-generate',
    'body-walk-recut', 'body-idle-recut', 'body-move-recut',
-   'body-motion-fix', 'body-motion-dropframe'].forEach(id => {
+   'body-motion-fix', 'body-motion-dropframe', 'body-motion-frames'].forEach(id => {
     $('#' + id).disabled = busy || !hasBody || !hasVideoProvider;
   });
   $('#body-remove').disabled = busy;
@@ -2375,15 +2376,11 @@ async function repairMotionFrame(mode) {
   if (!BODY_CYCLE || !BODY_CYCLE.kind) return;
   const kind = BODY_CYCLE.kind;
   const shown = Math.round(Number(BODY_CYCLE.frame) || 0) + 1;
-  // The instruction, in the numbers on screen: one frame ("48") or a run
-  // ("1-6") when the defect lives across several frames - a run repairs
-  // against the clean frames just outside it.
-  const verb = mode === 'drop' ? 'remove' : 'fix';
-  const spec = prompt(
-    `Frames to ${verb} - one frame like ${shown}, or a run like 1-6:`,
-    String(shown));
-  if (spec === null) return;
-  const match = String(spec).trim().match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+  // The instruction, in on-screen numbers: the frames field takes one frame
+  // like 48 or a run like 1-6; left empty, the frame on screen is used.
+  // (window.prompt is unsupported in Electron, hence a real field.)
+  const spec = ($('#body-motion-frames').value || '').trim() || String(shown);
+  const match = spec.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
   if (!match) { alert('Give one frame like 48, or a run like 1-6.'); return; }
   const frame = Math.max(0, parseInt(match[1], 10) - 1);
   const frameEnd = match[2] ? Math.max(0, parseInt(match[2], 10) - 1) : null;
@@ -2391,6 +2388,7 @@ async function repairMotionFrame(mode) {
     : `frames ${frame + 1}-${frameEnd + 1}`;
   if (mode === 'drop' &&
       !confirm(`Remove ${span} from the ${kind} loop entirely?`)) return;
+  $('#body-motion-frames').value = '';
   setBodyBusy(true);
   startBodyProgress('motion');
   let response;
