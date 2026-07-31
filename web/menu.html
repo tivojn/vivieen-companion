@@ -17,7 +17,11 @@
   --shadow:0 10px 30px rgba(0,0,0,.35)}
 html,body{margin:0;background:transparent;overflow:hidden;
   user-select:none;-webkit-user-select:none}
-#menu{display:inline-block;min-width:172px;margin:8px;padding:5px;
+/* width:max-content: the panel must take its true content width even
+   while the window is still at its pre-measure size - inline-block alone
+   clamps to the viewport, rows overflow the border, and the right radius
+   and last row get clipped off. */
+#menu{display:inline-block;width:max-content;min-width:172px;margin:8px;padding:5px;
   border-radius:10px;border:1px solid var(--line);
   background:var(--bg);box-shadow:var(--shadow);
   font:13px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;
@@ -61,7 +65,9 @@ function row(item){
 }
 function report(){
   const box=root.getBoundingClientRect();
-  MENU.size({w:Math.ceil(box.width)+16,h:Math.ceil(box.height)+16});
+  // Margins (8+8) plus a couple of pixels of safety: an undersized window
+  // clips the rounded corners flat.
+  MENU.size({w:Math.ceil(box.width)+18,h:Math.ceil(box.height)+18});
 }
 MENU.onSpec(items=>{
   root.textContent='';

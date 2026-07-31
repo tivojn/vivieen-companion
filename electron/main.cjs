@@ -1538,8 +1538,10 @@ function showMenuWindow(spec, onDismiss = null) {
     return entry;
   });
   const payload = serialize(spec);
+  // Born larger than any menu ever measures, so the first layout is never
+  // squeezed by the shell; the real size arrives from the renderer.
   menuWindow = new BrowserWindow({
-    x: menuAnchor.x, y: menuAnchor.y, width: 280, height: 320, show: false,
+    x: menuAnchor.x, y: menuAnchor.y, width: 440, height: 720, show: false,
     frame: false, transparent: true, backgroundColor: '#00000000',
     roundedCorners: false, hasShadow: false, resizable: false, movable: false,
     minimizable: false, maximizable: false, fullscreenable: false,
@@ -2077,8 +2079,8 @@ function installIpc() {
   ipcMain.on('vivieen:menu-size', (event, size) => {
     if (!menuWindow || menuWindow.isDestroyed()
         || event.sender !== menuWindow.webContents) return;
-    const width = Math.max(160, Math.min(380, Math.round(Number(size && size.w) || 0)));
-    const height = Math.max(40, Math.min(680, Math.round(Number(size && size.h) || 0)));
+    const width = Math.max(160, Math.min(440, Math.round(Number(size && size.w) || 0)));
+    const height = Math.max(40, Math.min(720, Math.round(Number(size && size.h) || 0)));
     const area = screen.getDisplayNearestPoint(menuAnchor).workArea;
     let x = menuAnchor.x;
     let y = menuAnchor.y;
