@@ -525,6 +525,23 @@ async def api_upload(photo: UploadFile = File(...), name: str = Form("", max_len
     return m
 
 
+class RenameRequest(BaseModel):
+    slug: str = Field(pattern=SLUG_PATTERN)
+    name: str = Field(min_length=1, max_length=120)
+
+
+@app.post("/api/avatar/rename")
+def api_avatar_rename(r: RenameRequest):
+    name = re.sub(r"[\x00-\x1f\x7f]+", " ", r.name).strip()[:120]
+    if not name:
+        raise HTTPException(400, "name is empty")
+    m = reg().read_manifest(r.slug)
+    if not m:
+        raise HTTPException(404, "unknown avatar")
+    m["name"] = name
+    return reg().write_manifest(r.slug, m)
+
+
 class Slug(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
     shapes: list[str] | None = None

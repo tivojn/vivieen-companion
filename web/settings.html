@@ -110,7 +110,13 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .av .thumb{aspect-ratio:1;background:var(--thumb-bg) center/cover no-repeat;position:relative}
 .av .thumb .badge{position:absolute;top:10px;left:10px;backdrop-filter:blur(6px)}
 .av .body{padding:14px 16px 16px}
-.av h3{margin:0 0 8px;font-size:15px;font-weight:600;display:flex;gap:8px;align-items:center}
+.av h3{margin:0 0 8px;font-size:15px;font-weight:600;display:flex;gap:6px;align-items:center}
+.av-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.av-rename{flex:none;border:0;background:none;color:var(--faint);font-size:12px;
+  line-height:1;padding:3px 5px;border-radius:5px;cursor:pointer}
+.av-rename:hover{color:var(--ink);background:var(--hover)}
+.av-name-input{flex:1;min-width:0;padding:3px 8px;border-radius:6px;
+  font-size:14px;font-weight:600}
 .metrics{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:12px;margin:10px 0 12px}
 .metrics div{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:3px 0}
 .metrics span:first-child{color:var(--dim)}
@@ -463,7 +469,8 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
     <input type="file" id="avtrFile" accept=".avtr" class="hidden">
     <div class="row" style="margin-top:14px">
       <div class="f"><label>Name</label><input id="newname" placeholder="Vivieen"></div>
-      <div class="f" style="flex:none;align-self:flex-end">
+      <div class="f" style="flex:none;align-self:flex-end;display:flex;gap:8px">
+        <button class="btn pri hidden" id="createAvatar" type="button" title="Add the chosen portrait with this name">Add portrait</button>
         <button class="btn" id="importAvtr" type="button" title="Import a complete avatar (.avtr) — face, body, walk, and edge idle arrive ready to use">Import .avtr…</button>
       </div>
     </div>
@@ -1212,7 +1219,7 @@ function card(a) {
         : on ? 'active' : duo ? 'on desk · left' : st)}</span>
     </div>
     <div class="body">
-      <h3>${esc(a.name || a.slug)}</h3>
+      <h3><span class="av-name">${esc(a.name || a.slug)}</span><button class="av-rename" data-act="rename" type="button" title="Rename this avatar" aria-label="Rename this avatar">✎</button></h3>
       ${metrics(a)}
       ${a.error ? `<p class="note" style="color:var(--bad-text)">${esc(a.error)}</p>` : ''}
       <div class="acts">
@@ -1359,6 +1366,39 @@ function markAvatarBusy(slug, kind) {
 }
 
 async function act(what, slug, btn) {
+  if (what === 'rename') {
+    const span = btn.closest('h3').querySelector('.av-name');
+    if (!span) return;
+    const previous = span.textContent;
+    const input = document.createElement('input');
+    input.className = 'av-name-input';
+    input.value = previous;
+    input.maxLength = 120;
+    btn.classList.add('hidden');
+    span.replaceWith(input);
+    input.focus();
+    input.select();
+    let settled = false;
+    const finish = async save => {
+      if (settled) return;
+      settled = true;
+      const value = input.value.trim();
+      if (save && value && value !== previous) {
+        const r = await api('/api/avatar/rename', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug, name: value })
+        });
+        if (r.detail) alert(r.detail); else note(`Renamed to ${value}.`);
+      }
+      refreshAvatarCard(slug);
+    };
+    input.onkeydown = e => {
+      if (e.key === 'Enter') finish(true);
+      if (e.key === 'Escape') finish(false);
+    };
+    input.onblur = () => finish(true);
+    return;
+  }
   if (what === 'calibrate') { openRig(slug); return; }
   if (what === 'body') { openBody(slug); return; }
   if (what === 'preview') { openPreview(slug); return; }
@@ -1381,7 +1421,7 @@ async function act(what, slug, btn) {
     return;
   }
   if (what === 'export') {
-    const title = btn.closest('.av').querySelector('h3');
+    const title = btn.closest('.av').querySelector('.av-name');
     const name = title ? title.textContent.trim() : slug;
     if (SHELL && SHELL.isElectron && typeof SHELL.exportAvatar === 'function') {
       btn.disabled = true; btn.textContent = 'Exporting…';
@@ -2882,7 +2922,7 @@ drop.onclick = () => file.click();
 drop.addEventListener('drop', ev => {
   const dropped = ev.dataTransfer.files[0];
   if (dropped && /\.avtr$/i.test(dropped.name)) { importAvatarFile(dropped); return; }
-  upload(dropped);
+  stageUpload(dropped);
 });
 
 /* .avtr import: one file carries the whole avatar - face bank, body, walk,
@@ -2909,10 +2949,46 @@ async function importAvatarFile(file) {
 }
 $('#importAvtr').onclick = () => $('#avtrFile').click();
 $('#avtrFile').addEventListener('change', () => importAvatarFile($('#avtrFile').files[0]));
-file.onchange = () => upload(file.files[0]);
+file.onchange = () => stageUpload(file.files[0]);
+
+/* The naming step: a raw file name ("IMG_4032") is a bad avatar name, so a
+   picked portrait is STAGED first - the name field gets a cleaned suggestion,
+   selected so typing replaces it, and Enter (or Add portrait) commits. A name
+   typed before picking skips the step; the name stays editable on the card
+   afterwards either way. */
+let PENDING_UPLOAD = null;
+function suggestAvatarName(f) {
+  const base = f.name.replace(/\.[^.]+$/, '').replace(/[-_.]+/g, ' ')
+    .replace(/\s+/g, ' ').trim().slice(0, 40);
+  return base ? base.replace(/\b\w/g, c => c.toUpperCase()) : 'Vivieen';
+}
+function setPendingUpload(f) {
+  PENDING_UPLOAD = f || null;
+  $('#createAvatar').classList.toggle('hidden', !PENDING_UPLOAD);
+}
+function stageUpload(f) {
+  if (!f) return;
+  if ($('#newname').value.trim()) { upload(f); return; }
+  setPendingUpload(f);
+  $('#newname').value = suggestAvatarName(f);
+  $('#newname').focus();
+  $('#newname').select();
+  note('Name her — the file name is only a suggestion — then press Enter.');
+}
+$('#newname').addEventListener('keydown', e => {
+  if (!PENDING_UPLOAD) return;
+  if (e.key === 'Enter') { e.preventDefault(); upload(PENDING_UPLOAD); }
+  if (e.key === 'Escape') {
+    setPendingUpload(null);
+    $('#newname').value = ''; file.value = '';
+    note('Portrait discarded.');
+  }
+});
+$('#createAvatar').onclick = () => { if (PENDING_UPLOAD) upload(PENDING_UPLOAD); };
 
 async function upload(f) {
   if (!f) return;
+  setPendingUpload(null);
   note('Reading the face…');
   const fd = new FormData();
   fd.append('photo', f);
@@ -2921,6 +2997,7 @@ async function upload(f) {
   if (r.detail) { note('Rejected: ' + r.detail); return; }
   note('Added. Check the pose numbers, then build.');
   $('#newname').value = '';
+  file.value = '';
   loadAvatars();
 }
 
