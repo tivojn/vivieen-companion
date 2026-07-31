@@ -147,6 +147,15 @@ class RigProfileTests(unittest.TestCase):
         self.assertIn("soft_guard = cv2.GaussianBlur(guard", source)
         self.assertIn("gaze travel scaled to", source)
         self.assertIn("radius / 17.0", source)
+        # Root cause, diagnosed by the user: the landmark ring measures
+        # only the VISIBLE iris, so the rigid zone ended inside the real
+        # disc and moved part of it. The whole iris now travels as one
+        # body (rigid to 1.45r), and cursor-following uses only a sliver
+        # of the travel where every tile is clean.
+        self.assertIn("_smoothstep(1.45 * r, 2.3 * r, d)", source)
+        renderer = open(os.path.join(ROOT, "web", "index.html"),
+                        encoding="utf-8").read()
+        self.assertIn(".dxs.map(Math.abs)):1.5)*0.28", renderer)
 
     def test_brows_slider_drives_runtime_and_forehead(self):
         # The 'half zombie' fix (2026-08-01): brows and forehead animate
