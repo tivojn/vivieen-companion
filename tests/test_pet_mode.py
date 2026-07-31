@@ -440,6 +440,17 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("function checkForUpdates", main)
         self.assertIn("releases/latest", main)
         self.assertIn("/\\.dmg$/i", main)
+        # Install, not just download: the app fetches the DMG itself (no
+        # quarantine attribute that way), verifies the new bundle deeply
+        # AND requires the same signing team as the running build, swaps
+        # it into /Applications, and relaunches. Any failure falls back
+        # to opening the DMG; so does a copy not living in /Applications.
+        self.assertIn("function installUpdate", main)
+        self.assertIn("async function codesignTeam", main)
+        self.assertIn("'--verify', '--deep', '--strict'", main)
+        self.assertIn("signature team mismatch", main)
+        self.assertIn("app.getAppPath().startsWith('/Applications/')", main)
+        self.assertIn("'Install Update' : 'Download Update'", main)
         self.assertIn("scheduleUpdateChecks()", main)
         self.assertIn("if (!app.isPackaged) return", main)
         self.assertIn("'Check for Updates…', click", main)

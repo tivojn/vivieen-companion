@@ -2350,20 +2350,37 @@ async function checkForUpdates(interactive = false) {
     if (!interactive && updatePromptedVersion === latest) return;
     updatePromptedVersion = latest;
     const dmg = (release.assets || []).find((asset) => /\.dmg$/i.test(asset.name || ''));
+    const canAutoInstall = Boolean(dmg) && app.isPackaged
+      && app.getAppPath().startsWith('/Applications/');
     const { response: choice } = await dialog.showMessageBox({
       type: 'info',
       message: `Vivieen ${latest} is available`,
-      detail: `You are on ${current}. Download the new DMG, open it, and drag `
-        + 'Vivieen into Applications to upgrade.',
-      buttons: ['Download Update', 'Later'],
+      detail: canAutoInstall
+        ? `You are on ${current}. The update downloads, installs, and `
+          + 'relaunches Vivieen by itself.'
+        : `You are on ${current}. Download the new DMG, open it, and drag `
+          + 'Vivieen into Applications to upgrade.',
+      buttons: [canAutoInstall ? 'Install Update' : 'Download Update', 'Later'],
       defaultId: 0,
       cancelId: 1,
     });
-    if (choice === 0) {
-      await shell.openExternal((dmg && dmg.browser_download_url)
-        || release.html_url
-        || `https://github.com/${UPDATE_REPO}/releases/latest`);
+    if (choice !== 0) return;
+    if (canAutoInstall) {
+      try {
+        await installUpdate(dmg, latest);
+        return;   // unreachable in practice: installUpdate relaunches
+      } catch (error) {
+        writeBackendLog(`[auto-update failed] ${String((error && error.message) || error)}\n`);
+        await dialog.showMessageBox({
+          type: 'info',
+          message: 'Automatic install did not work.',
+          detail: `${String((error && error.message) || error)}\n\nOpening the DMG instead.`,
+        });
+      }
     }
+    await shell.openExternal((dmg && dmg.browser_download_url)
+      || release.html_url
+      || `https://github.com/${UPDATE_REPO}/releases/latest`);
   } catch (error) {
     writeBackendLog(`[update check failed] ${String((error && error.message) || error)}\n`);
     if (interactive) {
@@ -2374,6 +2391,78 @@ async function checkForUpdates(interactive = false) {
       });
     }
   }
+}
+
+function execFileAsync(executable, args) {
+  return new Promise((resolve, reject) => {
+    execFile(executable, args, { maxBuffer: 1 << 22 }, (error, stdout, stderr) => {
+      if (error) reject(new Error(String(stderr || error.message).slice(0, 300)));
+      else resolve({ stdout: String(stdout), stderr: String(stderr) });
+    });
+  });
+}
+
+async function codesignTeam(bundlePath) {
+  // codesign prints its report on stderr.
+  const { stderr } = await execFileAsync('/usr/bin/codesign', ['-dv', '--verbose=4', bundlePath]);
+  const match = stderr.match(/TeamIdentifier=([A-Z0-9]+)/);
+  if (!match || match[1] === 'not set') throw new Error('unsigned bundle');
+  return match[1];
+}
+
+async function installUpdate(asset, latest) {
+  // Download → verify → swap → relaunch. The download is made by the app
+  // itself, so the file carries no quarantine attribute and the swapped-in
+  // build launches cleanly despite not being notarized. Any failure throws
+  // and the caller falls back to simply opening the DMG.
+  showSpeechBubble(`Downloading Vivieen ${latest}. I will restart myself when it is ready.`);
+  const updatesDir = path.join(app.getPath('userData'), 'updates');
+  fs.rmSync(updatesDir, { recursive: true, force: true });
+  fs.mkdirSync(updatesDir, { recursive: true, mode: 0o700 });
+  const dmgPath = path.join(updatesDir, `Vivieen-${latest}.dmg`);
+  const response = await fetch(asset.browser_download_url, {
+    headers: { 'user-agent': 'vivieen-companion' }, redirect: 'follow' });
+  if (!response.ok) throw new Error(`download failed (HTTP ${response.status})`);
+  const payload = Buffer.from(await response.arrayBuffer());
+  if (asset.size && payload.length !== asset.size) {
+    throw new Error(`download incomplete (${payload.length} of ${asset.size} bytes)`);
+  }
+  fs.writeFileSync(dmgPath, payload, { mode: 0o600 });
+
+  const attach = await execFileAsync('/usr/bin/hdiutil',
+    ['attach', dmgPath, '-nobrowse', '-readonly', '-plist']);
+  const mount = (attach.stdout.match(/<key>mount-point<\/key>\s*<string>([^<]+)<\/string>/) || [])[1];
+  if (!mount) throw new Error('could not mount the update image');
+  try {
+    const newApp = path.join(mount, 'Vivieen.app');
+    if (!fs.existsSync(newApp)) throw new Error('no Vivieen.app in the update image');
+    // The new build must verify AND be signed by the same team as the
+    // running build - a swapped or corrupted download stops here.
+    await execFileAsync('/usr/bin/codesign', ['--verify', '--deep', '--strict', newApp]);
+    const ownBundle = app.getAppPath().replace(/\.app\/.*$/, '.app');
+    const [ownTeam, newTeam] = await Promise.all([
+      codesignTeam(ownBundle), codesignTeam(newApp)]);
+    if (ownTeam !== newTeam) {
+      throw new Error(`signature team mismatch (${newTeam} vs ${ownTeam})`);
+    }
+    showSpeechBubble('Installing the update. Back in a moment.');
+    const staging = '/Applications/.Vivieen-update.app';
+    const retired = '/Applications/.Vivieen-previous.app';
+    fs.rmSync(staging, { recursive: true, force: true });
+    fs.rmSync(retired, { recursive: true, force: true });
+    await execFileAsync('/usr/bin/ditto', [newApp, staging]);
+    fs.renameSync(ownBundle, retired);
+    fs.renameSync(staging, ownBundle);
+  } finally {
+    await execFileAsync('/usr/bin/hdiutil', ['detach', mount, '-quiet']).catch(() => {});
+  }
+  // Hand the relaunch to a detached shell: the old process must fully quit
+  // before the fresh bundle opens, and the retired copy leaves afterwards.
+  spawn('/bin/sh', ['-c',
+    'sleep 2; open "/Applications/Vivieen.app"; sleep 5; '
+    + 'rm -rf "/Applications/.Vivieen-previous.app"'],
+    { detached: true, stdio: 'ignore' }).unref();
+  app.quit();
 }
 
 function scheduleUpdateChecks() {
