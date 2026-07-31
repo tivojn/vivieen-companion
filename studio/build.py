@@ -217,6 +217,18 @@ def create_avatar(image_path, name=None, slug=None):
 RIG_ARTIFACTS = ("visemes", "diag", "runtime", "preview.mp4", "sheet.jpg")
 
 
+def _band_suggestion(keys):
+    """Human guidance for a red line: the green band of each named slider."""
+    parts = []
+    for key in keys:
+        spec = rig.CONTROLS.get(key)
+        if not spec:
+            continue
+        parts.append(f"{spec['label']} {spec.get('safe_minimum', 0):.0f}–"
+                     f"{spec.get('safe_maximum', 100):.0f}%")
+    return ", ".join(parts) or "ease the sliders toward their green bands"
+
+
 def _articulation_failure(row):
     if row["ratio"] > row["max_ratio"]:
         return (f"{row['name']} aperture {row['ratio']:.3f} exceeds "
@@ -344,36 +356,35 @@ def recompose_avatar(slug, profile, log=print, progress=None):
         aperture, over = measure.audit(
             stage_keyframe, stage_visemes, log=emit,
             names=visemes.SPEECH_ORDER)
-        # The calibration sliders advertise full, deliberately experimental
-        # control - a hair over a per-viseme target must not veto the whole
-        # rebuild (a 0.109 TH against a 0.09 ceiling once blocked every
-        # publish). Green-band profiles keep a per-viseme hard ceiling at
-        # 1.35x the target; an EXPERIMENTAL profile has declared its intent,
-        # so its hard ceiling is absolute anatomy instead - a shape only
-        # fails when it opens beyond the widest legitimate speech shape
-        # (TH at 0.124 under maxed sliders is exaggerated, not broken).
-        # Everything softer publishes with a warning on the manifest.
+        # The user's contract: extreme sliders are a decision, never a
+        # defect. An EXPERIMENTAL profile (any slider outside its green
+        # band) is NEVER blocked by articulation - every overshoot is
+        # published and reported with the suggested green band. Profiles
+        # inside every green band keep a per-viseme hard ceiling at 1.35x
+        # the target (there, an overshoot means the composition itself
+        # misbehaved, not the user).
         experimental = anatomy._experimental_keys(profile)
-        widest = max(ratio for ratio, _ in visemes.TARGETS.values())
         hard_failures, soft_overs = [], []
         for row in over:
             if experimental:
-                widened = widest * 1.35 + measure.APERTURE_DETECTOR_EPSILON
-                width_limit = 0.3
-            else:
-                widened = row["max_ratio"] * 1.35 + measure.APERTURE_DETECTOR_EPSILON
-                width_limit = 0.2
+                soft_overs.append(row)
+                continue
+            widened = row["max_ratio"] * 1.35 + measure.APERTURE_DETECTOR_EPSILON
             too_open = row["ratio"] > widened
-            width_off = abs(row["width_ratio"] - row["want_width"]) > width_limit
+            width_off = abs(row["width_ratio"] - row["want_width"]) > 0.2
             (hard_failures if (too_open or width_off) else soft_overs).append(row)
         if hard_failures:
             raise AssertionError(
-                "unsafe articulation: " +
-                "; ".join(_articulation_failure(row) for row in hard_failures))
+                "unsafe articulation: "
+                + "; ".join(_articulation_failure(row) for row in hard_failures)
+                + f" — suggested: {_band_suggestion(['lips', 'jaw'])}")
         for row in soft_overs:
-            emit(f"  {row['name']} runs {row['ratio']:.3f} against target "
-                 f"{row['max_ratio']:.2f} - published with this experimental "
-                 "calibration")
+            emit(f"  ADVISORY {row['name']} runs {row['ratio']:.3f} against "
+                 f"target {row['max_ratio']:.2f} - published with this "
+                 "experimental calibration")
+        if experimental:
+            emit(f"  ADVISORY experimental targets in play - "
+                 f"{_band_suggestion(experimental)}")
         advance("preview", .58, "Rendering local preview")
         render.preview(
             stage_visemes, os.path.join(stage, "preview.mp4"))
@@ -384,6 +395,9 @@ def recompose_avatar(slug, profile, log=print, progress=None):
         qa = anatomy.validate(
             stage_keyframe, stage_visemes, profile, diag_dir=stage_diag)
         emit("anatomy QA passed: " + anatomy.summary(qa))
+        for warning in ((qa.get("structure_warnings") or [])
+                        + (qa.get("dental_warnings") or [])):
+            emit(f"  ADVISORY {warning}")
         worst_residual = max(row["resid_px"] for row in report)
         worst_drift = max(row["outside_delta"] for row in report)
         next_manifest = copy.deepcopy(manifest)

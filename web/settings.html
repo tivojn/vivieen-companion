@@ -3115,7 +3115,14 @@ async function watchRig(slug) {
   } else {
     const onDesk = ACTIVE === slug;
     if (RIG_SLUG === slug) {
+      // Extreme calibrations publish with advisories: surface them here
+      // (each names its suggested green band) instead of leaving them
+      // buried in the job log.
+      const advisories = (job.log || [])
+        .filter(line => line.includes('ADVISORY'))
+        .map(line => line.trim()).slice(-4);
       rigStatus('Anatomy QA passed. The calibrated runtime is published and the prior bundle is saved for rollback.'
+        + (advisories.length ? '\n' + advisories.join('\n') : '')
         + (onDesk ? '' : '\nThis avatar is not on the desk yet — close this panel and press "Use this face" to see it live.'), 'ok');
       resetRigBitmaps();
       $('#rig-image').src = rigImage();
