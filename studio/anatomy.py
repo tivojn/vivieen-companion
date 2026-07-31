@@ -230,6 +230,11 @@ def validate(keyframe_path, viseme_dir, profile=None, diag_dir=None):
             raise AssertionError(f"missing viseme {name}")
         landmarks, _ = face.detect(image)
         cavity = compose._mouth_cavity(image.shape, landmarks) > 0
+        if not np.any(cavity):
+            # A fully closed frame (deliberate low-articulation profiles
+            # produce many) has no measurable oral cavity - nothing to
+            # audit, not an error.
+            continue
         value = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)[..., 2]
         shadow_floor = min(
             shadow_floor, int(np.percentile(value[cavity], 5)))
