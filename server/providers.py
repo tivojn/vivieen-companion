@@ -155,6 +155,10 @@ PROVIDERS = {
         dict(id="enconvo", label="EnConvo Global Default", managed=True, key=False,
              base="", note="Inherits EnConvo's default speech-to-text provider. "
                             "Credentials remain inside EnConvo."),
+        # Second on purpose: the direct path for users who skip EnConvo.
+        dict(id="soniox", label="Soniox Realtime", key=True, base="",
+             note="Realtime dictation over Soniox's WebSocket API - words "
+                  "stream into the input field while you speak."),
         dict(id="mlx_whisper", label="Whisper (MLX, local)", local=True, key=False, base="",
              note="Runs on the Metal GPU. Nothing leaves the Mac."),
         dict(id="openai", label="OpenAI", key=True, base="https://api.openai.com/v1"),
@@ -482,6 +486,11 @@ async def list_models(kind, c):
             if p == "system":
                 out = subprocess.run(["say", "-v", "?"], capture_output=True, text=True).stdout
                 return [line.split()[0] for line in out.splitlines() if line.strip()]
+            if p == "soniox":
+                # Listing doubles as the credentials check everywhere else,
+                # so prove the key with a real handshake first.
+                await _soniox_validate(c)
+                return ["stt-rt-v5"]
             if p == "mlx_whisper":
                 return ["mlx-community/whisper-large-v3-turbo",
                         "mlx-community/whisper-large-v3-mlx",
@@ -956,6 +965,66 @@ async def _enconvo_hear(raw, filename, c):
         shutil.rmtree(work_dir, ignore_errors=True)
 
 
+# The one realtime STT websocket endpoint; the /stt/stream bridge in
+# server/app.py speaks the same protocol for live dictation.
+SONIOX_RT_WSS = "wss://stt-rt.soniox.com/transcribe-websocket"
+
+
+def _soniox_config(c):
+    model = str(c.get("model") or "")
+    if not model.startswith("stt-rt"):
+        model = "stt-rt-v5"
+    config = {"api_key": c.get("api_key") or "", "model": model,
+              "audio_format": "auto"}
+    language = str(c.get("language") or "")
+    if language and language != "auto":
+        config["language_hints"] = [language]
+    return config
+
+
+async def _soniox_stream(config, frames):
+    """Run one take through Soniox realtime and return the final transcript.
+
+    Measured live: finalisation requires an empty TEXT frame - the
+    documented empty-binary alternative just times out.
+    """
+    import websockets
+    finals = []
+    async with websockets.connect(
+            SONIOX_RT_WSS, max_size=1 << 22, open_timeout=10) as upstream:
+        await upstream.send(json.dumps(config))
+        for frame in frames:
+            await upstream.send(frame)
+        await upstream.send("")
+        async for message in upstream:
+            payload = json.loads(message)
+            if payload.get("error_code") or payload.get("error_message"):
+                raise RuntimeError(str(
+                    payload.get("error_message") or "Soniox error")[:200])
+            for token in payload.get("tokens") or []:
+                if token.get("is_final"):
+                    finals.append(str(token.get("text") or ""))
+            if payload.get("finished"):
+                break
+    return "".join(finals).strip()
+
+
+async def _soniox_validate(c):
+    """A key is proven by a full round trip: config, end frame, response.
+
+    An empty take draws "No audio received." - which means authentication
+    already succeeded and the session reached the audio stage, so that
+    specific complaint counts as a pass. A bad key fails before it.
+    """
+    try:
+        await _soniox_stream(_soniox_config(c), [])
+    except RuntimeError as error:
+        if "no audio" in str(error).lower():
+            return True
+        raise
+    return True
+
+
 async def hear(raw, filename, c):
     if c.get("provider") == "enconvo":
         return await _enconvo_hear(raw, filename, c)
@@ -973,6 +1042,15 @@ async def _hear_direct(raw, filename, c):
     p = c.get("provider")
     base, key = _base("stt", c), c.get("api_key") or ""
     model, lang = c.get("model") or "", c.get("language") or "en"
+
+    if p == "soniox":
+        if not key:
+            raise RuntimeError("Soniox needs an API key")
+        # One whole take through the realtime socket: the same protocol the
+        # live-dictation bridge uses, so batch and streaming always agree.
+        frames = [raw[start:start + 65536]
+                  for start in range(0, len(raw), 65536)]
+        return await _soniox_stream(_soniox_config(c), frames)
 
     if p == "mlx_whisper":
         import mlx_whisper
