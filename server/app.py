@@ -1689,6 +1689,12 @@ SONIOX_RT_URL = "wss://stt-rt.soniox.com/transcribe-websocket"
 
 
 def _soniox_stream_config():
+    # Vivieen's own Soniox provider (direct API key, no EnConvo) wins when
+    # selected; otherwise EnConvo's dictation default is honoured when it
+    # points at Soniox, with the key borrowed from EnConvo's credentials.
+    own = P.load().get("stt") or {}
+    if own.get("provider") == "soniox" and own.get("api_key"):
+        return P._soniox_config(own)
     mapped = P.global_default("stt")
     if mapped.get("provider") != "soniox":
         return None

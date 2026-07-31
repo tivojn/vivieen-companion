@@ -95,5 +95,55 @@ class LiveDictationBridge(unittest.TestCase):
             self.assertIn("websockets", (ROOT / name).read_text())
 
 
+class SonioxDirectProvider(unittest.TestCase):
+    """Soniox as Vivieen's own STT provider, no EnConvo required.
+
+    Verified live 2026-07-31: key validation passes, a wrong key is
+    rejected with Soniox's own message, and a spoken take transcribes
+    exactly through providers.hear.
+    """
+
+    def test_soniox_sits_second_in_the_stt_catalog(self):
+        stt = providers.PROVIDERS["stt"]
+        self.assertEqual("enconvo", stt[0]["id"])
+        self.assertEqual("soniox", stt[1]["id"])
+        self.assertTrue(stt[1]["key"])
+
+    def test_config_normalises_to_a_realtime_model(self):
+        config = providers._soniox_config(
+            {"api_key": "k", "model": "stt-async-v5", "language": "ko"})
+        self.assertEqual("stt-rt-v5", config["model"])
+        self.assertEqual(["ko"], config["language_hints"])
+        self.assertNotIn(
+            "language_hints",
+            providers._soniox_config({"api_key": "k", "language": "auto"}))
+
+    def test_validation_passes_auth_but_not_other_errors(self):
+        async def run(error):
+            with mock.patch.object(
+                    providers, "_soniox_stream", side_effect=error):
+                return await providers._soniox_validate({"api_key": "k"})
+        import asyncio
+        # "No audio received." means auth already succeeded on an empty take.
+        self.assertTrue(asyncio.run(run(RuntimeError("No audio received."))))
+        with self.assertRaisesRegex(RuntimeError, "Incorrect API key"):
+            asyncio.run(run(RuntimeError("Incorrect API key provided.")))
+
+    def test_hear_and_model_listing_route_through_the_socket(self):
+        source = (ROOT / "server" / "providers.py").read_text()
+        # Batch transcription streams the take through the same socket
+        # protocol as live dictation.
+        self.assertIn("_soniox_stream(_soniox_config(c), frames)", source)
+        # Listing doubles as the credentials check, so it validates first.
+        self.assertIn("await _soniox_validate(c)", source)
+
+    def test_live_dictation_bridge_prefers_the_direct_provider(self):
+        app = (ROOT / "server" / "app.py").read_text()
+        marker = app.index("def _soniox_stream_config")
+        window = app[marker:marker + 700]
+        self.assertIn('own.get("provider") == "soniox"', window)
+        self.assertIn("P._soniox_config(own)", window)
+
+
 if __name__ == "__main__":
     unittest.main()
