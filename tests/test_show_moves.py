@@ -87,9 +87,11 @@ class WhitePlateMatte(unittest.TestCase):
     def test_refinement_runs_before_temporal_repair_on_white_takes(self):
         source = (ROOT / "studio" / "motion.py").read_text()
         marker = source.index("def _segment_frames")
-        window = source[marker:marker + 3000]
+        window = source[marker:marker + 4600]
         self.assertIn("_refine_white_matte(frames[index], segmented[index])",
                       window)
+        # It is the VISION-fallback sharpener; RVM output ships untouched.
+        self.assertIn("if not green_screen and rvm_frames is None:", window)
 
 
 class MoveRuntime(unittest.TestCase):
