@@ -124,10 +124,15 @@ def gaze_state(key, lm, side, dx, dy, s, box, ball):
     gx, gy = np.meshgrid(xs, ys)
     d = np.sqrt((gx - c[0]) ** 2 + (gy - c[1]) ** 2)
 
-    # Rigid out past the limbus - the iris edge is the one hard edge in there and
-    # a partial warp across it would ghost - then decayed to nothing well before
-    # the corners and the caruncle.
-    w = 1.0 - _smoothstep(1.15 * r, 1.9 * r, d)
+    # Rigid out past the limbus - the iris edge is the one hard edge in
+    # there and a partial warp across it would ghost. The landmark ring
+    # tracks only the VISIBLE iris (clipped by the lids), so it
+    # under-measures the physical disc; a rigid zone at 1.15r ended inside
+    # the real iris and moved only part of it - the rupture's root cause
+    # (diagnosed by the user, 2026-08-01). Scope generously instead:
+    # everything within 1.45r travels as ONE body, and the decay reaches
+    # deep into sclera where a blend is invisible.
+    w = 1.0 - _smoothstep(1.45 * r, 2.3 * r, d)
     w = (w * ball[y0:y0 + bh, x0:x0 + bw]).astype(np.float32)   # and 0 at the lid margins
 
     warped = cv2.remap(key, (gx - dx * w).astype(np.float32),
