@@ -133,6 +133,18 @@ class RigProfileTests(unittest.TestCase):
         self.assertTrue(measure._aperture_within_limit(0.091, 0.09))
         self.assertFalse(measure._aperture_within_limit(0.093, 0.09))
 
+    def test_missing_dental_donor_is_reported_not_fatal(self):
+        # The live rejection 2026-08-01, second act: a face whose speech
+        # shapes never expose a full tooth row failed with 'no canonical
+        # upper/lower dental-row donor' - though canonicalize_teeth itself
+        # skips the lock gracefully in exactly that case. The QA reports
+        # missing rows in its summary now instead of vetoing the rebuild.
+        source = open(os.path.join(ROOT, "studio", "anatomy.py"),
+                      encoding="utf-8").read()
+        self.assertNotIn("no canonical", source)
+        self.assertIn("missing_dental_rows=missing", source)
+        self.assertIn("row not visible (lock skipped)", source)
+
     def test_calibration_gate_warns_on_mild_overshoot_and_stops_broken(self):
         # The live rejection 2026-08-01: TH at 0.109 against a 0.09 target
         # vetoed the whole rebuild, though the sliders advertise full,
