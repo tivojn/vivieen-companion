@@ -177,6 +177,28 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn('<textarea id="txt"', renderer)
         self.assertIn("function autoSizeTxt", renderer)
         self.assertIn("e.key==='Enter'&&!e.shiftKey", renderer)
+        # The shell claims the chat controls AUTHORITATIVELY from its own
+        # 32ms cursor poll: the renderer-side claim (rAF -> hysteresis ->
+        # IPC) could stall - a stuck dragging flag froze the pointer feed -
+        # and the window went permanently deaf to clicks while hover kept
+        # working via forwarded moves. The renderer only reports where the
+        # visible controls ARE; hidden bars report empty so desktop clicks
+        # in the gap stay click-through.
+        self.assertIn("function reportControlRects", renderer)
+        self.assertIn("SHELL.setPetControlRects(rects)", renderer)
+        preload = (ROOT / "electron" / "preload.cjs").read_text()
+        self.assertIn("vivieen:pet-control-rects", preload)
+        self.assertIn("target.setHit(true, 'controls')", main)
+        # A drag in flight owns the window: forcing click-through while the
+        # cursor outruns the moving bounds lost the mouseup that ends the
+        # drag. Recording pins the claim the same way, and a window-level
+        # release rescues a drag whose canvas pointerup was lost.
+        self.assertIn("target.setHit(true, 'drag-pinned')", main)
+        self.assertIn("pointerOverChatControls()||recording||", renderer)
+        self.assertIn("if(!dragging)return;", renderer)
+        # recoverCompanion goes through setPetHit so the dedupe flag stays
+        # honest - a direct setIgnoreMouseEvents desynced it.
+        self.assertIn("setPetHit(true, 'recover')", main)
 
     def test_articulation_travels_between_mouth_shapes(self):
         # Measured 2026-07-31: with the 18ms cut, EVERY transition on a

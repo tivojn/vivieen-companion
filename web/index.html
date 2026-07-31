@@ -1506,6 +1506,7 @@ function loop(now){
       Boolean(petHit||now<petHoverUntil||recording||pointerOverBarZone()||
         document.documentElement.classList.contains('listening')||
         (document.hasFocus()&&document.activeElement===txt)||txt.value.trim()));
+    reportControlRects();
   }
   // Anything that counts as attention resets the stillness clock; after ten
   // quiet seconds the standing pet settles into the Edge Idle loop, and any
@@ -1919,10 +1920,38 @@ function pointerOverChatControls(){
   }
   return false;
 }
+/* The shell claims the bar controls itself, from its own 32ms cursor poll:
+   it just needs to know where they are. Reported only while the bar is
+   actually visible - rects for an invisible bar would swallow desktop
+   clicks in the gap - and cleared the moment it hides. */
+let lastControlRectsSent='';
+function reportControlRects(){
+  if(!SHELL||typeof SHELL.setPetControlRects!=='function')return;
+  const classes=document.documentElement.classList;
+  const visible=classes.contains('chat-open')&&classes.contains('chat-visible');
+  const rects=[];
+  if(visible){
+    for(const id of ['monitor','manual']){
+      const control=document.getElementById(id);
+      if(!control)continue;
+      const box=control.getBoundingClientRect();
+      if(box.width>0&&box.height>0){
+        rects.push({x:Math.floor(box.left),y:Math.floor(box.top),
+                    w:Math.ceil(box.width),h:Math.ceil(box.height)});
+      }
+    }
+  }
+  const packet=JSON.stringify(rects);
+  if(packet===lastControlRectsSent)return;
+  lastControlRectsSent=packet;
+  SHELL.setPetControlRects(rects);
+}
 function updatePetHit(force=false){
   if(!SHELL||!SHELL.isElectron||!PET.enabled)return;
   const now=performance.now();if(!force&&now-lastHitCheck<34)return;lastHitCheck=now;
-  const modalHit=pointerOverChatControls()||!document.getElementById('emptyState').hidden;
+  // `recording` pins the claim: mid-hold the cursor may slip off the body,
+  // and losing interactivity there loses the release that ends the take.
+  const modalHit=pointerOverChatControls()||recording||!document.getElementById('emptyState').hidden;
   let sample=modalHit;
   if(!sample&&ready&&pointer.x>=0&&pointer.y>=0&&pointer.x<innerWidth&&pointer.y<innerHeight){
     const ratio=devicePixelRatio||1,x=Math.floor(pointer.x*ratio),y=Math.floor(pointer.y*ratio);
@@ -2299,6 +2328,14 @@ cv.addEventListener('pointercancel',event=>{
     SHELL.endPetDrag();updatePetHit(true);
   }
   if(active&&active.ptt)stopPetTalk();
+});
+// Rescue net: if the canvas somehow missed the release (its pointerup can
+// be lost when the window flips click-through mid-gesture), any release
+// reaching the window still ends the drag instead of freezing the feed.
+addEventListener('pointerup',()=>{
+  if(!dragging)return;
+  dragging=false;document.documentElement.classList.remove('dragging');
+  SHELL.endPetDrag();updatePetHit(true);
 });
 cv.addEventListener('contextmenu',event=>{
   if(!SHELL||!PET.enabled||!confirmPetEventHit(event))return;

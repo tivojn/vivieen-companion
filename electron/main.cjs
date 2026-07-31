@@ -57,6 +57,12 @@ let backendLog = null;
 let enconvoMonitor = null;
 let enconvoSampleSequence = 0;
 let petDrag = null;
+// Chat-bar control rectangles (window-local), reported by each renderer while
+// its bar is visible. The cursor tracker claims these AUTHORITATIVELY: the
+// renderer-side alpha claim rides rAF -> hysteresis -> IPC, and any stall in
+// that chain used to read as clicks falling through to the app below.
+let petControlRects = [];
+let buddyControlRects = [];
 let petPointerTimer = null;
 let petPointerInteractive = null;
 let petPointerDebugAt = 0;
@@ -561,8 +567,10 @@ function startPetPointerTracking() {
   petPointerTimer = setInterval(() => {
     const point = screen.getCursorScreenPoint();
     for (const target of [
-      { window: () => mainWindow, setHit: setPetHit },
-      { window: () => buddyWindow, setHit: setBuddyHit },
+      { window: () => mainWindow, setHit: setPetHit,
+        rects: () => petControlRects, dragging: () => petDrag },
+      { window: () => buddyWindow, setHit: setBuddyHit,
+        rects: () => buddyControlRects, dragging: () => buddyDrag },
     ]) {
       const window = target.window();
       if (!window || window.isDestroyed() || !window.isVisible()) continue;
@@ -583,6 +591,22 @@ function startPetPointerTracking() {
         continue;
       }
       window.webContents.send('vivieen:pet-pointer', localPoint);
+      // A drag in flight owns the window. The cursor legitimately outruns
+      // the moving bounds, and forcing click-through in that gap lost the
+      // mouseup that would have ended the drag - the renderer's pointer
+      // feed then stayed frozen behind its dragging guard and the window
+      // went permanently deaf to clicks (hover kept working via forwarded
+      // moves, which is exactly the confusing symptom).
+      if (target.dragging()) { target.setHit(true, 'drag-pinned'); continue; }
+      // The chat controls are claimed HERE, from the same 32ms poll that
+      // already knows the cursor and the bounds. This path has no renderer
+      // dependency, so a paused rAF or a stuck flag can no longer leave
+      // the EnConvo mark or the input field passing clicks to the desktop.
+      const rects = target.rects();
+      const overControls = inside && rects.some((r) =>
+        localPoint.x >= r.x && localPoint.x <= r.x + r.w
+        && localPoint.y >= r.y && localPoint.y <= r.y + r.h);
+      if (overControls) { target.setHit(true, 'controls'); continue; }
       if (!inside) target.setHit(false, 'outside-window');
     }
   }, 32);
@@ -1714,7 +1738,10 @@ function recoverCompanion() {
   mainWindow.setBounds(dockedPetBounds(size, area, PET_DOCK_MARGIN));
   state.bounds = mainWindow.getBounds();
   mainWindow.setOpacity(0.5);
-  mainWindow.setIgnoreMouseEvents(false);
+  // Through setPetHit so the interactive flag stays honest: a direct
+  // setIgnoreMouseEvents here desyncs the dedupe and later claims no-op.
+  petPointerInteractive = null;
+  setPetHit(true, 'recover');
   mainWindow.show();
   mainWindow.focus();
   saveStateSoon();
@@ -1977,6 +2004,14 @@ function installIpc() {
   ipcMain.on('vivieen:pet-hit', (event, value) => {
     if (isBuddySender(event)) setBuddyHit(Boolean(value));
     else if (mainWindow && event.sender === mainWindow.webContents) setPetHit(Boolean(value), 'renderer-alpha');
+  });
+  ipcMain.on('vivieen:pet-control-rects', (event, value) => {
+    const rects = (Array.isArray(value) ? value : []).slice(0, 8)
+      .map((r) => ({ x: Number(r && r.x), y: Number(r && r.y),
+                     w: Number(r && r.w), h: Number(r && r.h) }))
+      .filter((r) => [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0);
+    if (isBuddySender(event)) buddyControlRects = rects;
+    else if (mainWindow && event.sender === mainWindow.webContents) petControlRects = rects;
   });
   ipcMain.on('vivieen:pet-voice-key', (event, state) => {
     if (isBuddySender(event)

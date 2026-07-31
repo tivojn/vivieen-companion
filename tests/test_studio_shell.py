@@ -31,6 +31,26 @@ class SettingsMarkupTest(unittest.TestCase):
             self.assertTrue(href.startswith("#") or href == "/",
                             "unhandled navigation link: " + href)
 
+    def test_upload_stages_a_naming_step_and_names_stay_editable(self):
+        # A raw file name ("IMG_4032") is a bad avatar name: a picked
+        # portrait is staged, the name field gets a cleaned suggestion
+        # (selected, so typing replaces it), and Enter or Add portrait
+        # commits. The name stays editable afterwards from the card.
+        self.assertIn("function stageUpload", self.settings)
+        self.assertIn("function suggestAvatarName", self.settings)
+        self.assertIn('id="createAvatar"', self.settings)
+        self.assertIn("stageUpload(dropped)", self.settings)
+        self.assertIn("stageUpload(file.files[0])", self.settings)
+        self.assertIn('data-act="rename"', self.settings)
+        self.assertIn('class="av-name"', self.settings)
+        self.assertIn("'/api/avatar/rename'", self.settings)
+        # Export must read the clean name span, not the h3 (which now also
+        # holds the rename button's glyph).
+        self.assertIn("querySelector('.av-name')", self.settings)
+        app = read("server", "app.py")
+        self.assertIn('@app.post("/api/avatar/rename")', app)
+        self.assertIn("class RenameRequest(BaseModel)", app)
+
     def test_preview_opens_the_modal_player(self):
         self.assertIn('data-act="preview"', self.settings)
         self.assertIn("function openPreview(", self.settings)
