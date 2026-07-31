@@ -133,6 +133,18 @@ class RigProfileTests(unittest.TestCase):
         self.assertTrue(measure._aperture_within_limit(0.091, 0.09))
         self.assertFalse(measure._aperture_within_limit(0.093, 0.09))
 
+    def test_upper_lip_floor_tracks_the_lips_slider(self):
+        # Fourth live rejection 2026-08-01: lips at 0 hit 'nose lock
+        # suppresses upper lip 0.0%' against a hardcoded 78% floor. The
+        # invariant is relative - the lip weight must track the slider -
+        # so a deliberate low-lips profile passes and a nose mask that
+        # eats requested lip motion still fails.
+        source = open(os.path.join(ROOT, "studio", "anatomy.py"),
+                      encoding="utf-8").read()
+        self.assertNotIn("max(78.0", source)
+        self.assertIn('max(0.0, profile["lips"] - 3.0)', source)
+        self.assertIn("lips target", source)
+
     def test_dental_qa_is_advisory_under_experimental_targets(self):
         # Third live rejection 2026-08-01: 'nn non-canonical upper pixels
         # 35.0%' at folds 100 / jaw 100. Sliders outside their green bands
