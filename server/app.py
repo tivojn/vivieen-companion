@@ -604,7 +604,7 @@ class BodySetRequest(BaseModel):
 
 def _motion_asset_catalog(slug, directory, motion_metadata):
     motion_root = os.path.join(directory, "motion")
-    catalog = {"walk": [], "idle": [], "shared": []}
+    catalog = {"walk": [], "idle": [], "move": [], "shared": []}
     seen = set()
 
     def add(kind, relative, role, stage, label, order, extra=None):

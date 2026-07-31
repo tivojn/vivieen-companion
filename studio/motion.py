@@ -713,7 +713,7 @@ REFERENCE AUTHORITY — Reference 1 is the generated canonical RIGHT-SIDE full-b
 
 MOVEMENT STYLE — {walk_style['label']}. {walk_style['keyframe']}
 
-COMPOSITION — one person only, complete figure centered on a vertical 2:3 canvas, locked camera at waist height, long lens, generous clean margin, no crop, no props, no text, no furniture, no floor shadow. Shoot against a seamless pure white studio background and floor: bright, even white only, with no cast shadow, gray, scenery, reflections, or colored light spill on the subject.
+COMPOSITION — one person only, complete figure centered on a vertical 2:3 canvas, locked camera at waist height, long lens, generous clean margin, no crop, no props, no text, no furniture, no floor shadow. Shoot against a seamless pure white studio background and floor: bright, even white only, with no cast shadow, gray, scenery, reflections, or colored light spill on the subject. If any garment or shoe is white or near-white, render it one clearly visible tone deeper than the backdrop so the silhouette never blends into it.
 
 Editable wardrobe receipt, subordinate to the visual references: {outfit}"""
 
@@ -727,7 +727,7 @@ IDENTITY AND WARDROBE LOCK — preserve the exact face, apparent age, hair, body
 
 OPENING POSE — one natural, balanced standing frame that a performance loop can begin and end on: weight settled, both shoes on the floor, arms relaxed and readable. This frame is the resting beat of the following act, so keep it poised rather than mid-move: {idle_pose['prompt']}
 
-COMPOSITION — one person only, full figure centered on a vertical 2:3 canvas with margin for the movement, locked camera, no crop, no props, no text, no furniture, no cast shadow. Shoot against a seamless pure white studio background and floor: bright, even white only, with no cast shadow, gray, scenery, reflections, or colored light spill on the subject.
+COMPOSITION — one person only, full figure centered on a vertical 2:3 canvas with margin for the movement, locked camera, no crop, no props, no text, no furniture, no cast shadow. Shoot against a seamless pure white studio background and floor: bright, even white only, with no cast shadow, gray, scenery, reflections, or colored light spill on the subject. If any garment or shoe is white or near-white, render it one clearly visible tone deeper than the backdrop so the silhouette never blends into it.
 
 Editable wardrobe receipt, subordinate to the visual references: {outfit}"""
     reference_note = (
@@ -744,7 +744,7 @@ IDENTITY AND WARDROBE LOCK — preserve the exact face, apparent age, hair, body
 
 POSE GEOMETRY — author the selected canonical LEFT-EDGE pose. The selected direction controls geometry only and never identity, wardrobe, styling, age, or gender: {idle_pose['prompt']} Keep at least one intentional screen-left shoulder, upper-back, or side-body contact visibly pressed to one invisible vertical wall. Preserve every selected arm, hand, hip, leg, foot, and contact arrangement exactly. The body must project naturally into the screen toward camera-right rather than lean against empty air. Never substitute an upright tree pose, ballet balance, floating lean, or unrelated fashion pose. Keep it poised and self-possessed. Both complete shoes and all limbs must remain anatomically correct.
 
-COMPOSITION — one person only, full figure centered on a vertical 2:3 canvas with enough margin for the selected edge pose, locked camera, no crop, no props, no weapons, no garter, no text, no furniture, no cast shadow. Shoot against a seamless pure white studio background and floor: bright, even white only, with no cast shadow, gray, scenery, reflections, or colored light spill on the subject.
+COMPOSITION — one person only, full figure centered on a vertical 2:3 canvas with enough margin for the selected edge pose, locked camera, no crop, no props, no weapons, no garter, no text, no furniture, no cast shadow. Shoot against a seamless pure white studio background and floor: bright, even white only, with no cast shadow, gray, scenery, reflections, or colored light spill on the subject. If any garment or shoe is white or near-white, render it one clearly visible tone deeper than the backdrop so the silhouette never blends into it.
 
 Editable wardrobe receipt, subordinate to the visual references: {outfit}"""
 
@@ -780,7 +780,7 @@ PRIORITY 0 — SEAMLESS IN-PLACE LOOP: the supplied image is the EXACT first fra
 
 PRIORITY 1 — IDENTITY, HAIR, AND WARDROBE: preserve the exact selected person's face, apparent age, body proportions, skin tone, hairline, hairstyle, outfit, materials, colors, accessories, and both complete shoes from the input keyframe in every frame. Never restyle, beautify, de-age, change clothes, change footwear, or invent a different person.
 
-CAMERA AND PLATE: locked camera with constant scale, exposure, and color; no camera motion, zoom, reframing, or cuts. The entire background and floor stay seamless pure white with no scenery, shadows, reflections, text, props, gray, or colored spill. The subject's complete full body and both shoes stay inside the frame at all times.
+CAMERA AND PLATE: locked camera with constant scale, exposure, and color; no camera motion, zoom, reframing, or cuts. The entire background and floor stay seamless pure white with no scenery, shadows, reflections, text, props, gray, or colored spill; white or near-white wardrobe stays one clearly visible tone deeper than the backdrop. The subject's complete full body and both shoes stay inside the frame at all times.
 
 STYLE-SPECIFIC REJECTIONS — {walk_style['reject']}
 
@@ -823,7 +823,7 @@ def _walk_video_prompt(walk_style=None, walk_frame=None):
 
 PRIORITY 1 — IDENTITY, HAIR, AND WARDROBE: preserve the exact selected person's face, apparent age, body proportions, skin tone, hairline, hairstyle, outfit, materials, colors, accessories, and both complete shoes from the input keyframe in every frame. Never restyle, beautify, de-age, change clothes, change footwear, or invent a different person.
 
-CAMERA AND PLATE: the three light-gray vertical registration lines and floor line remain exactly stationary. Camera scale, exposure, and color remain constant. The entire background and floor stay seamless pure white with no scenery, shadows, reflections, text, props, gray, or colored spill. Keep the subject's complete full body and both shoes inside frame while the subject crosses from roughly {enters}% to {exits}% at constant speed.
+CAMERA AND PLATE: the three light-gray vertical registration lines and floor line remain exactly stationary. Camera scale, exposure, and color remain constant. The entire background and floor stay seamless pure white with no scenery, shadows, reflections, text, props, gray, or colored spill; white or near-white wardrobe stays one clearly visible tone deeper than the backdrop. Keep the subject's complete full body and both shoes inside frame while the subject crosses from roughly {enters}% to {exits}% at constant speed.
 
 STYLE-SPECIFIC REJECTIONS — {walk_style['reject']}
 
@@ -841,7 +841,7 @@ PRIORITY — SEAMLESS IN-PLACE LOOP: the character stays at the same screen posi
 
 IDENTITY AND WARDROBE — preserve the exact person's face, apparent age, hair, body proportions, outfit, materials, colors, accessories, and both complete shoes from the input keyframe in every frame. Never restyle or invent a different person.
 
-CAMERA AND PLATE — locked camera, constant scale, exposure, and color; no cuts or zoom. The entire background and floor stay seamless pure white with no scenery, shadows, reflections, text, props, gray, or colored spill. The complete body and both shoes stay inside the frame at all times.
+CAMERA AND PLATE — locked camera, constant scale, exposure, and color; no cuts or zoom. The entire background and floor stay seamless pure white with no scenery, shadows, reflections, text, props, gray, or colored spill; white or near-white wardrobe stays one clearly visible tone deeper than the backdrop. The complete body and both shoes stay inside the frame at all times.
 
 Reject: identity drift, wardrobe changes, camera motion, leaving the frame, or freezing in place instead of performing."""
     contact_lock = (
@@ -1691,6 +1691,14 @@ def _segment_frames(frames, workspace, log):
         results = list(executor.map(segment, range(len(frames))))
     segmented = [result[0] for result in results]
     poses = [result[1] for result in results]
+    if not green_screen:
+        # White-plate takes: color sharpens the coarse semantic boundary
+        # BEFORE temporal repair, so the fine matte is deterministic and the
+        # included-rim flicker never reaches the shipped frames.
+        segmented = [
+            _refine_white_matte(frames[index], segmented[index])
+            for index in range(len(segmented))
+        ]
     repaired = _stabilise_segmented(segmented, poses)
     if green_screen:
         repaired = [
@@ -1722,6 +1730,73 @@ def _fill_lower_body_alpha_holes(alpha):
         center_y = moments["m01"] / moments["m00"] if moments["m00"] else 0
         if 4 <= area <= maximum_area and center_y >= y + height * 0.40:
             cv2.drawContours(output, [contour], -1, 255, thickness=cv2.FILLED)
+    return output
+
+
+def _refine_white_matte(source, rgba):
+    """Sharpen Vision's person matte against the KNOWN white plate.
+
+    The semantic mask is right about WHERE the person is but coarse about
+    the boundary: it rides a few pixels outside the true silhouette (an
+    included white rim, at full alpha, that flickers frame to frame) and it
+    drops thin structures like stiletto heel sticks. Within a band around
+    the mask, color decides instead: near-white is plate, clearly non-white
+    connected to the body is subject. The soft contour is then un-mixed
+    against white (C = aF + (1-a)W) so no plate tint survives compositing.
+    """
+    alpha = rgba[:, :, 3]
+    mask = (alpha > 127).astype(np.uint8)
+    if not mask.any():
+        return rgba
+    hsv = cv2.cvtColor(source, cv2.COLOR_BGR2HSV).astype(np.float32)
+    whiteness = (np.clip((hsv[:, :, 2] - 205) / 40, 0, 1)
+                 * np.clip((70 - hsv[:, :, 1]) / 55, 0, 1))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    core = cv2.erode(mask, kernel, iterations=2).astype(bool)
+    reach = cv2.dilate(mask, kernel, iterations=5).astype(bool)
+    inside = mask.astype(bool)
+    refined = alpha.astype(np.float32)
+    # Outside the semantic boundary color decides alone: near-white is
+    # plate, however far Vision's coarse edge overshot.
+    outer = reach & ~inside
+    refined[outer] = np.minimum(refined[outer], (1 - whiteness[outer]) * 255)
+    # Plate pockets: PURE-white regions (measured plate 1.0 vs cream shoes
+    # <=0.68) connected to the plate outside the figure - white showing
+    # through a hair-shoulder gap, a smudge hugging a moving hand - are
+    # background even where Vision marked them opaque at full confidence,
+    # at any depth inside the mask. The strict threshold is what protects
+    # off-white wardrobe; garments that are literally plate-white are
+    # unmattable on a white plate and the prompts now forbid them.
+    plate = (whiteness > 0.93).astype(np.uint8)
+    count, labels = cv2.connectedComponents(plate, connectivity=8)
+    exterior_labels = np.unique(labels[(~reach) & (plate > 0)])
+    exterior_labels = exterior_labels[exterior_labels > 0]
+    if exterior_labels.size:
+        pocket = np.isin(labels, exterior_labels)
+        refined[pocket] = np.minimum(
+            refined[pocket], (1 - whiteness[pocket]) * 255)
+    # Clearly non-white pixels near the body are subject (heel sticks,
+    # straps, hair wisps) - but only when connected to the body, so plate
+    # smudges and shadows far from her stay out.
+    solid = reach & ~core & (whiteness < 0.18)
+    count, labels = cv2.connectedComponents(
+        (solid | core).astype(np.uint8), connectivity=8)
+    core_labels = np.unique(labels[core])
+    core_labels = core_labels[core_labels > 0]
+    if core_labels.size:
+        refined[np.isin(labels, core_labels) & solid] = 255
+    refined = cv2.GaussianBlur(
+        np.clip(refined, 0, 255).astype(np.uint8), (0, 0), 0.6)
+    output = rgba.copy()
+    output[:, :, 3] = refined
+    scale = refined.astype(np.float32)[..., None] / 255
+    edge = (refined > 0) & (refined < 250)
+    if edge.any():
+        colors = output[:, :, :3].astype(np.float32)
+        unmixed = np.clip(
+            (colors - (1 - scale) * 255) / np.maximum(scale, 0.04), 0, 255)
+        output[:, :, :3][edge] = unmixed[edge].astype(np.uint8)
+    output[:, :, :3][refined == 0] = 0
     return output
 
 

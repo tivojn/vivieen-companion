@@ -62,6 +62,36 @@ class MoveStyles(unittest.TestCase):
         self.assertIn('("walk", "idle", "move")', export)
 
 
+class WhitePlateMatte(unittest.TestCase):
+    def test_refinement_cuts_plate_pockets_and_keeps_cream_wardrobe(self):
+        """Verified against the real defect 2026-07-31: a plate pocket at a
+        hair-shoulder gap shipped opaque and flashed white; cream shoes
+        measured whiteness <=0.68 vs plate 1.0."""
+        import numpy as np
+        from studio import motion
+        height, width = 200, 200
+        source = np.full((height, width, 3), 255, np.uint8)     # pure plate
+        source[40:160, 60:140] = (30, 30, 190)                  # red dress
+        source[150:196, 90:112] = (225, 236, 245)               # cream shoe
+        source[70:100, 120:138] = 255                           # plate pocket
+        source[70:80, 138:200] = 255                            # gap to plate
+        alpha = np.zeros((height, width), np.uint8)
+        alpha[38:198, 55:145] = 255      # Vision mask: includes the pocket
+        rgba = np.dstack([source, alpha])
+        refined = motion._refine_white_matte(source, rgba)
+        out = refined[:, :, 3]
+        self.assertLess(int(out[85, 130]), 40)      # pocket removed
+        self.assertEqual(255, int(out[100, 100]))   # dress kept
+        self.assertGreater(int(out[170, 100]), 200)  # cream shoe kept
+
+    def test_refinement_runs_before_temporal_repair_on_white_takes(self):
+        source = (ROOT / "studio" / "motion.py").read_text()
+        marker = source.index("def _segment_frames")
+        window = source[marker:marker + 3000]
+        self.assertIn("_refine_white_matte(frames[index], segmented[index])",
+                      window)
+
+
 class MoveRuntime(unittest.TestCase):
     def test_hair_double_tap_and_menu_trigger_the_show(self):
         renderer = (ROOT / "web" / "index.html").read_text()
