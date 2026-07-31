@@ -449,6 +449,16 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("following-enconvo #bar{display:none!important}", renderer)
         self.assertIn('@app.get("/bubble")', server)
         self.assertIn('id="text"', bubble)
+        # A reply that arrives as markdown must READ as markdown - the
+        # bubble carries the same DOM-built renderer as the chat caption
+        # (textContent only, so a reply can never inject markup), and the
+        # shell keeps newlines (its old whitespace-collapse flattened
+        # lists and fences into one unparseable line).
+        self.assertIn("function renderMarkdown", bubble)
+        self.assertIn("renderMarkdown(value, text)", bubble)
+        marker = main.index("function showSpeechBubble")
+        self.assertIn("replace(/\\r\\n?/g, '\\n')", main[marker:marker + 400])
+        self.assertNotIn("replace(/\\s+/g, ' ')", main[marker:marker + 400])
 
 
 class MotionPipelineTests(unittest.TestCase):

@@ -1617,7 +1617,11 @@ function createSpeechBubbleWindow() {
 }
 
 function showSpeechBubble(value) {
-  const text = String(value || '').replace(/\s+/g, ' ').trim().slice(0, 1200);
+  // Newlines survive: the bubble renders markdown, and collapsing every run
+  // of whitespace to one space used to flatten lists, fences, and headings
+  // into an unparseable single line.
+  const text = String(value || '').replace(/\r\n?/g, '\n')
+    .replace(/\n{3,}/g, '\n\n').trim().slice(0, 2000);
   clearTimeout(bubbleTimer);
   bubbleTimer = null;
   pendingBubble = text;
