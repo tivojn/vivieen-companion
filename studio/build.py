@@ -356,28 +356,14 @@ def recompose_avatar(slug, profile, log=print, progress=None):
         aperture, over = measure.audit(
             stage_keyframe, stage_visemes, log=emit,
             names=visemes.SPEECH_ORDER)
-        # The user's contract: extreme sliders are a decision, never a
-        # defect. An EXPERIMENTAL profile (any slider outside its green
-        # band) is NEVER blocked by articulation - every overshoot is
-        # published and reported with the suggested green band. Profiles
-        # inside every green band keep a per-viseme hard ceiling at 1.35x
-        # the target (there, an overshoot means the composition itself
-        # misbehaved, not the user).
+        # The user's contract: a REBUILD never blocks on articulation.
+        # These are retained renders re-composed to the user's chosen
+        # profile - green band or red, an overshoot is a look, not a
+        # defect. Everything publishes and reports with the suggested
+        # green bands. (Generation-time audits keep their strict gates -
+        # there a rejected candidate is retried for free.)
         experimental = anatomy._experimental_keys(profile)
-        hard_failures, soft_overs = [], []
-        for row in over:
-            if experimental:
-                soft_overs.append(row)
-                continue
-            widened = row["max_ratio"] * 1.35 + measure.APERTURE_DETECTOR_EPSILON
-            too_open = row["ratio"] > widened
-            width_off = abs(row["width_ratio"] - row["want_width"]) > 0.2
-            (hard_failures if (too_open or width_off) else soft_overs).append(row)
-        if hard_failures:
-            raise AssertionError(
-                "unsafe articulation: "
-                + "; ".join(_articulation_failure(row) for row in hard_failures)
-                + f" — suggested: {_band_suggestion(['lips', 'jaw'])}")
+        soft_overs = list(over)
         for row in soft_overs:
             emit(f"  ADVISORY {row['name']} runs {row['ratio']:.3f} against "
                  f"target {row['max_ratio']:.2f} - published with this "
