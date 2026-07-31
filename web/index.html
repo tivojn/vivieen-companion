@@ -678,11 +678,36 @@ async function poll(){
    graceful fallback if a track ever fails to arrive.                        */
 let actx=null,analyser=null,speaking=false,lvl=0;
 let track=[],tIdx=0,audioT0=0;
-let curV='sil',prevV='sil',switchAt=0;
-const XFADE=0.018;                       // timed tracks: never double teeth
+let curV='sil',prevV='sil',switchAt=0,switchFade=0.055,curReduce=1;
+/* ---- articulation dynamics ------------------------------------------------
+   Real lips TRAVEL between shapes; a hard texture swap reads as a low-fps
+   cartoon. Every dissolve is aperture-aligned now: both plates are warped to
+   one shared, interpolated lip gap, so the dental rows coincide mid-fade and
+   the dissolve can run as long as real articulation does (45-105ms) instead
+   of the 18ms panic cut that kept teeth from doubling. Pace is per pair -
+   lips snap shut faster than vowels glide - and a vowel that only lives
+   ~60ms is undershot, the way real unstressed vowels are. */
+const XFADE=0.055;                       // base dissolve; fadeFor paces pairs
 const MIN_POSE=0.020;                    // preserve real 25ms consonants
 const VISUAL_LEAD=XFADE*0.5;             // dissolve midpoint meets audio event
 const LOCKED_POSES=new Set(['sil','PP']);
+const APERTURE_V={sil:.05,PP:0,FF:.08,TH:.15,DD:.18,kk:.24,CH:.18,SS:.10,
+                  nn:.13,RR:.15,aa:1,E:.55,ih:.36,oh:.64,ou:.32};
+const ART_CLOSURES=new Set(['PP','FF']);
+const ART_VOWELS=new Set(['aa','E','ih','oh','ou']);
+function fadeFor(from,to){
+  if(ART_CLOSURES.has(to))return 0.045;  // closures snap shut
+  if(ART_VOWELS.has(from)&&ART_VOWELS.has(to))return 0.105;  // vowel glide
+  if(from==='sil'||to==='sil')return 0.075;
+  return 0.065;
+}
+function trackDwellAt(audioTime){
+  if(!track.length)return 1;
+  let index=0;
+  while(index+1<track.length&&track[index+1][0]<=audioTime)index++;
+  return index+1<track.length
+    ?Math.max(0.02,track[index+1][0]-track[index][0]):1;
+}
 
 /* Follow EnConvo receives one coarse spectrum packet every ~32ms (the tap's
    25ms timer quantises to buffer boundaries), not phoneme timestamps. The old
@@ -694,7 +719,7 @@ const LOCKED_POSES=new Set(['sil','PP']);
    runs (1-2 packets) lose the vote; real syllables (~4 packets) win it. Costs
    ~64ms of mouth lag, well under the ~125ms video-late threshold. Ties go to
    the centre packet so a split vote never invents a third shape. */
-const EXTERNAL_XFADE=0.065;
+const EXTERNAL_XFADE=0.085;
 const EXTERNAL_VOTE_WINDOW=5;
 const EXTERNAL_VOTE_LOOKAHEAD=2;
 let externalPose='sil',externalVotes=[];
@@ -1224,7 +1249,7 @@ function wanted(now=performance.now()/1000){
   return byEnergy();
 }
 
-function renderFaceSurface(ref,eyes,mix,h,lids,gv,bv,ck,jawPx,ts){
+function renderFaceSurface(ref,eyes,mix,h,lids,gv,bv,ck,jawPx,ts,mouthWarp){
   if(faceSurface.width!==ref.width||faceSurface.height!==ref.height){
     faceSurface.width=ref.width;faceSurface.height=ref.height;
     headSurface.width=ref.width;headSurface.height=ref.height;
@@ -1238,9 +1263,12 @@ function renderFaceSurface(ref,eyes,mix,h,lids,gv,bv,ck,jawPx,ts){
   const br=-0.9*(0.5+0.5*vn(ts*0.21,12))*(0.55+0.45*vn(ts*0.07,13));
   ctx.translate(N.x,N.pivot);ctx.rotate(th);ctx.translate(-N.x,-N.pivot);
   ctx.transform(1,0,-kx,1,kx*N.pivot,0);
-  const bands=[[0,Ym,dy,Ym+dy],[Ym,Yj,Ym+dy,Yj+dy+jawPx],
-               [Yj,N.pivot,Yj+dy+jawPx,N.pivot+br],[N.pivot,HK,N.pivot+br,HK]];
-  const plate=image=>{for(const band of bands){
+  // Each plate gets its OWN mouth-band stretch: warping both textures to one
+  // shared lip gap is what lets a long dissolve run without doubling teeth.
+  const bandsFor=extra=>{const j=jawPx+(extra||0);
+    return [[0,Ym,dy,Ym+dy],[Ym,Yj,Ym+dy,Yj+dy+j],
+            [Yj,N.pivot,Yj+dy+j,N.pivot+br],[N.pivot,HK,N.pivot+br,HK]];};
+  const plate=(image,extra)=>{for(const band of bandsFor(extra)){
     const sourceHeight=band[1]-band[0],destinationHeight=band[3]-band[2];
     const scaleY=destinationHeight/sourceHeight;
     const sourceY=Math.max(0,band[0]-1),endY=Math.min(image.height,band[1]+1);
@@ -1249,9 +1277,10 @@ function renderFaceSurface(ref,eyes,mix,h,lids,gv,bv,ck,jawPx,ts){
                   0,destinationY,image.width,(endY-sourceY)*scaleY);
   }};
   if(mix<1&&IMG[prevV]){
-    plate(IMG[prevV][eyes]||IMG[prevV].open);ctx.globalAlpha=mix;
+    plate(IMG[prevV][eyes]||IMG[prevV].open,mouthWarp?mouthWarp.prev:0);
+    ctx.globalAlpha=mix;
   }
-  plate(ref);ctx.globalAlpha=1;
+  plate(ref,mouthWarp?mouthWarp.cur:0);ctx.globalAlpha=1;
   if(M.eyes){ctx.translate(0,dy);drawFace(lids,gv,bv,ck);}
   ctx.setTransform(1,0,0,1,0,0);
   if(CUTOUT){
@@ -1463,9 +1492,19 @@ function loop(now){
   }
 
   const w=wanted(ts);
-  if(w!==curV){prevV=curV;curV=w;switchAt=ts;}
-  const xfade=monitorEnabled?EXTERNAL_XFADE:XFADE;
-  const mu=xfade?Math.min(1,(ts-switchAt)/xfade):1;
+  if(w!==curV){
+    prevV=curV;curV=w;switchAt=ts;
+    switchFade=monitorEnabled&&!(localSource&&track.length)
+      ?EXTERNAL_XFADE:fadeFor(prevV,curV);
+    // Prominence undershoot: a vowel that only lives ~60ms borrows most of
+    // its shape from its neighbours instead of hitting the full target.
+    curReduce=1;
+    if(ART_VOWELS.has(curV)&&track.length&&actx){
+      const dwell=trackDwellAt(actx.currentTime-audioT0+VISUAL_LEAD);
+      if(dwell<0.11)curReduce=0.62+0.38*(dwell/0.11);
+    }
+  }
+  const mu=switchFade?Math.min(1,(ts-switchAt)/switchFade):1;
   const mix=mu*mu*(3-2*mu);
 
   if(now>nextBlink)planBlink(now);
@@ -1495,11 +1534,22 @@ function loop(now){
   const c0=cheekFor(now,(lids.l+lids.r)/2,mix);
   const ck={l:c0*CHEEK_ASYM,r:c0};
   const jawPx=jawFor(now,mix);
+  /* Aperture-aligned dissolve: both plates warp to one shared lip gap, and
+     the current plate breathes with loudness on held vowels so a long "aa"
+     is never a freeze-frame. */
+  const lever0=M.neck?M.neck.pivot-M.neck.ref:579;
+  const apPrev=APERTURE_V[prevV]??.12;
+  let apCur=(APERTURE_V[curV]??.12)*curReduce;
+  if(ART_VOWELS.has(curV)&&speaking)apCur*=0.86+0.20*Math.min(1,lvl*6);
+  const apNow=apPrev+(apCur-apPrev)*mix;
+  const mouthTravel=0.05*lever0;
+  const mouthWarp={prev:(apNow-apPrev)*mouthTravel,
+                   cur:(apNow-apCur)*mouthTravel};
   const legacy=!M.eyes;                    // pre-v2 asset set: two states, no travel
   const eyes=legacy&&(lids.l+lids.r)/2>0.5?'shut':'open';
 
   const ref=IMG[curV][eyes]||IMG[curV].open;
-  renderFaceSurface(ref,eyes,mix,h,lids,gv,bv,ck,jawPx,ts);
+  renderFaceSurface(ref,eyes,mix,h,lids,gv,bv,ck,jawPx,ts,mouthWarp);
   drawPetScene(now);updatePetHit();
   if(false){
   const cw=cv.width,ch=cv.height;
