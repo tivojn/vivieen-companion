@@ -304,7 +304,8 @@ def export(slug, dest, quality=92, states=blink.N_STATES, log=print,
                   dict(states=[round(t, 4) for t in lids["states"]]))
     gaze = _strip(expr["gaze"], "gaze",
                   dict(dxs=expr["gaze"]["dxs"], dys=expr["gaze"]["dys"]))
-    brow = _strip(expr["brow"], "brow", dict(dys=expr["brow"]["dys"]))
+    brow = _strip(expr["brow"], "brow", dict(dys=expr["brow"]["dys"],
+                                             sqs=expr["brow"].get("sqs", [0.0])))
     cheek = _strip(expr["cheek"], "cheek", dict(ups=expr["cheek"]["ups"]))
 
     timing = dict(close=blink.CLOSE, hold=blink.HOLD, open=blink.OPEN,

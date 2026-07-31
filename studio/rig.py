@@ -46,6 +46,7 @@ REGION_GROUPS = {
     "cheeks": [face.CHEEK_L, face.CHEEK_R],
     "nasolabial": [face.NASOLABIAL_L, face.NASOLABIAL_R],
     "nose": [face.NOSE_BASE],
+    "brows": [face.BROW_L, face.BROW_R],
     "locked": [face.NOSE_CORE],
 }
 
@@ -137,6 +138,20 @@ def inspector_payload(landmarks, shape):
                 [round(float(x / width), 6), round(float(y / height), 6)]
                 for x, y in hull])
         regions[name] = polygons
+    # The forehead has no landmark ring - synthesize its band: brow tops up
+    # to the face oval's crown, so the panel can answer the Forehead slider.
+    brow_points = np.vstack([np.asarray(landmarks[face.BROW_L], np.float32),
+                             np.asarray(landmarks[face.BROW_R], np.float32)])
+    oval = np.asarray(landmarks[face.FACE_OVAL], np.float32)
+    x0, x1 = float(brow_points[:, 0].min()), float(brow_points[:, 0].max())
+    y_bottom = float(brow_points[:, 1].min())
+    y_top = max(0.0, float(oval[:, 1].min()) - 0.015 * height)
+    regions["forehead"] = [[
+        [round(x0 / width, 6), round(y_top / height, 6)],
+        [round(x1 / width, 6), round(y_top / height, 6)],
+        [round(x1 / width, 6), round(y_bottom / height, 6)],
+        [round(x0 / width, 6), round(y_bottom / height, 6)],
+    ]]
     return dict(points=points, edges=mesh_edges(landmarks, width, height),
                 regions=regions, width=width, height=height)
 

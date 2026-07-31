@@ -2836,7 +2836,8 @@ $('#body-modal').addEventListener('click', event => { if (event.target === $('#b
 
 const RIG_COLORS = {
   lips: [84, 214, 188], jaw: [92, 149, 222], cheeks: [137, 110, 219],
-  nasolabial: [217, 126, 184], nose: [235, 152, 82], locked: [239, 102, 89]
+  nasolabial: [217, 126, 184], nose: [235, 152, 82],
+  brows: [222, 186, 96], forehead: [186, 156, 222], locked: [239, 102, 89]
 };
 
 function rigImage(pose = RIG_POSE) {
@@ -2915,7 +2916,7 @@ function drawRig() {
   }
 
   if ($('#rig-show-regions').checked) {
-    ['cheeks', 'jaw', 'nasolabial', 'lips', 'nose', 'locked'].forEach(name => {
+    ['forehead', 'brows', 'cheeks', 'jaw', 'nasolabial', 'lips', 'nose', 'locked'].forEach(name => {
       const color = RIG_COLORS[name];
       const strength = name === 'locked' ? 1 :
         (name === 'lips' ? RIG_PROFILE.lips : RIG_PROFILE[name]) / 100;

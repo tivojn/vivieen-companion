@@ -1115,6 +1115,7 @@ function headAt(now){
    level for per-syllable accents, and scheduled gestures for the deliberate
    ones. The two brows are deliberately not identical.                        */
 let browAmp=0,browT0=-1e9,browDur=1,browEnv=0,nextBrow=performance.now()+2200;
+let browBeat=false;   // every OTHER stressed vowel fires an accent
 const BROW_ASYM=0.86+Math.random()*0.1;
 // Calibration's Eyebrows / Forehead sliders are SEPARATE live runtime
 // amplitudes: 55% is the tuned default, 0 stills the tissue, 100 nearly
@@ -1126,12 +1127,24 @@ const foreheadGain=()=>Math.max(0,Math.min(2,
   ((M&&M.rig_profile&&Number(M.rig_profile.forehead))||55)/55));
 const browRange=()=>(M&&M.brow&&M.brow.dys?Math.max(...M.brow.dys):3.5)/3.5;
 
+// Per-gesture side bias: most gestures move both brows, some favour one -
+// a single raised brow is the most human thing a face does.
+let browBiasL=1,browBiasR=1;
+// The knit/spread axis, independent of the raise.
+let browSqAmp=0,browSqT0=-1e9,browSqDur=1;
 function planBrow(now){
   const r=Math.random();
+  const solo=Math.random();
+  browBiasL=solo<0.16?1.35:solo>0.84?0.4:1;
+  browBiasR=solo<0.16?0.4:solo>0.84?1.35:1;
   if(speaking){
     if(r<0.52){browAmp=0.9+Math.random()*1.1;browDur=260+Math.random()*360;}
     else if(r<0.80){browAmp=2.0+Math.random()*1.3;browDur=340+Math.random()*460;}
     else{browAmp=-(0.5+Math.random()*0.9);browDur=380+Math.random()*560;}
+    // Sometimes the pair knits toward centre or opens instead of lifting.
+    const sq=Math.random();
+    if(sq<0.20){browSqAmp=1.5+Math.random()*0.9;browSqDur=420+Math.random()*520;browSqT0=now;}
+    else if(sq<0.30){browSqAmp=-(1.0+Math.random()*0.7);browSqDur=460+Math.random()*540;browSqT0=now;}
     // A livelier brow also gestures more OFTEN, not only harder.
     nextBrow=now+(650+Math.random()*1700)/Math.max(0.55,browGain());
   }else{
@@ -1149,11 +1162,18 @@ function browGesture(now){
   const f=ms>browDur?Math.max(0,1-(ms-browDur)/300):1;
   return browAmp*rise*f*f;
 }
+function browSqueezeFor(now){
+  const ms=now-browSqT0;
+  if(ms<0||ms>browSqDur+420)return 0;
+  const u=Math.min(1,ms/170),rise=u*u*(3-2*u);
+  const f=ms>browSqDur?Math.max(0,1-(ms-browSqDur)/400):1;
+  return browSqAmp*rise*f*f*browGain();
+}
 function browFor(now,side,lid){
   const t=now/1000,k=side==='l'?BROW_ASYM:1,gain=browGain();
   const drift=0.20*Math.sin(t*0.31+(side==='l'?1.7:0))+0.11*Math.sin(t*0.73);
-  const reach=browRange();
-  const v=((browGesture(now)+1.1*browEnv)*k*gain+drift*(0.5+0.5*gain))*reach-0.4*lid;
+  const reach=browRange(),bias=side==='l'?browBiasL:browBiasR;
+  const v=((browGesture(now)*bias+1.1*browEnv)*k*gain+drift*(0.5+0.5*gain))*reach-0.4*lid;
   const top=3.5*reach*Math.max(1,gain);
   return v<-1.5*reach?-1.5*reach:v>top?top:v;
 }
@@ -1252,8 +1272,13 @@ function drawSnap(img,geom,vals,v,row){
    the eyeball. Paint them in any other order and a blink stamps the eyes back
    to centre. */
 function drawFace(lids,gv,bv,ck){
-  if(M.brow)for(const s of ['l','r'])
-    drawSnap(BW[s],M.brow[s],M.brow.dys,bv[s],0);
+  if(M.brow){
+    // Row = the knit/spread state (older banks carry a single row).
+    const sqs=M.brow.sqs||[0];
+    const sqRow=sqs.length>1?nearest(sqs,browSqueezeFor(performance.now())):0;
+    for(const s of ['l','r'])
+      drawSnap(BW[s],M.brow[s],M.brow.dys,bv[s],sqRow);
+  }
   if(M.cheek)for(const s of ['l','r'])
     drawSnap(CK[s],M.cheek[s],M.cheek.ups,ck[s],0);
   if(M.gaze){
@@ -1608,6 +1633,18 @@ function loop(now){
     if(ART_VOWELS.has(curV)&&track.length&&actx){
       const dwell=trackDwellAt(actx.currentTime-audioT0+VISUAL_LEAD);
       if(dwell<0.11)curReduce=0.62+0.38*(dwell/0.11);
+    }
+    // Brow beats ride the SPEECH RHYTHM: every other stressed vowel onset
+    // fires an accent, so the brows move with the phonemes instead of on
+    // their own clock. The random gesture planner still runs underneath
+    // for the longer arcs.
+    if(speaking&&ART_VOWELS.has(curV)&&lvl*8>0.5){
+      browBeat=!browBeat;
+      if(browBeat){
+        browAmp=Math.max(browAmp,1.0+Math.min(2.4,lvl*10));
+        browDur=180+Math.random()*240;
+        browT0=now;
+      }
     }
   }
   const mu=switchFade?Math.min(1,(ts-switchAt)/switchFade):1;

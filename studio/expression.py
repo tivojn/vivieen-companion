@@ -57,6 +57,10 @@ GAZE_DY = [-3.5, -2.5, -1.5, -0.75, -0.375, 0.0, 0.375, 0.75, 1.5, 2.5, 3.5]
 # however hard the runtime gestured.
 BROW_DY = [-3.0, -2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 1.75, 2.5, 3.5,
            5.0, 6.5, 8.0, 9.5]
+# The second brow axis: horizontal set, in px toward the nose. Negative
+# spreads the brows apart, positive squeezes them into a light furrow -
+# so the pair can knit or open independently of the raise.
+BROW_SQ = [-1.8, 0.0, 2.4]
 # Cheek raise, in px of lift at the lower lid margin.  Small on purpose - this
 # is the warmth cue that rides under speech, not a smile.
 CHEEK_UP = [0.0, 0.65, 1.3, 2.0, 2.7]
@@ -157,7 +161,7 @@ def _brow_alpha(shape, lm, side, s):
     return cv2.GaussianBlur(m, (0, 0), 7 * s).astype(np.float32) / 255.0
 
 
-def brow_state(key, lm, side, dy, s, box, alpha):
+def brow_state(key, lm, side, dy, s, box, alpha, sq=0.0):
     x0, y0, bw, bh = box
     b = lm[BROW[side]]
     bx0, bx1 = float(b[:, 0].min()), float(b[:, 0].max())
@@ -190,8 +194,13 @@ def brow_state(key, lm, side, dy, s, box, alpha):
 
     W = (v[:, None] * h[None, :]).astype(np.float32)
     gx, gy = np.meshgrid(xs, ys)
+    # The squeeze axis: the whole brow slides toward (+) or away from (-)
+    # the nose, strongest at the medial end - a knit or an open, fully
+    # independent of the raise.
+    medial_pull = (sq if medial_right else -sq) * (1.0 - 0.45 * u)[None, :]
     warped = cv2.remap(key,
-                       (gx - (sway[None, :] * v[:, None]) * abs(dy)).astype(np.float32),
+                       (gx - (sway[None, :] * v[:, None]) * abs(dy)
+                        - medial_pull * v[:, None]).astype(np.float32),
                        (gy - dy * W).astype(np.float32),
                        cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_REPLICATE)
     base = key[y0:y0 + bh, x0:x0 + bw]
@@ -298,7 +307,8 @@ def build(key, lm=None, dxs=None, dys=None, brow_dys=None, ups=None,
         dys = [round(dy * travel, 2) for dy in dys]
         log(f"  gaze travel scaled to {travel:.2f}x (iris r {radius:.1f}px)")
 
-    out = dict(gaze=dict(dxs=dxs, dys=dys), brow=dict(dys=bdys),
+    out = dict(gaze=dict(dxs=dxs, dys=dys),
+               brow=dict(dys=bdys, sqs=list(BROW_SQ)),
                cheek=dict(ups=cups))
     for side in SIDES:
         c, r = _iris(lm, side)
@@ -315,8 +325,10 @@ def build(key, lm=None, dxs=None, dys=None, brow_dys=None, ups=None,
         bbox = _box(alpha, int(6 * s), key.shape)
         out["brow"][side] = dict(
             box=[int(v) for v in bbox],
-            patches=[brow_state(key, lm, side, dy, s, bbox, alpha) for dy in bdys])
-        log(f"  brow {side}: {len(bdys)} states, patch {bbox[2]}x{bbox[3]}")
+            patches=[brow_state(key, lm, side, dy, s, bbox, alpha, sq=sq)
+                     for sq in BROW_SQ for dy in bdys])   # row-major: sq outer
+        log(f"  brow {side}: {len(bdys)}x{len(BROW_SQ)} states, "
+            f"patch {bbox[2]}x{bbox[3]}")
 
         cw, lat = _cheek_weight(key.shape, lm, side, s, avoid)
         cbox = _box(cw, int(4 * s), key.shape)
