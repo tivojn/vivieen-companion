@@ -9,4 +9,5 @@ contextBridge.exposeInMainWorld('vivieenBubble', Object.freeze({
     ipcRenderer.on('vivieen:bubble-text', listener);
     return () => ipcRenderer.removeListener('vivieen:bubble-text', listener);
   },
+  hold: (value) => ipcRenderer.send('vivieen:bubble-hold', Boolean(value)),
 }));
