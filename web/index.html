@@ -2423,6 +2423,12 @@ addEventListener('keydown',e=>{if(!monitorEnabled&&e.code==='Space'&&document.ac
   e.preventDefault();startRec();}});
 addEventListener('keyup',e=>{if(!monitorEnabled&&e.code==='Space'&&document.activeElement!==txt){
   e.preventDefault();stopRec();}});
+// The click may arrive while another app is active (acceptFirstMouse): ask
+// the shell to make this window KEY, or the caret never blinks and typing
+// goes to the previous app.
+txt.addEventListener('pointerdown',()=>{
+  if(SHELL&&typeof SHELL.focusPetWindow==='function')SHELL.focusPetWindow();
+});
 txt.addEventListener('keydown',e=>{if(!monitorEnabled&&e.key==='Enter'&&!e.shiftKey){
   // Enter sends, Shift+Enter makes a new line - the field is a textarea now.
   e.preventDefault();

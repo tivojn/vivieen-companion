@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('vivieen', Object.freeze({
   setPetEngaged: (value) => ipcRenderer.send('vivieen:pet-engaged', Boolean(value)),
   setPetHit: (value) => ipcRenderer.send('vivieen:pet-hit', Boolean(value)),
   setPetControlRects: (rects) => ipcRenderer.send('vivieen:pet-control-rects', rects),
+  focusPetWindow: () => ipcRenderer.send('vivieen:pet-focus'),
   beginPetDrag: (point) => ipcRenderer.send('vivieen:drag-start', point),
   movePetDrag: (point) => ipcRenderer.send('vivieen:drag-move', point),
   endPetDrag: () => ipcRenderer.send('vivieen:drag-end'),
