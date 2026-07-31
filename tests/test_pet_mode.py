@@ -201,6 +201,13 @@ class PetInputBridgeTests(unittest.TestCase):
         # recoverCompanion goes through setPetHit so the dedupe flag stays
         # honest - a direct setIgnoreMouseEvents desynced it.
         self.assertIn("setPetHit(true, 'recover')", main)
+        # Clicking the field must make the window KEY: acceptFirstMouse
+        # delivers clicks into an inactive window WITHOUT activating it, so
+        # the caret never blinked whenever Vivieen was not frontmost - the
+        # "randomly dead input field".
+        self.assertIn("vivieen:pet-focus", preload)
+        self.assertIn("app.focus({ steal: true })", main)
+        self.assertIn("SHELL.focusPetWindow()", renderer)
 
     def test_articulation_travels_between_mouth_shapes(self):
         # Measured 2026-07-31: with the 18ms cut, EVERY transition on a

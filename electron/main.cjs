@@ -2116,6 +2116,19 @@ function installIpc() {
     if (!menuWindow || event.sender !== menuWindow.webContents) return;
     closeMenuWindow();
   });
+  ipcMain.on('vivieen:pet-focus', (event) => {
+    const window = isBuddySender(event) ? buddyWindow
+      : (mainWindow && event.sender === mainWindow.webContents) ? mainWindow : null;
+    if (!window || window.isDestroyed()) return;
+    // Clicking the chat field must make this window KEY: acceptFirstMouse
+    // delivers the click into an inactive window WITHOUT activating it, so
+    // the caret never blinked and keystrokes stayed with the previous app
+    // whenever Vivieen was not already frontmost - the "randomly dead
+    // input field". Stealing focus is exactly what a click in a text field
+    // means.
+    app.focus({ steal: true });
+    window.focus();
+  });
   ipcMain.on('vivieen:pet-control-rects', (event, value) => {
     const rects = (Array.isArray(value) ? value : []).slice(0, 8)
       .map((r) => ({ x: Number(r && r.x), y: Number(r && r.y),
