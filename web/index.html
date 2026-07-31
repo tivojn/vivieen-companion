@@ -976,8 +976,11 @@ function cursorGazeFor(now){
   const dirX=Math.tanh(dx/90),dirY=Math.tanh(dy/130);
   cursorDir.x+=(dirX-cursorDir.x)*0.18; // head turn follows a beat behind the eyes
   cursorDir.y+=(dirY-cursorDir.y)*0.18;
-  const rangeX=M.gaze?Math.max(...M.gaze.dxs.map(Math.abs)):1.5;
-  const rangeY=M.gaze?Math.max(...M.gaze.dys.map(Math.abs)):0.75;
+  // Subtle on purpose: cursor-following stays in the inner half of the
+  // baked travel, where every tile is clean - the outer extremes are where
+  // the iris warp degrades, and a giant on-screen face makes that loud.
+  const rangeX=(M.gaze?Math.max(...M.gaze.dxs.map(Math.abs)):1.5)*0.45;
+  const rangeY=(M.gaze?Math.max(...M.gaze.dys.map(Math.abs)):0.75)*0.55;
   const gx=dirX*rangeX,gy=dirY*rangeY;
   cursorEye.x+=(gx-cursorEye.x)*0.30;   // saccade-quick, but never a teleport
   cursorEye.y+=(gy-cursorEye.y)*0.30;

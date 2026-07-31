@@ -230,19 +230,20 @@ class RigProfileTests(unittest.TestCase):
             os.path.join(ROOT, "studio", "build.py"), encoding="utf-8").read()
         marker = source.index("def recompose_avatar")
         window = source[marker:marker + 4200]
-        self.assertIn('row["max_ratio"] * 1.35', window)
-        self.assertIn("hard_failures, soft_overs", window)
         self.assertIn("- published with this ", window)
-        # The final contract (2026-08-01, after six live rejections):
-        # extreme sliders are a decision, never a defect. An experimental
-        # profile is NEVER blocked by articulation - every overshoot
-        # publishes as an ADVISORY that names the suggested green bands.
-        self.assertIn("NEVER blocked by articulation", window)
-        self.assertIn("if experimental:", window)
+        # The final contract (2026-08-01, after seven live rejections): a
+        # REBUILD of retained renders never blocks on articulation or
+        # profile-shaped QA, green band or red - everything publishes as
+        # ADVISORY lines naming the suggested green bands.
+        self.assertIn("never blocks on articulation", window)
+        self.assertIn("soft_overs = list(over)", window)
         self.assertIn("_band_suggestion(experimental)", window)
         self.assertEqual(
             build._band_suggestion(["nose"]),
             "Nose base and nostrils 0–12%")
+        anatomy_source = open(os.path.join(ROOT, "studio", "anatomy.py"),
+                              encoding="utf-8").read()
+        self.assertIn("advisory = True", anatomy_source)
         self.assertIn(
             'over_articulated=[row["name"] for row in soft_overs]', source)
         # TH at 0.109 vs 0.09: soft (0.109 <= 0.09*1.35+eps). At 0.13: hard.

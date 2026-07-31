@@ -186,7 +186,10 @@ def validate(keyframe_path, viseme_dir, profile=None, diag_dir=None):
     # skipped with a warning). The QA must not be stricter than the feature
     # it audits - a missing donor is reported, not fatal.
     experimental = _experimental_keys(profile)
-    advisory = bool(experimental)
+    # A rebuild never blocks on profile-shaped QA - green band or not (the
+    # user's contract, learned across seven live rejections). Everything
+    # below reports with its suggested green band and publishes.
+    advisory = True
     dental_rows = {
         row: _dental_row_metrics(
             row, selected[row], viseme_dir, diag_dir=diag_dir,
