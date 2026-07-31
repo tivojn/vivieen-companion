@@ -162,8 +162,10 @@ class PetInputBridgeTests(unittest.TestCase):
         # click both read as dead. Waking still claims no clicks.
         self.assertIn("function pointerOverBarZone", renderer)
         self.assertIn("||recording||pointerOverBarZone()||", renderer)
-        # The hover label is our own element - native title tooltips are
-        # unreliable over a click-through-toggling transparent window.
+        # De-coupled pet mode keeps the bar minimal: no EnConvo mark (the
+        # right-click menu's "Couple to EnConvo" is the way back); the
+        # button and its hover label still serve the windowed view.
+        self.assertIn("html.electron.pet #bar #monitor{display:none}", renderer)
         self.assertIn('id="monitorTip"', renderer)
         self.assertNotIn('title="Use EnConvo"', renderer)
         # The menu speaks the user's vocabulary: couple / de-couple.

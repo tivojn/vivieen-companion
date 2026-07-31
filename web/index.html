@@ -188,8 +188,11 @@ html.electron.pet.chat-open #bar{display:flex;left:12px;right:12px;bottom:10px;
   padding:0;background:transparent;pointer-events:none;
   opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s ease}
 html.electron.pet.chat-open.chat-visible #bar{opacity:1;visibility:visible}
-html.electron.pet.chat-open #bar #monitor,
 html.electron.pet.chat-open #bar #manual{pointer-events:auto}
+/* De-coupled pet mode keeps the bar minimal: no EnConvo mark - coupling
+   back lives in the right-click menu ("Couple to EnConvo"). The button
+   still serves the windowed (non-pet) view. */
+html.electron.pet #bar #monitor{display:none}
 html.electron.pet.chat-open #log{display:none}
 html.electron.pet.following-enconvo #bar{display:none!important}
 html.electron.pet #stage{inset:0}
@@ -1915,6 +1918,7 @@ function pointerOverChatControls(){
     const control=document.getElementById(id);
     if(!control)continue;
     const box=control.getBoundingClientRect();
+    if(!box.width)continue;
     if(pointer.x>=box.left&&pointer.x<=box.right&&
        pointer.y>=box.top&&pointer.y<=box.bottom)return true;
   }
