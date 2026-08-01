@@ -1453,6 +1453,17 @@ class PetMatteTests(unittest.TestCase):
         self.assertLess(int(alpha[175, 35]), 220)
         self.assertGreater(int(alpha[165, 120]), 20)
 
+    def test_cursor_head_follow_is_a_whisper_not_a_swing(self):
+        # Tuned DOWN twice on the live desktop (2026-08-01): 12/5/1.0 swung
+        # the whole head with the pointer, and even 4.5/2/0.4 slid the head
+        # visibly against the static body plate - the mask contour itself
+        # read as moving. The iris carries the glance; the head barely
+        # breathes toward it.
+        renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("h.x+=attend*cursorDir.x*1.4;", renderer)
+        self.assertIn("h.y+=attend*cursorDir.y*0.6;", renderer)
+        self.assertIn("h.r+=attend*cursorDir.x*0.12;", renderer)
+
     def test_missing_runtime_layers_heal_themselves(self):
         # A publish swaps the runtime directory under a reloading pet: one
         # fetch lands in the gap, resolves null, and the avatar silently

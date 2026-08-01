@@ -1021,11 +1021,14 @@ function cursorHeadFor(h){
   const attend=gazeAttn>.02?Math.min(1,gazeAttn):0;
   if(!attend)return h;
   // Subtle by design: the IRIS carries the cursor, the head only hints at
-  // it. The first tuning (12/5/1.0) swung the whole head with the pointer
-  // and read as too much - a real person mostly moves their eyes.
-  h.x+=attend*cursorDir.x*4.5;
-  h.y+=attend*cursorDir.y*2;
-  h.r+=attend*cursorDir.x*0.4;
+  // it. Tuned DOWN twice against the live desktop - 12/5/1.0 swung the
+  // whole head, and even 4.5/2/0.4 slid the head visibly against the
+  // static body plate, so the mask contour itself read as moving (owner,
+  // 2026-08-01: "looks like there is a head contour"). A real person
+  // mostly moves their eyes; the head barely breathes toward the pointer.
+  h.x+=attend*cursorDir.x*1.4;
+  h.y+=attend*cursorDir.y*0.6;
+  h.r+=attend*cursorDir.x*0.12;
   return h;
 }
 
