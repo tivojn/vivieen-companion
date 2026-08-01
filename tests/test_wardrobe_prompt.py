@@ -449,6 +449,18 @@ class EyewearLockTests(unittest.TestCase):
             self.assertIn("eyeglasses", plate)
             self.assertIn("never remove them", plate)
 
+    def test_body_plates_ban_green_everywhere(self):
+        # Owner rule 2026-08-01: downstream alpha keying misreads green as
+        # background, so no plate may contain green - clothing, props,
+        # backdrop, or lighting cast - in any of the three views. An art
+        # direction asking for green gets a substitute color instead.
+        for view in body.BODY_VIEWS:
+            plate = body._prompt({}, view=view)
+            self.assertIn("NO GREEN", plate)
+            self.assertIn("no green clothing", plate)
+            self.assertIn("never green or green-tinted", plate)
+            self.assertIn("substitute a different color", plate)
+
 
 if __name__ == "__main__":
     unittest.main()

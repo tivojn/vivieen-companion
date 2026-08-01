@@ -198,7 +198,9 @@ DECENCY FLOOR — regardless of the editable direction, use tasteful opaque clot
 
 STYLE — {style_text}. Match the reference head's lighting direction, color temperature, realism, and photographic texture. Avoid airbrushed skin, plastic fabric, exaggerated anatomy, or game-interface styling.
 
-BACKGROUND — simple clean studio backdrop with strong person/background separation. The application will remove the background locally, so preserve fine hair edges and do not add smoke, veils, loose particles, or cast shadows behind the figure."""
+NO GREEN — ban the color green everywhere in the image: no green clothing, garment parts, or accessories, no green props or jewelry stones, no green background, backdrop tint, or green cast in the lighting. If the editable art direction asks for green, substitute a different color and keep everything else of that direction. Downstream alpha keying misreads green as background, so any green in the plate corrupts the cutout.
+
+BACKGROUND — simple clean studio backdrop with strong person/background separation, never green or green-tinted. The application will remove the background locally, so preserve fine hair edges and do not add smoke, veils, loose particles, or cast shadows behind the figure."""
 
 
 def _provider_command(
