@@ -178,7 +178,10 @@ class RigProfileTests(unittest.TestCase):
         renderer = open(os.path.join(ROOT, "web", "index.html"),
                         encoding="utf-8").read()
         self.assertIn("const browGain=", renderer)
-        self.assertIn("M.rig_profile&&Number(M.rig_profile.brows)", renderer)
+        # Gains read through liveRig(): the panel's dragged value when one
+        # is broadcast for this avatar, else the published rig_profile.
+        self.assertIn("Math.min(2,liveRig('brows')/55)", renderer)
+        self.assertIn("(M&&M.rig_profile&&Number(M.rig_profile[key]))||55", renderer)
         self.assertIn("/Math.max(0.55,browGain())", renderer)
         # Brow and forehead are SEPARATE tissues (2026-08-01): the strips
         # flick fast and asymmetric; the forehead runs its own damped
@@ -197,6 +200,15 @@ class RigProfileTests(unittest.TestCase):
         self.assertIn("[browTop,Ym,browTop+dy,Ym+dy]", renderer)
         self.assertIn("const foreheadGain=", renderer)
         self.assertIn("const browRange=", renderer)
+        # Eyebrows/Forehead apply LIVE: the panel hands dragged values to
+        # the desk through same-origin storage, scoped to the avatar slug;
+        # the published profile is the baseline when no override exists.
+        self.assertIn("vivieen-live-rig", renderer)
+        self.assertIn("LIVE_RIG.slug===M.avatar.slug", renderer)
+        settings_src = open(os.path.join(ROOT, "web", "settings.html"),
+                            encoding="utf-8").read()
+        self.assertIn("key === 'brows' || key === 'forehead'", settings_src)
+        self.assertIn("localStorage.setItem('vivieen-live-rig'", settings_src)
         # Flexible brows (2026-08-01): accents ride the SPEECH RHYTHM
         # (every other stressed vowel onset), the pair can knit toward
         # centre or spread via a second baked axis, single-brow gestures

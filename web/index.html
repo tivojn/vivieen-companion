@@ -1119,12 +1119,23 @@ let browBeat=false;   // every OTHER stressed vowel fires an accent
 const BROW_ASYM=0.86+Math.random()*0.1;
 // Calibration's Eyebrows / Forehead sliders are SEPARATE live runtime
 // amplitudes: 55% is the tuned default, 0 stills the tissue, 100 nearly
-// doubles it. The gesture units were tuned against a 3.5px baked ceiling;
-// newer banks reach ~9.5px, so gestures scale into whatever this bank has.
-const browGain=()=>Math.max(0,Math.min(2,
-  ((M&&M.rig_profile&&Number(M.rig_profile.brows))||55)/55));
-const foreheadGain=()=>Math.max(0,Math.min(2,
-  ((M&&M.rig_profile&&Number(M.rig_profile.forehead))||55)/55));
+// doubles it. They apply INSTANTLY: the calibration panel shares the
+// dragged values through localStorage (same origin), so the desk answers
+// while the slider moves - no rebuild, and the published profile takes
+// over as the baseline whenever no live override is present.
+let LIVE_RIG=null;
+try{LIVE_RIG=JSON.parse(localStorage.getItem('vivieen-live-rig')||'null');}catch(e){}
+addEventListener('storage',event=>{
+  if(event.key!=='vivieen-live-rig')return;
+  try{LIVE_RIG=JSON.parse(event.newValue||'null');}catch(error){LIVE_RIG=null;}
+});
+const liveRig=key=>{
+  if(LIVE_RIG&&M&&M.avatar&&LIVE_RIG.slug===M.avatar.slug
+     &&Number.isFinite(Number(LIVE_RIG[key])))return Number(LIVE_RIG[key]);
+  return (M&&M.rig_profile&&Number(M.rig_profile[key]))||55;
+};
+const browGain=()=>Math.max(0,Math.min(2,liveRig('brows')/55));
+const foreheadGain=()=>Math.max(0,Math.min(2,liveRig('forehead')/55));
 const browRange=()=>(M&&M.brow&&M.brow.dys?Math.max(...M.brow.dys):3.5)/3.5;
 
 // Per-gesture side bias: most gestures move both brows, some favour one -
