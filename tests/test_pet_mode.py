@@ -1453,6 +1453,19 @@ class PetMatteTests(unittest.TestCase):
         self.assertLess(int(alpha[175, 35]), 220)
         self.assertGreater(int(alpha[165, 120]), 20)
 
+    def test_accessibility_failures_open_the_settings_pane_directly(self):
+        # Owner request 2026-08-01: the old bubble described the System
+        # Settings path in words and left the user to walk it. Both voice-
+        # key failure paths now deep-link straight to Privacy & Security →
+        # Accessibility, where the only remaining step is the switch.
+        main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
+        self.assertIn("function openAccessibilitySettings()", main)
+        self.assertIn(
+            "x-apple.systempreferences:com.apple.preference.security", main)
+        self.assertIn("?Privacy_Accessibility", main)
+        self.assertEqual(main.count("openAccessibilitySettings();"), 2)
+        self.assertIn("flip the switch next '\n        + 'to Vivieen", main)
+
     def test_enconvo_pitch_shows_at_first_launch_not_on_couple_click(self):
         # The undecided user never clicks "Couple" - and whoever DOES click
         # has already decided (the owner's own point, 2026-08-01). So the
