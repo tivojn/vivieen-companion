@@ -1494,6 +1494,12 @@ class PetMatteTests(unittest.TestCase):
         # key never reaches the browser); an ElevenLabs voice change
         # recreates the agent, which bakes its voice in at creation.
         self.assertIn("function fillLiveVoices", settings)
+        # And chosen by EAR: a preview button per provider plays a short
+        # sample through the server (xAI TTS REST; ElevenLabs ships
+        # preview clips with its roster).
+        self.assertIn("function playLivePreview", settings)
+        self.assertIn('@app.get("/api/live/voice-preview")',
+                      (ROOT / "server" / "app.py").read_text(encoding="utf-8"))
         app_src = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
         self.assertIn('@app.get("/api/live/voices")', app_src)
         self.assertIn("XAI_LIVE_VOICES", app_src)
