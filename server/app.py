@@ -2169,7 +2169,7 @@ async def live_worklet():
 
 XAI_REALTIME_URL = "wss://api.x.ai/v1/realtime"
 ELEVEN_CONVAI_URL = "wss://api.elevenlabs.io/v1/convai/conversation"
-LIVE_SILENCE_HANGUP_S = 120
+LIVE_SILENCE_HANGUP_S = 30
 
 
 def _live_settings():
