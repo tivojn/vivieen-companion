@@ -72,6 +72,32 @@ class RigProfileTests(unittest.TestCase):
                      self.assertRaises(ValueError):
                     rig.normalize({name: value})
 
+    def test_tilted_source_heads_regenerate_toward_frontal(self):
+        # rachel (2026-08-01): a tilted selfie kept its pose through the
+        # canonical head (yaw -9.1, pitch 23, roll 18, foreshortening 0.56)
+        # and every mouth stage after degrades. The head now measures its
+        # own pose, retries with a corrective note, keeps the best
+        # candidate, and ships a stubborn tilt with an ADVISORY - never a
+        # block (calibration philosophy).
+        rachel = dict(yaw=-9.11, pitch=23.0, roll=18.0, foreshortening=0.56)
+        issues = build._frontality_issues(rachel)
+        self.assertEqual(len(issues), 4)
+        carol = dict(yaw=-2.0, pitch=12.1, roll=5.96, foreshortening=0.94)
+        self.assertEqual(build._frontality_issues(carol), [])
+        self.assertGreater(build._frontality_score(rachel),
+                           build._frontality_score(carol))
+        source = open(os.path.join(ROOT, "studio", "build.py"),
+                      encoding="utf-8").read()
+        self.assertIn("ADVISORY head is not fully frontal after retries", source)
+        self.assertIn("pose_note=pose_note", source)
+        self.assertIn("POSE CORRECTION - a previous attempt measured", source)
+        generate_source = open(os.path.join(ROOT, "studio", "generate.py"),
+                               encoding="utf-8").read()
+        # the corrective note must change the cache signature, or a retry
+        # would just re-serve the cached tilted head
+        self.assertIn('f"{quality}\\n{prompt}\\n" + _file_digest(reference)',
+                      generate_source)
+
     def test_single_canonical_dental_pose_is_valid(self):
         self.assertEqual(
             anatomy._comparison_metrics([]),

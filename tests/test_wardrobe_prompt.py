@@ -438,8 +438,10 @@ class EyewearLockTests(unittest.TestCase):
 
     def test_keyframe_is_cropped_from_the_generated_head(self):
         source = (ROOT / "studio" / "build.py").read_text()
+        # the call moved inside the frontality-retry loop (2026-08-01), but
+        # the keyframe must still be cropped from the generated head
         self.assertIn(
-            "prep.build_keyframe(\n            head_path, staged_keyframe", source)
+            "prep.build_keyframe(\n                head_path, staged_keyframe", source)
 
     def test_body_plates_keep_the_reference_glasses(self):
         for view in body.BODY_VIEWS:
