@@ -1470,6 +1470,15 @@ class PetMatteTests(unittest.TestCase):
         self.assertEqual(main.count("void coupleToEnconvo()"), 2)
         self.assertIn("value ? coupleToEnconvo() : setEnconvoMonitoring(false)",
                       main)
+        # The pitch narrates itself: a pre-generated EnConvo TTS take
+        # (Gemini 3.1 Flash TTS Preview, voice Kore) plays behind the
+        # dialog and is killed the moment a button is picked. The asset
+        # lives under electron/ so the packager ships it.
+        self.assertIn("'assets', 'enconvo-intro.m4a'", main)
+        self.assertIn("narration.kill()", main)
+        audio = ROOT / "electron" / "assets" / "enconvo-intro.m4a"
+        self.assertTrue(audio.is_file())
+        self.assertGreater(audio.stat().st_size, 40_000)
 
     def test_cursor_head_follow_is_a_whisper_not_a_swing(self):
         # Tuned DOWN twice on the live desktop (2026-08-01): 12/5/1.0 swung

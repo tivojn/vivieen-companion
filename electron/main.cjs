@@ -383,7 +383,18 @@ async function coupleToEnconvo() {
   if (!state.enconvoIntroSeen) {
     state.enconvoIntroSeen = true;
     saveStateSoon();
-    const { response } = await dialog.showMessageBox({
+    // The pitch narrates itself: a pre-generated EnConvo TTS take
+    // (Gemini 3.1 Flash TTS Preview, voice Kore) plays behind the dialog
+    // and stops the moment a button is picked.
+    let narration = null;
+    try {
+      narration = spawn('/usr/bin/afplay',
+        [path.join(__dirname, 'assets', 'enconvo-intro.m4a')],
+        { stdio: 'ignore' });
+    } catch { narration = null; }
+    let response = 2;
+    try {
+      ({ response } = await dialog.showMessageBox({
       type: 'info',
       title: 'Couple with EnConvo',
       message: 'Best together with EnConvo',
@@ -399,7 +410,10 @@ async function coupleToEnconvo() {
       buttons: ['Download EnConvo (enconvo.com)', 'Couple now', 'Not now'],
       defaultId: 0,
       cancelId: 2,
-    });
+      }));
+    } finally {
+      if (narration) { try { narration.kill(); } catch {} }
+    }
     if (response === 0) {
       shell.openExternal('https://enconvo.com').catch(() => {});
       return shellState();
