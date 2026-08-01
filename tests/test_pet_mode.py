@@ -1465,11 +1465,25 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("async function coupleToEnconvo()", main)
         self.assertIn("state.enconvoIntroSeen", main)
         self.assertIn("shell.openExternal('https://enconvo.com')", main)
-        self.assertIn("'Download EnConvo (enconvo.com)', 'Couple now', 'Not now'",
-                      main)
         self.assertEqual(main.count("void coupleToEnconvo()"), 2)
         self.assertIn("value ? coupleToEnconvo() : setEnconvoMonitoring(false)",
                       main)
+        # The pitch is a Vivieen-styled card window, not the native message
+        # box with the giant app icon the owner called ugly: wordmark, both
+        # design systems, three choices wired through a sandboxed preload.
+        self.assertIn("function showEnconvoIntroWindow()", main)
+        self.assertIn("guardNavigation(introWindow, 'intro')", main)
+        self.assertIn("intro-preload.cjs", main)
+        intro = (ROOT / "web" / "intro.html").read_text(encoding="utf-8")
+        self.assertIn("Best together with EnConvo", intro)
+        self.assertIn('data-choice="1"', intro)
+        self.assertIn("vivieen-design", intro)
+        self.assertNotIn("<img", intro)
+        preload = (ROOT / "electron" / "intro-preload.cjs"
+                   ).read_text(encoding="utf-8")
+        self.assertIn("vivieen:intro-choice", preload)
+        app_source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('@app.get("/intro")', app_source)
         # The pitch narrates itself: a pre-generated EnConvo TTS take
         # (Gemini 3.1 Flash TTS Preview, voice Kore) plays behind the
         # dialog and is killed the moment a button is picked. The asset
