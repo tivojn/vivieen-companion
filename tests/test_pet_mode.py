@@ -1489,6 +1489,17 @@ class PetMatteTests(unittest.TestCase):
         settings = (ROOT / "web" / "settings.html").read_text(encoding="utf-8")
         self.assertIn('id="blk-live"', settings)
         self.assertIn("collectLiveBlock();", settings)
+        # Voice pickers for both providers: xAI's five built-ins served
+        # statically, ElevenLabs voices fetched through the server (the
+        # key never reaches the browser); an ElevenLabs voice change
+        # recreates the agent, which bakes its voice in at creation.
+        self.assertIn("function fillLiveVoices", settings)
+        app_src = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('@app.get("/api/live/voices")', app_src)
+        self.assertIn("XAI_LIVE_VOICES", app_src)
+        self.assertIn('live["eleven_agent_id"] = ""\n' if False else
+                      'if "eleven_voice_id" in live and live["eleven_voice_id"] != previous_voice:',
+                      app_src)
 
     def test_standby_sips_power_instead_of_gulping(self):
         # Power audit 2026-08-01: the renderer burned 115% CPU (+20% GPU
