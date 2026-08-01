@@ -385,112 +385,6 @@ function setEnconvoMonitoring(value) {
   return shellState();
 }
 
-// The pitch renders in a Vivieen-styled card window (web/intro.html) -
-// theme- and design-synced, wordmark instead of the OS message box's app
-// icon, which the owner rightly called ugly. Resolves 0 (download),
-// 1 (couple now) or 2 (not now); closing the window counts as "not now".
-let introWindow = null;
-function showEnconvoIntroWindow(mode = 'launch', installed = false) {
-  return new Promise((resolve) => {
-    if (introWindow && !introWindow.isDestroyed()) introWindow.destroy();
-    const area = screen.getPrimaryDisplay().workArea;
-    const width = 520, height = 500;
-    introWindow = new BrowserWindow({
-      x: Math.round(area.x + (area.width - width) / 2),
-      y: Math.round(area.y + (area.height - height) / 2.4),
-      width, height, show: false, frame: false, transparent: true,
-      backgroundColor: '#00000000', roundedCorners: false, hasShadow: false,
-      resizable: false, minimizable: false, maximizable: false,
-      fullscreenable: false, skipTaskbar: true, acceptFirstMouse: true,
-      alwaysOnTop: true,
-      webPreferences: {
-        preload: path.join(__dirname, 'intro-preload.cjs'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        webSecurity: true,
-        webviewTag: false,
-        allowRunningInsecureContent: false,
-        spellcheck: false,
-      },
-    });
-    introWindow.setAlwaysOnTop(true, 'floating');
-    guardNavigation(introWindow, 'intro');
-    let settled = false;
-    const settle = (choice) => {
-      if (settled) return;
-      settled = true;
-      ipcMain.removeAllListeners('vivieen:intro-choice');
-      resolve(choice);
-      if (introWindow && !introWindow.isDestroyed()) introWindow.close();
-      introWindow = null;
-    };
-    ipcMain.removeAllListeners('vivieen:intro-choice');
-    ipcMain.on('vivieen:intro-choice',
-      (_event, value) => settle(Number.isFinite(Number(value)) ? Number(value) : 2));
-    introWindow.once('closed', () => settle(2));
-    introWindow.webContents.once('did-finish-load', () => {
-      if (!introWindow || introWindow.isDestroyed()) return;
-      introWindow.webContents.setZoomFactor(1);
-      introWindow.show();
-      introWindow.focus();
-    });
-    introWindow.loadURL(`${baseUrl()}/intro?electron=1`
-      + `&mode=${encodeURIComponent(mode)}&installed=${installed ? 1 : 0}`);
-  });
-}
-
-function enconvoInstalled() {
-  return ['/Applications/EnConvo.app',
-          path.join(app.getPath('home'), 'Applications', 'EnConvo.app')]
-    .some((candidate) => {
-      try { return fs.existsSync(candidate); } catch { return false; }
-    });
-}
-
-// The pitch explains WHY EnConvo: Vivieen runs standalone, but coupled it
-// is fully equipped out of the box - LLM chat, TTS, voice recognition,
-// image/video generation. It narrates itself (pre-generated EnConvo TTS,
-// Gemini 3.1 Flash Preview voice Kore) and the narration stops on any
-// choice.
-async function runEnconvoIntro(mode) {
-  let narration = null;
-  try {
-    narration = spawn('/usr/bin/afplay',
-      [path.join(__dirname, 'assets', 'enconvo-intro.m4a')],
-      { stdio: 'ignore' });
-  } catch { narration = null; }
-  let response = 2;
-  try {
-    response = await showEnconvoIntroWindow(mode, enconvoInstalled());
-  } finally {
-    if (narration) { try { narration.kill(); } catch {} }
-  }
-  if (response === 0) shell.openExternal('https://enconvo.com').catch(() => {});
-  if (response === 1) setEnconvoMonitoring(true);
-  return response;
-}
-
-// The undecided user is the one who never clicks "Couple" - so the pitch's
-// home is the FIRST LAUNCH, once, a beat after the avatar lands. Already-
-// coupled installs never see it.
-function maybeShowLaunchIntro() {
-  if (state.enconvoIntroSeen || state.followEnconvo) return;
-  state.enconvoIntroSeen = true;
-  saveStateSoon();
-  setTimeout(() => { void runEnconvoIntro('launch'); }, 3500);
-}
-
-async function coupleToEnconvo() {
-  // Clicking "Couple to EnConvo" IS the decision (the owner's own point)
-  // - couple instantly, no pitch. The card appears here only when EnConvo
-  // is not installed, because coupling would otherwise silently wait on
-  // an app that does not exist; the pitch then leads with the download.
-  if (enconvoInstalled()) return setEnconvoMonitoring(true);
-  await runEnconvoIntro('missing');
-  return shellState();
-}
-
 function stopBackend() {
   if (!backend || !ownsBackend) return;
   backend.removeAllListeners('exit');
@@ -2059,8 +1953,7 @@ function buildTrayMenu() {
     { label: 'Size & Opacity…', click: showAppearanceWindow },
     { type: 'separator' },
     { label: 'Couple to EnConvo Audio', type: 'checkbox', checked: monitorState().enabled,
-      click: (item) => (item.checked
-        ? void coupleToEnconvo() : setEnconvoMonitoring(false)) },
+      click: (item) => setEnconvoMonitoring(item.checked) },
     { label: 'Always on Top', type: 'checkbox', checked: state.alwaysOnTop,
       click: (item) => applyAlwaysOnTop(item.checked) },
     { label: petMotionReady ? 'Horizon Walk Along Dock' : 'Horizon Walk · Generate Motion First',
@@ -2112,8 +2005,7 @@ function showPetMenu() {
         mainWindow.webContents.send('vivieen:pet-chat');
       } },
     { name: followingEnconvo ? 'De-couple from EnConvo' : 'Couple to EnConvo',
-      click: () => (followingEnconvo
-        ? setEnconvoMonitoring(false) : void coupleToEnconvo()) },
+      click: () => setEnconvoMonitoring(!followingEnconvo) },
     { type: 'separator' },
     { name: state.petRoam ? 'Walking' : 'Walk',
       hint: !petMotionReady ? 'generate first'
@@ -2399,8 +2291,7 @@ function installIpc() {
     petDrag = null;
     saveStateSoon();
   });
-  ipcMain.handle('vivieen:set-enconvo-monitor', (_event, value) => (
-    value ? coupleToEnconvo() : setEnconvoMonitoring(false)));
+  ipcMain.handle('vivieen:set-enconvo-monitor', (_event, value) => setEnconvoMonitoring(value));
   ipcMain.handle('vivieen:avatar-changed', () => {
     if (state.petRoam) applyPetRoam(false);
     petMotionReady = false;
@@ -2642,7 +2533,6 @@ async function boot() {
   const metadata = await vivieenMetadata(3000);
   if (!metadata || !metadata.active) openSettings();
   if (metadata && metadata.companion) createBuddyWindow(metadata.companion);
-  maybeShowLaunchIntro();
 }
 
 const lock = app.requestSingleInstanceLock();
