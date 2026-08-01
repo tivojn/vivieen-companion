@@ -318,7 +318,17 @@ class OneClickPipelineTests(unittest.TestCase):
         self.assertIn("def _pipeline_thread", source)
         self.assertIn("def _body_stage", source)
         self.assertIn("def _motion_stage", source)
-        self.assertIn('_motion_stage(slug, ("walk", "idle", "move")', source)
+        # Takes run ONE AT A TIME with backoff retries: all three at once
+        # burst past xAI's 2-rps team limit (eve, 2026-08-01) and a single
+        # provider hiccup killed the whole stage. A re-click resumes -
+        # finished body and takes are skipped, not regenerated.
+        self.assertIn('for kind in ("walk", "idle", "move"):', source)
+        self.assertIn("_motion_stage(\n                        slug, (kind,)",
+                      source)
+        self.assertIn("pause = 25 * (attempt + 1)", source)
+        self.assertIn('writer(f"{kind} take already built - skipping")', source)
+        self.assertIn("full body already built - skipping", source)
+        self.assertIn("Ready with gaps", source)
         self.assertIn("_body_stage(slug, options, w,", source)
         self.assertIn("_body_stage(slug, BodyProfileInput().model_dump(), writer,",
                       source)
