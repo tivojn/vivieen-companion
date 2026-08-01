@@ -90,7 +90,7 @@ def _dental_row_metrics(row, selected, viseme_dir, diag_dir=None,
             )) if np.any(expected) else 1.0
             canonical = reveal
         else:
-            cavity = compose._mouth_cavity(image.shape, landmarks)
+            cavity = compose._dental_band(image.shape, landmarks)
             actual = compose._tooth_mask(image, cavity, landmarks, row=row)
             if row == "lower":
                 transform = compose._lower_row_transform(donor_lm, landmarks)
