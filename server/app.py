@@ -1902,6 +1902,11 @@ async def api_config_set(body: dict):
                     live["eleven_agent_id"] = ""
             elif not live.get(field):
                 live.pop(field, None)
+        # The agent bakes its voice in at creation - a different voice
+        # means a fresh agent next time the line opens.
+        previous_voice = (cur.get("live") or {}).get("eleven_voice_id") or ""
+        if "eleven_voice_id" in live and live["eleven_voice_id"] != previous_voice:
+            live["eleven_agent_id"] = ""
     new = P.save(body)
     if (new.get("stt") or {}).get("provider") != (cur.get("stt") or {}).get("provider") or \
        (new.get("tts") or {}).get("provider") != (cur.get("tts") or {}).get("provider"):
@@ -2158,6 +2163,36 @@ async def stt_stream(client: WebSocket):
 #   {type:closed,reason} | {type:error,message}
 # A silence watchdog hangs up after two quiet minutes: realtime providers
 # bill per OPEN-LINE minute, and an idle line must never be a meter.
+
+XAI_LIVE_VOICES = [
+    {"id": "eve", "name": "Eve · warm, expressive"},
+    {"id": "ara", "name": "Ara · bright, upbeat"},
+    {"id": "leo", "name": "Leo · steady, male"},
+    {"id": "rex", "name": "Rex · deep, male"},
+    {"id": "sal", "name": "Sal · neutral, calm"},
+]
+
+
+@app.get("/api/live/voices")
+async def api_live_voices(provider: str = Query(pattern=r"^(xai|elevenlabs)$")):
+    if provider == "xai":
+        return {"voices": XAI_LIVE_VOICES}
+    key = (P.load().get("live") or {}).get("eleven_api_key") or ""
+    if not key:
+        return {"voices": [], "error": "no ElevenLabs key stored"}
+    import requests
+
+    def fetch():
+        r = requests.get("https://api.elevenlabs.io/v1/voices",
+                         headers={"xi-api-key": key}, timeout=20)
+        r.raise_for_status()
+        return [{"id": v["voice_id"], "name": v.get("name") or v["voice_id"]}
+                for v in r.json().get("voices") or []]
+    try:
+        return {"voices": await asyncio.to_thread(fetch)}
+    except Exception as e:
+        return {"voices": [], "error": P.safe_error(e, 120)}
+
 
 @app.get("/live-worklet.js")
 async def live_worklet():

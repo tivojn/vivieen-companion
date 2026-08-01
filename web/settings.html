@@ -757,11 +757,11 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
       <div class="f" id="live-xai" ><label>xAI API key</label>
         <input id="live-xai-key" type="password" placeholder="stored — leave blank to keep">
         <label style="margin-top:10px">Voice</label>
-        <input id="live-xai-voice" placeholder="eve · ara · leo · rex · sal"></div>
+        <select id="live-xai-voice"></select></div>
       <div class="f hidden" id="live-eleven"><label>ElevenLabs API key</label>
         <input id="live-eleven-key" type="password" placeholder="stored — leave blank to keep">
-        <label style="margin-top:10px">Voice ID <span style="color:var(--faint)">(optional)</span></label>
-        <input id="live-eleven-voice" placeholder="agent default"></div>
+        <label style="margin-top:10px">Voice</label>
+        <select id="live-eleven-voice"><option value="">Agent default</option></select></div>
     </div>
     <p class="note" style="margin-top:12px">Start and stop from the avatar's
     right-click menu → <b>Live talk</b>. Billed per open-line minute by the
@@ -3515,11 +3515,28 @@ let DIRTY = false;
 function dirty() { DIRTY = true; $('#msg').textContent = 'Unsaved changes'; }
 function note(t) { $('#msg').textContent = t; }
 
+async function fillLiveVoices(provider, select, current) {
+  const r = await api('/api/live/voices?provider=' + provider);
+  const voices = (r && r.voices) || [];
+  const keep = current || select.value || '';
+  select.innerHTML = (provider === 'elevenlabs'
+    ? '<option value="">Agent default</option>' : '')
+    + voices.map(v => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('');
+  if (keep && ![...select.options].some(o => o.value === keep)) {
+    select.insertAdjacentHTML('beforeend',
+      `<option value="${esc(keep)}">${esc(keep)} (saved)</option>`);
+  }
+  select.value = keep;
+  if (provider === 'elevenlabs' && r && r.error) {
+    select.insertAdjacentHTML('afterbegin',
+      `<option value="${esc(keep)}" selected>${esc(r.error)}</option>`);
+  }
+}
 function renderLiveBlock() {
   const live = CFG.live || {};
   $('#live-provider').value = live.provider || 'xai';
-  $('#live-xai-voice').value = live.xai_voice || 'eve';
-  $('#live-eleven-voice').value = live.eleven_voice_id || '';
+  fillLiveVoices('xai', $('#live-xai-voice'), live.xai_voice || 'eve');
+  fillLiveVoices('elevenlabs', $('#live-eleven-voice'), live.eleven_voice_id || '');
   $('#live-xai-key').placeholder = live.has_xai_api_key
     ? 'stored — leave blank to keep' : 'xai-…';
   $('#live-eleven-key').placeholder = live.has_eleven_api_key
@@ -3530,21 +3547,24 @@ function renderLiveBlock() {
     $('#live-eleven').classList.toggle('hidden', xai);
   };
   $('#live-provider').onchange = () => { swap(); dirty(); };
-  ['live-xai-key', 'live-xai-voice', 'live-eleven-key', 'live-eleven-voice']
+  ['live-xai-key', 'live-eleven-key']
     .forEach(id => { $('#' + id).oninput = dirty; });
+  ['live-xai-voice', 'live-eleven-voice']
+    .forEach(id => { $('#' + id).onchange = dirty; });
   swap();
 }
 function collectLiveBlock() {
   CFG.live = Object.assign({}, CFG.live, {
     provider: $('#live-provider').value,
-    xai_voice: $('#live-xai-voice').value.trim() || 'eve',
-    eleven_voice_id: $('#live-eleven-voice').value.trim(),
+    xai_voice: $('#live-xai-voice').value || 'eve',
+    eleven_voice_id: $('#live-eleven-voice').value || '',
   });
   const xaiKey = $('#live-xai-key').value.trim();
   const elevenKey = $('#live-eleven-key').value.trim();
   CFG.live.xai_api_key = xaiKey;          // blank means "unchanged"
   CFG.live.eleven_api_key = elevenKey;
-  if (elevenKey) CFG.live.eleven_agent_id = '';   // new key, new agent
+  // new key or new voice -> fresh agent (the server double-checks too)
+  if (elevenKey) CFG.live.eleven_agent_id = '';
 }
 
 $('#save').onclick = async () => {
