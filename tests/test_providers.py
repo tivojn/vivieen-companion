@@ -351,6 +351,72 @@ class OneClickPipelineTests(unittest.TestCase):
         self.assertIn("markAvatarBusy(slug, 'pipeline')", settings)
 
 
+class LiveVoiceTests(unittest.TestCase):
+    """Live talk: realtime speech-to-speech through a server-side bridge.
+    Keys never reach the renderer; providers speak their own protocols
+    upstream and the renderer gets one unified event stream."""
+
+    @classmethod
+    def setUpClass(cls):
+        import app as application
+        import providers
+        cls.app_module = application
+        cls.providers = providers
+
+    def test_live_defaults_and_key_redaction(self):
+        live = self.providers.DEFAULTS["live"]
+        self.assertEqual(live["provider"], "xai")
+        self.assertEqual(live["xai_model"], "grok-voice-think-fast-1.0")
+        masked = self.providers.redacted(
+            {"live": {"xai_api_key": "secret", "eleven_api_key": ""}})
+        self.assertEqual(masked["live"]["xai_api_key"], "")
+        self.assertTrue(masked["live"]["has_xai_api_key"])
+        self.assertFalse(masked["live"]["has_eleven_api_key"])
+
+    def test_xai_events_translate_to_the_unified_stream(self):
+        translate = self.app_module._xai_event
+        self.assertEqual(
+            list(translate({"type": "response.output_audio.delta",
+                            "delta": "QUJD"})),
+            [{"type": "audio", "data": "QUJD", "rate": 24000}])
+        self.assertEqual(
+            list(translate({"type": "response.output_audio_transcript.delta",
+                            "delta": "Hel"})),
+            [{"type": "agent_text", "text": "Hel", "final": False}])
+        self.assertEqual(
+            list(translate({"type": "input_audio_buffer.speech_started"})),
+            [{"type": "interrupt"}])
+        self.assertEqual(list(translate({"type": "session.updated"})), [])
+
+    def test_eleven_events_translate_to_the_unified_stream(self):
+        translate = self.app_module._eleven_event
+        self.assertEqual(
+            list(translate({"type": "audio",
+                            "audio_event": {"audio_base_64": "QUJD"}})),
+            [{"type": "audio", "data": "QUJD", "rate": 16000}])
+        self.assertEqual(
+            list(translate({"type": "user_transcript",
+                            "user_transcription_event":
+                                {"user_transcript": "hi"}})),
+            [{"type": "user_text", "text": "hi"}])
+        self.assertEqual(
+            list(translate({"type": "interruption"})),
+            [{"type": "interrupt"}])
+
+    def test_bridge_enforces_token_silence_hangup_and_key_custody(self):
+        source = open(os.path.join(ROOT, "server", "app.py"),
+                      encoding="utf-8").read()
+        self.assertIn('@app.websocket("/live/voice")', source)
+        self.assertIn("LIVE_SILENCE_HANGUP_S = 120", source)
+        self.assertIn('{"type": "closed", "reason": "silence"}', source)
+        self.assertIn('"type": "pong"', source)   # ElevenLabs keep-alive
+        self.assertIn("def _ensure_eleven_agent", source)
+        # blank keys from the UI mean "unchanged"; __clear__ erases and
+        # also forgets the auto-created agent
+        self.assertIn('live.pop("has_" + field, None)', source)
+        self.assertIn('live["eleven_agent_id"] = ""', source)
+
+
 class PublicReleaseSecurityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

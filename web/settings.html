@@ -745,6 +745,29 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
 
   <h2>Hear · speech to text</h2>
   <div class="card" id="blk-stt"></div>
+
+  <h2>Live talk · realtime conversation</h2>
+  <div class="card" id="blk-live">
+    <div class="row">
+      <div class="f" style="max-width:260px"><label>Provider</label>
+        <select id="live-provider">
+          <option value="xai">xAI · Grok realtime (speech-to-speech)</option>
+          <option value="elevenlabs">ElevenLabs · Conversational agent</option>
+        </select></div>
+      <div class="f" id="live-xai" ><label>xAI API key</label>
+        <input id="live-xai-key" type="password" placeholder="stored — leave blank to keep">
+        <label style="margin-top:10px">Voice</label>
+        <input id="live-xai-voice" placeholder="eve · ara · leo · rex · sal"></div>
+      <div class="f hidden" id="live-eleven"><label>ElevenLabs API key</label>
+        <input id="live-eleven-key" type="password" placeholder="stored — leave blank to keep">
+        <label style="margin-top:10px">Voice ID <span style="color:var(--faint)">(optional)</span></label>
+        <input id="live-eleven-voice" placeholder="agent default"></div>
+    </div>
+    <p class="note" style="margin-top:12px">Start and stop from the avatar's
+    right-click menu → <b>Live talk</b>. Billed per open-line minute by the
+    provider (xAI ≈ $0.05/min all-in); the line hangs up on its own after
+    two silent minutes so an idle desk never runs the meter.</p>
+  </div>
 </section>
 
 <!-- ------------------------------------------------------------ PERSONA -->
@@ -3492,9 +3515,42 @@ let DIRTY = false;
 function dirty() { DIRTY = true; $('#msg').textContent = 'Unsaved changes'; }
 function note(t) { $('#msg').textContent = t; }
 
+function renderLiveBlock() {
+  const live = CFG.live || {};
+  $('#live-provider').value = live.provider || 'xai';
+  $('#live-xai-voice').value = live.xai_voice || 'eve';
+  $('#live-eleven-voice').value = live.eleven_voice_id || '';
+  $('#live-xai-key').placeholder = live.has_xai_api_key
+    ? 'stored — leave blank to keep' : 'xai-…';
+  $('#live-eleven-key').placeholder = live.has_eleven_api_key
+    ? 'stored — leave blank to keep' : 'sk_…';
+  const swap = () => {
+    const xai = $('#live-provider').value === 'xai';
+    $('#live-xai').classList.toggle('hidden', !xai);
+    $('#live-eleven').classList.toggle('hidden', xai);
+  };
+  $('#live-provider').onchange = () => { swap(); dirty(); };
+  ['live-xai-key', 'live-xai-voice', 'live-eleven-key', 'live-eleven-voice']
+    .forEach(id => { $('#' + id).oninput = dirty; });
+  swap();
+}
+function collectLiveBlock() {
+  CFG.live = Object.assign({}, CFG.live, {
+    provider: $('#live-provider').value,
+    xai_voice: $('#live-xai-voice').value.trim() || 'eve',
+    eleven_voice_id: $('#live-eleven-voice').value.trim(),
+  });
+  const xaiKey = $('#live-xai-key').value.trim();
+  const elevenKey = $('#live-eleven-key').value.trim();
+  CFG.live.xai_api_key = xaiKey;          // blank means "unchanged"
+  CFG.live.eleven_api_key = elevenKey;
+  if (elevenKey) CFG.live.eleven_agent_id = '';   // new key, new agent
+}
+
 $('#save').onclick = async () => {
   CFG.persona.name = $('#pname').value;
   CFG.persona.system = $('#psys').value;
+  collectLiveBlock();
   const r = await api('/api/config', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(CFG)
   });
@@ -3504,6 +3560,9 @@ $('#save').onclick = async () => {
   DIRTY = false;
   note('Saved.');
   ['llm', 'tts', 'stt'].forEach(renderBlock);
+  renderLiveBlock();
+  $('#live-xai-key').value = '';
+  $('#live-eleven-key').value = '';
 };
 $('#revert').onclick = () => boot();
 
@@ -3516,6 +3575,7 @@ async function boot() {
   ['llm', 'tts', 'stt'].forEach(resetModelState);
   DIRTY = false;
   ['llm', 'tts', 'stt'].forEach(renderBlock);
+  renderLiveBlock();
   ['image', 'video'].forEach(renderMediaDefault);
   $('#pname').value = CFG.persona.name || '';
   $('#psys').value = CFG.persona.system || '';

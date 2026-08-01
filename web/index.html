@@ -1944,6 +1944,107 @@ function loop(now){
   elVz.className=speaking?'on':'';
 }
 
+/* ================= live talk =================
+   Realtime speech-to-speech: mic PCM streams to the server bridge as
+   binary frames, provider audio streams back and plays through the SAME
+   actx + analyser the turn-based replies use - so speaking, level() and
+   the byEnergy mouth all work unmodified. Barge-in flushes the playback
+   queue. The server hangs up after two silent minutes (billing guard). */
+let LIVE=null;
+const LIVE_WORKLET=`class VivLiveCapture extends AudioWorkletProcessor{
+  constructor(){super();this.buf=[];this.len=0;}
+  process(inputs){const ch=inputs[0]&&inputs[0][0];if(!ch)return true;
+    const out=new Int16Array(ch.length);
+    for(let i=0;i<ch.length;i++){const s=Math.max(-1,Math.min(1,ch[i]));
+      out[i]=s<0?s*32768:s*32767;}
+    this.buf.push(out);this.len+=out.length;
+    if(this.len>=2400){const all=new Int16Array(this.len);let o=0;
+      for(const b of this.buf){all.set(b,o);o+=b.length;}
+      this.port.postMessage(all.buffer,[all.buffer]);this.buf=[];this.len=0;}
+    return true;}}
+registerProcessor('viv-live-capture',VivLiveCapture)`;
+async function startLiveTalk(){
+  if(LIVE){stopLiveTalk('ended');return;}
+  if(monitorEnabled){setCaption('De-couple from EnConvo first — live talk needs the voice channel.');return;}
+  setStatus('connecting live…','busy');
+  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/live/voice');
+  ws.binaryType='arraybuffer';
+  const session={ws,ctx:null,stream:null,cap:null,queueT:0,sources:new Set(),agentText:''};
+  LIVE=session;
+  ws.onmessage=async e=>{
+    if(LIVE!==session||typeof e.data!=='string')return;
+    const m=JSON.parse(e.data);
+    if(m.type==='ready'){
+      try{await liveStartMic(session,m.input_rate||24000);}
+      catch(err){setCaption('(microphone: '+err.message+')');stopLiveTalk('mic');return;}
+      setStatus('live talk · '+(m.provider==='xai'?'Grok':'ElevenLabs'),'rec');
+      document.documentElement.classList.add('listening');
+    }else if(m.type==='audio')livePlay(session,m.data,m.rate||24000);
+    else if(m.type==='user_text'&&m.text)elYou.textContent=m.text;
+    else if(m.type==='agent_text'&&m.text){
+      session.agentText=m.final?m.text:session.agentText+m.text;
+      setCaption(session.agentText);
+    }else if(m.type==='interrupt')liveFlush(session);
+    else if(m.type==='error'){setCaption('(live talk: '+m.message+')');stopLiveTalk('error');}
+    else if(m.type==='closed')stopLiveTalk(m.reason||'ended');
+  };
+  ws.onclose=()=>{if(LIVE===session)stopLiveTalk('ended');};
+}
+async function liveStartMic(session,rate){
+  session.stream=await navigator.mediaDevices.getUserMedia({audio:{
+    channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+  session.ctx=new AudioContext({sampleRate:rate});
+  const module=URL.createObjectURL(new Blob([LIVE_WORKLET],{type:'text/javascript'}));
+  await session.ctx.audioWorklet.addModule(module);
+  const source=session.ctx.createMediaStreamSource(session.stream);
+  session.cap=new AudioWorkletNode(session.ctx,'viv-live-capture');
+  session.cap.port.onmessage=e=>{
+    if(LIVE===session&&session.ws.readyState===1)session.ws.send(e.data);
+  };
+  source.connect(session.cap);
+}
+function livePlay(session,b64,rate){
+  actx=actx||new AudioContext();
+  if(actx.state==='suspended')actx.resume();
+  if(!analyser){analyser=actx.createAnalyser();analyser.fftSize=2048;
+    analyser.smoothingTimeConstant=0.6;analyser.connect(actx.destination);}
+  const bin=atob(b64),n=bin.length>>1;
+  if(!n)return;
+  const pcm=new Int16Array(n);
+  for(let i=0;i<n;i++)pcm[i]=(bin.charCodeAt(2*i)|(bin.charCodeAt(2*i+1)<<8))<<16>>16;
+  const buf=actx.createBuffer(1,n,rate);
+  const ch=buf.getChannelData(0);
+  for(let i=0;i<n;i++)ch[i]=pcm[i]/32768;
+  const src=actx.createBufferSource();src.buffer=buf;src.connect(analyser);
+  const at=Math.max(actx.currentTime+0.04,session.queueT||0);
+  session.queueT=at+buf.duration;
+  session.sources.add(src);
+  localSource=src;speaking=true;track=[];
+  src.onended=()=>{
+    session.sources.delete(src);
+    if(localSource===src)localSource=null;
+    if(LIVE===session&&!session.sources.size){speaking=false;curV='sil';}
+  };
+  src.start(at);
+}
+function liveFlush(session){
+  for(const src of session.sources){try{src.stop();}catch(e){}}
+  session.sources.clear();session.queueT=0;session.agentText='';
+  localSource=null;speaking=false;curV='sil';
+}
+function stopLiveTalk(reason){
+  const session=LIVE;LIVE=null;
+  if(!session)return;
+  liveFlush(session);
+  try{session.ws.close();}catch(e){}
+  try{session.cap&&session.cap.disconnect();}catch(e){}
+  try{session.stream&&session.stream.getTracks().forEach(t=>t.stop());}catch(e){}
+  try{session.ctx&&session.ctx.close();}catch(e){}
+  document.documentElement.classList.remove('listening');
+  setStatus(reason==='silence'?'live talk ended — two quiet minutes':'ready',
+    reason==='error'?'':'on');
+}
+
 /* ================= conversation ================= */
 const history=[];
 let localSource=null;
@@ -2693,6 +2794,9 @@ if(SHELL&&SHELL.isElectron&&typeof SHELL.onPetChat==='function')SHELL.onPetChat(
 addEventListener('keydown',event=>{
   if(event.key==='Escape'&&document.documentElement.classList.contains('chat-open'))closePetChat();
 });
+if(SHELL&&SHELL.isElectron&&typeof SHELL.onLiveToggle==='function'){
+  SHELL.onLiveToggle(()=>{void startLiveTalk();});
+}
 if(SHELL&&SHELL.isElectron&&typeof SHELL.onPetMoves==='function'){
   SHELL.onPetMoves(()=>{toggleMoveShow();});
 }

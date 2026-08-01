@@ -68,4 +68,5 @@ contextBridge.exposeInMainWorld('vivieen', Object.freeze({
   onPetPointer: (callback) => subscribe('vivieen:pet-pointer', callback),
   onPetRoamMotion: (callback) => subscribe('vivieen:pet-roam-motion', callback),
   onPetMoves: (callback) => subscribe('vivieen:pet-moves', callback),
+  onLiveToggle: (callback) => subscribe('vivieen:live-toggle', callback),
 }));
