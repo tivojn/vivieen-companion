@@ -3073,6 +3073,14 @@ function renderRigControls() {
       RIG_PROFILE[key] = Number(event.target.value);
       RIG_PROFILE.preset = 'custom';
       $('#rig-preset').value = 'custom';
+      // Eyebrows/Forehead are live runtime amplitudes: hand the dragged
+      // values straight to the desk avatar (same-origin storage event) so
+      // it answers WHILE the slider moves - no rebuild needed for these.
+      if (key === 'brows' || key === 'forehead') {
+        localStorage.setItem('vivieen-live-rig', JSON.stringify({
+          slug: RIG_SLUG, brows: RIG_PROFILE.brows, forehead: RIG_PROFILE.forehead
+        }));
+      }
       paintRigControl(key);
       drawRig();
       rigStatus();
