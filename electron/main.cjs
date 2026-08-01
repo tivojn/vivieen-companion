@@ -372,6 +372,60 @@ function setEnconvoMonitoring(value) {
   return shellState();
 }
 
+// The pitch renders in a Vivieen-styled card window (web/intro.html) -
+// theme- and design-synced, wordmark instead of the OS message box's app
+// icon, which the owner rightly called ugly. Resolves 0 (download),
+// 1 (couple now) or 2 (not now); closing the window counts as "not now".
+let introWindow = null;
+function showEnconvoIntroWindow() {
+  return new Promise((resolve) => {
+    if (introWindow && !introWindow.isDestroyed()) introWindow.destroy();
+    const area = screen.getPrimaryDisplay().workArea;
+    const width = 520, height = 500;
+    introWindow = new BrowserWindow({
+      x: Math.round(area.x + (area.width - width) / 2),
+      y: Math.round(area.y + (area.height - height) / 2.4),
+      width, height, show: false, frame: false, transparent: true,
+      backgroundColor: '#00000000', roundedCorners: false, hasShadow: false,
+      resizable: false, minimizable: false, maximizable: false,
+      fullscreenable: false, skipTaskbar: true, acceptFirstMouse: true,
+      alwaysOnTop: true,
+      webPreferences: {
+        preload: path.join(__dirname, 'intro-preload.cjs'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webSecurity: true,
+        webviewTag: false,
+        allowRunningInsecureContent: false,
+        spellcheck: false,
+      },
+    });
+    introWindow.setAlwaysOnTop(true, 'floating');
+    guardNavigation(introWindow, 'intro');
+    let settled = false;
+    const settle = (choice) => {
+      if (settled) return;
+      settled = true;
+      ipcMain.removeAllListeners('vivieen:intro-choice');
+      resolve(choice);
+      if (introWindow && !introWindow.isDestroyed()) introWindow.close();
+      introWindow = null;
+    };
+    ipcMain.removeAllListeners('vivieen:intro-choice');
+    ipcMain.on('vivieen:intro-choice',
+      (_event, value) => settle(Number.isFinite(Number(value)) ? Number(value) : 2));
+    introWindow.once('closed', () => settle(2));
+    introWindow.webContents.once('did-finish-load', () => {
+      if (!introWindow || introWindow.isDestroyed()) return;
+      introWindow.webContents.setZoomFactor(1);
+      introWindow.show();
+      introWindow.focus();
+    });
+    introWindow.loadURL(`${baseUrl()}/intro?electron=1`);
+  });
+}
+
 // The first coupling explains WHY EnConvo before flipping the switch:
 // Vivieen runs standalone as a desktop avatar companion, but coupled with
 // EnConvo it is fully equipped out of the box - LLM chat, text-to-speech,
@@ -394,23 +448,7 @@ async function coupleToEnconvo() {
     } catch { narration = null; }
     let response = 2;
     try {
-      ({ response } = await dialog.showMessageBox({
-      type: 'info',
-      title: 'Couple with EnConvo',
-      message: 'Best together with EnConvo',
-      detail:
-        'Vivieen works on its own as a desktop avatar companion - but '
-        + 'coupled with EnConvo it is fully equipped out of the box: LLM '
-        + 'chat, text-to-speech, voice recognition (ASR), and image/video '
-        + 'generation are all included, with nothing to configure.\n\n'
-        + 'Without EnConvo you bring your own API keys (Settings → '
-        + 'Models), and that setup can be challenging.\n\n'
-        + 'New to EnConvo? Download it from enconvo.com first, then '
-        + 'couple again.',
-      buttons: ['Download EnConvo (enconvo.com)', 'Couple now', 'Not now'],
-      defaultId: 0,
-      cancelId: 2,
-      }));
+      response = await showEnconvoIntroWindow();
     } finally {
       if (narration) { try { narration.kill(); } catch {} }
     }
