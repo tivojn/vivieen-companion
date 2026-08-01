@@ -1577,7 +1577,10 @@ function petCamera(meta,width,height){
   const margin=PET.roam?0.985:(PET.view==='full'?0.94:0.98);
   const scale=Math.min(cv.width/crop.w,avail/crop.h)*margin;
   const x=cv.width/2-(crop.x+crop.w/2)*scale;
-  const y=PET.roam?avail*.995-(crop.y+crop.h)*scale:
+  // Roam: the crop bottom IS the feet, and the shell rests the window
+  // bottom on the Dock's top edge - anchor them exactly there, no float
+  // (the old 0.5% reserve read as hovering above the Dock).
+  const y=PET.roam?avail-(crop.y+crop.h)*scale:
     avail/2-(crop.y+crop.h/2)*scale;
   return {scale,x,y,crop};
 }
