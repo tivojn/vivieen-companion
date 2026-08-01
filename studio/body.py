@@ -334,11 +334,73 @@ def _head_mask(cutout_image, landmarks, destination):
     feather = max(16.0, face_width * 0.12)
     xs = np.arange(alpha.shape[1], dtype=np.float32)[None, :]
     neck_gate = np.clip((half_width[:, None] + feather - np.abs(xs - center)) / feather, 0.0, 1.0)
-    neck_gate[ys <= neck_start] = 1.0
+    # The gate must ENGAGE gradually: a binary row switch at neck_start put
+    # full portrait hair one row above and body hair one row below - the
+    # horizontal border line the owner circled at chin height (carol,
+    # 2026-08-01). Ramp it in over 0.28 face-heights: long enough that the
+    # side hair dissolves, short enough that a portrait's own clothing
+    # cannot ghost onto the generated outfit further down.
+    engage = np.clip((ys - neck_start) / max(1.0, face_height * 0.28), 0.0, 1.0)
+    engage = engage * engage * (3.0 - 2.0 * engage)
+    neck_gate = 1.0 - engage[:, None] * (1.0 - neck_gate)
     mask = np.clip(alpha * fade[:, None] * neck_gate, 0.0, 1.0)
     rgba = np.full((*mask.shape, 4), 255, dtype=np.uint8)
     rgba[:, :, 3] = np.round(mask * 255).astype(np.uint8)
     cv2.imwrite(destination, rgba)
+
+
+def _seam_tone_match(body_path, keyframe, portrait_cutout, mask_path,
+                     transform, face_bounds):
+    """The live head is a supersampled portrait; the body plate is a softer
+    generated render. Where the head mask hands one to the other, their
+    low-frequency tone difference reads as a horizontal band through the
+    hair no matter how wide the dissolve is (carol, 2026-08-01). Shift the
+    body plate's low frequencies toward the warped portrait inside the
+    handover zone, fading out with the portrait's own silhouette."""
+    if not face_bounds:
+        return
+    body_rgba = cv2.imread(body_path, cv2.IMREAD_UNCHANGED)
+    height, width = body_rgba.shape[:2]
+    warped = cv2.warpAffine(
+        keyframe, transform, (width, height), flags=cv2.INTER_AREA)
+    silhouette = cv2.warpAffine(
+        portrait_cutout[:, :, 3], transform, (width, height)
+    ).astype(np.float32) / 255.0
+    mask = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)[:, :, 3]
+    handover = cv2.warpAffine(mask, transform, (width, height)
+                              ).astype(np.float32) / 255.0
+    face_width = max(24.0, float(face_bounds[2]))
+    low_sigma = face_width * 0.30
+    body_bgr = body_rgba[:, :, :3].astype(np.float32)
+    body_alpha = body_rgba[:, :, 3].astype(np.float32) / 255.0
+
+    def masked_blur(image, alpha):
+        # alpha-normalized blur: backgrounds and transparent pixels carry
+        # zero weight, so they can never leak brightness into the delta
+        blurred = cv2.GaussianBlur(image * alpha[..., None], (0, 0), low_sigma)
+        cover = cv2.GaussianBlur(alpha, (0, 0), low_sigma)
+        return blurred / np.maximum(cover, 1e-3)[..., None]
+
+    delta = np.clip(masked_blur(warped.astype(np.float32), silhouette)
+                    - masked_blur(body_bgr, body_alpha), -36.0, 36.0)
+    # Correct ONLY around the transition line: the band term peaks where
+    # head and body mix half-and-half and is zero where either side owns
+    # the pixel outright - a first version weighted by the whole mask
+    # washed the neck and chest with portrait brightness.
+    band = np.clip(handover * (1.0 - handover) * 4.0, 0.0, 1.0)
+    weight = np.clip(cv2.GaussianBlur(band, (0, 0), face_width * 0.12) * 1.4,
+                     0.0, 1.0)
+    weight *= np.clip(silhouette * 1.5, 0.0, 1.0) * body_alpha
+    # Hair columns only: the neck skin of the two renders already agrees,
+    # and correcting it painted a faint light collar across the throat.
+    center_x = face_bounds[0] + face_bounds[2] * 0.5
+    xs = np.abs(np.arange(width, dtype=np.float32) - center_x) / face_width
+    hair_side = np.clip((xs - 0.38) / 0.22, 0.0, 1.0)
+    hair_side = hair_side * hair_side * (3.0 - 2.0 * hair_side)
+    weight *= hair_side[None, :]
+    body_rgba[:, :, :3] = np.clip(
+        body_bgr + delta * weight[..., None], 0, 255).astype(np.uint8)
+    cv2.imwrite(body_path, body_rgba)
 
 
 def _alpha_bounds(image):
@@ -490,6 +552,10 @@ def build(avatar_dir, options, log=print, progress=None):
             raise RuntimeError("could not build the identity overlay mask")
         portrait_cutout = cv2.imread(portrait_cutout_path, cv2.IMREAD_UNCHANGED)
         _head_mask(portrait_cutout, key_landmarks, os.path.join(stage, "head-mask.png"))
+        _seam_tone_match(
+            os.path.join(stage, "body.png"), keyframe, portrait_cutout,
+            os.path.join(stage, "head-mask.png"), transform,
+            alignment.get("face_bounds"))
         os.remove(portrait_cutout_path)
 
         height, width = view_images["front"].shape[:2]
