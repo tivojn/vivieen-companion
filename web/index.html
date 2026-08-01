@@ -2017,18 +2017,7 @@ function loop(now){
    the byEnergy mouth all work unmodified. Barge-in flushes the playback
    queue. The server hangs up after two silent minutes (billing guard). */
 let LIVE=null;
-const LIVE_WORKLET=`class VivLiveCapture extends AudioWorkletProcessor{
-  constructor(){super();this.buf=[];this.len=0;}
-  process(inputs){const ch=inputs[0]&&inputs[0][0];if(!ch)return true;
-    const out=new Int16Array(ch.length);
-    for(let i=0;i<ch.length;i++){const s=Math.max(-1,Math.min(1,ch[i]));
-      out[i]=s<0?s*32768:s*32767;}
-    this.buf.push(out);this.len+=out.length;
-    if(this.len>=2400){const all=new Int16Array(this.len);let o=0;
-      for(const b of this.buf){all.set(b,o);o+=b.length;}
-      this.port.postMessage(all.buffer,[all.buffer]);this.buf=[];this.len=0;}
-    return true;}}
-registerProcessor('viv-live-capture',VivLiveCapture)`;
+
 async function startLiveTalk(){
   if(LIVE){stopLiveTalk('ended');return;}
   if(monitorEnabled){setCaption('De-couple from EnConvo first — live talk needs the voice channel.');return;}
@@ -2060,8 +2049,9 @@ async function liveStartMic(session,rate){
   session.stream=await navigator.mediaDevices.getUserMedia({audio:{
     channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
   session.ctx=new AudioContext({sampleRate:rate});
-  const module=URL.createObjectURL(new Blob([LIVE_WORKLET],{type:'text/javascript'}));
-  await session.ctx.audioWorklet.addModule(module);
+  // A blob: module URL is blocked by the page CSP - the worklet is a
+  // real same-origin file instead.
+  await session.ctx.audioWorklet.addModule('/live-worklet.js');
   const source=session.ctx.createMediaStreamSource(session.stream);
   session.cap=new AudioWorkletNode(session.ctx,'viv-live-capture');
   session.cap.port.onmessage=e=>{

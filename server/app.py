@@ -2159,6 +2159,14 @@ async def stt_stream(client: WebSocket):
 # A silence watchdog hangs up after two quiet minutes: realtime providers
 # bill per OPEN-LINE minute, and an idle line must never be a meter.
 
+@app.get("/live-worklet.js")
+async def live_worklet():
+    return FileResponse(
+        os.path.join(WEB, "live-worklet.js"),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"})
+
+
 XAI_REALTIME_URL = "wss://api.x.ai/v1/realtime"
 ELEVEN_CONVAI_URL = "wss://api.elevenlabs.io/v1/convai/conversation"
 LIVE_SILENCE_HANGUP_S = 120

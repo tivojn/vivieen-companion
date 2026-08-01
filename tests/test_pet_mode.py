@@ -1465,7 +1465,11 @@ class PetMatteTests(unittest.TestCase):
         # exclusive over the voice channel.
         renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn("async function startLiveTalk()", renderer)
-        self.assertIn("registerProcessor('viv-live-capture'", renderer)
+        self.assertIn("addModule('/live-worklet.js')", renderer)
+        worklet = (ROOT / "web" / "live-worklet.js").read_text(encoding="utf-8")
+        self.assertIn("registerProcessor('viv-live-capture'", worklet)
+        app_src = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('@app.get("/live-worklet.js")', app_src)
         self.assertIn("'/live/voice'", renderer)
         self.assertIn("localSource=src;speaking=true;track=[];", renderer)
         self.assertIn("function liveFlush(session)", renderer)
