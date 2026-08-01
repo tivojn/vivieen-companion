@@ -1221,7 +1221,8 @@ class BodyProviderTests(unittest.TestCase):
                         return_value=(
                             np.array([[1, 0, 0], [0, 1, 0]], np.float32),
                             {"scale": 1.0}, landmarks)),
-                    mock.patch.object(body, "_head_mask", side_effect=head_mask)):
+                    mock.patch.object(body, "_head_mask", side_effect=head_mask),
+                    mock.patch.object(body, "_seam_tone_match")):
                 metadata = body.build(
                     directory,
                     {"style": "photorealistic", "pose": "relaxed"},
@@ -1443,8 +1444,28 @@ class PetMatteTests(unittest.TestCase):
             body._head_mask(canvas, landmarks, path)
             alpha = cv2.imread(path, cv2.IMREAD_UNCHANGED)[:, :, 3]
         self.assertGreater(int(alpha[80, 120]), 245)
-        self.assertLess(int(alpha[175, 35]), 8)
+        # The neck gate RAMPS in over 0.28 face-heights instead of switching
+        # in one row - the binary switch drew a horizontal border line at
+        # chin height through the side hair (carol, 2026-08-01). Mid-ramp a
+        # side column is partially kept; once engaged it is excluded.
+        self.assertLess(int(alpha[200, 35]), 8)
+        self.assertGreater(int(alpha[175, 35]), 40)
+        self.assertLess(int(alpha[175, 35]), 220)
         self.assertGreater(int(alpha[165, 120]), 20)
+
+    def test_body_plate_tone_matches_the_portrait_along_the_seam(self):
+        # A dissolve cannot hide a brightness difference - it spreads it
+        # into a gradient band. The body plate's low frequencies shift
+        # toward the warped portrait, but ONLY around the transition line
+        # (band term peaks at the 50/50 mix) and ONLY in the side-hair
+        # columns: whole-mask weighting washed the chest with portrait
+        # brightness, and neck correction painted a light collar.
+        source = (ROOT / "studio" / "body.py").read_text(encoding="utf-8")
+        self.assertIn("def _seam_tone_match", source)
+        self.assertIn("handover * (1.0 - handover) * 4.0", source)
+        self.assertIn("(xs - 0.38) / 0.22", source)
+        self.assertIn("_seam_tone_match(\n            os.path.join(stage, \"body.png\")", source)
+        self.assertIn("def masked_blur", source)
 
 
 if __name__ == "__main__":
