@@ -330,6 +330,16 @@ class OneClickPipelineTests(unittest.TestCase):
         self.assertIn("full body already built - skipping", source)
         self.assertIn("Ready with gaps", source)
         self.assertIn("_body_stage(slug, options, w,", source)
+        # Owner defaults: office walk, high-heel-touch edge idle, K-pop
+        # point dance - the pipeline builds these unprompted.
+        from studio import motion
+        self.assertEqual(motion.DEFAULT_WALK_STYLE, "office")
+        self.assertEqual(motion.DEFAULT_IDLE_POSE, "back-heel")
+        self.assertEqual(motion.DEFAULT_MOVE_STYLE, "kpop")
+        self.assertEqual(
+            motion.IDLE_POSE_PRESETS["back-heel"]["label"], "High heel touch")
+        self.assertEqual(
+            motion.MOVE_STYLES["kpop"]["label"], "K-pop point dance")
         self.assertIn("_body_stage(slug, BodyProfileInput().model_dump(), writer,",
                       source)
         # a still-running job refuses a second start instead of stacking
