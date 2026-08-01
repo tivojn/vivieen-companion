@@ -2034,6 +2034,7 @@ async function startLiveTalk(){
       catch(err){setCaption('(microphone: '+err.message+')');stopLiveTalk('mic');return;}
       setStatus('live talk · '+(m.provider==='xai'?'Grok':'ElevenLabs'),'rec');
       document.documentElement.classList.add('listening');
+      if(SHELL&&typeof SHELL.setLiveTalk==='function')SHELL.setLiveTalk(true);
     }else if(m.type==='audio')livePlay(session,m.data,m.rate||24000);
     else if(m.type==='user_text'&&m.text)elYou.textContent=m.text;
     else if(m.type==='agent_text'&&m.text){
@@ -2097,9 +2098,14 @@ function stopLiveTalk(reason){
   try{session.stream&&session.stream.getTracks().forEach(t=>t.stop());}catch(e){}
   try{session.ctx&&session.ctx.close();}catch(e){}
   document.documentElement.classList.remove('listening');
-  setStatus(reason==='silence'?'live talk ended — two quiet minutes':'ready',
+  if(SHELL&&typeof SHELL.setLiveTalk==='function')SHELL.setLiveTalk(false);
+  setStatus(reason==='silence'?'live talk ended — 30 quiet seconds':'ready',
     reason==='error'?'':'on');
 }
+// Escape is the universal hang-up while a live line is open.
+addEventListener('keydown',event=>{
+  if(event.key==='Escape'&&LIVE)stopLiveTalk('ended');
+});
 
 /* ================= conversation ================= */
 const history=[];

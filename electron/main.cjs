@@ -73,6 +73,7 @@ let petRoamRuntime = null;
 let petZoomGesture = null;
 let appearancePushAt = 0;
 let petMotionReady = false;
+let liveTalkActive = false;
 let petMotionProfile = {
   walkSpeed: 64,
   cycleSeconds: 1.1,
@@ -2022,7 +2023,8 @@ function showPetMenu() {
       } },
     { name: followingEnconvo ? 'De-couple from EnConvo' : 'Couple to EnConvo',
       click: () => setEnconvoMonitoring(!followingEnconvo) },
-    { name: 'Live talk', hint: 'realtime voice · toggle',
+    { name: liveTalkActive ? 'End live talk' : 'Live talk',
+      hint: liveTalkActive ? 'hang up now' : 'realtime voice',
       click: () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('vivieen:live-toggle');
@@ -2312,6 +2314,9 @@ function installIpc() {
     if (isBuddySender(event)) { buddyDrag = null; return; }
     petDrag = null;
     saveStateSoon();
+  });
+  ipcMain.on('vivieen:live-active', (_event, value) => {
+    liveTalkActive = Boolean(value);
   });
   ipcMain.handle('vivieen:set-enconvo-monitor', (_event, value) => setEnconvoMonitoring(value));
   ipcMain.handle('vivieen:avatar-changed', () => {

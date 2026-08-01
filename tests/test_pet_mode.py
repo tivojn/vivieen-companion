@@ -1478,7 +1478,10 @@ class PetMatteTests(unittest.TestCase):
         preload = (ROOT / "electron" / "preload.cjs").read_text(encoding="utf-8")
         self.assertIn("'vivieen:live-toggle'", preload)
         main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
-        self.assertIn("{ name: 'Live talk', hint: 'realtime voice · toggle',", main)
+        self.assertIn("liveTalkActive ? 'End live talk' : 'Live talk'", main)
+        self.assertIn("'vivieen:live-active'", main)
+        self.assertIn("if(event.key==='Escape'&&LIVE)stopLiveTalk('ended');",
+                      renderer)
         # The auth token must reach WEBSOCKET upgrades too: comparing full
         # origins left ws:// unmatched and both realtime endpoints 403'd.
         self.assertIn("target.protocol === 'http:' || target.protocol === 'ws:'",
