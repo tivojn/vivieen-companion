@@ -226,6 +226,9 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .rig-range{display:flex;justify-content:space-between;gap:10px;margin-top:5px;
   font:600 10px ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase}
 .rig-range .safe{color:var(--ok-text)}.rig-range .experimental{color:var(--accent-text)}
+.rig-dental{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 0;
+  padding-top:12px;border-top:1px solid var(--line)}
+.rig-dental label{margin-bottom:4px}
 .rig-locks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}
 .rig-lock{padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--panel-sub)}
 .rig-lock small{display:block;color:var(--faint);font-size:10px;text-transform:uppercase;
@@ -800,6 +803,16 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
             </select>
           </div>
           <div id="rig-controls"></div>
+          <div class="rig-dental" id="rig-dental">
+            <div>
+              <label for="rig-donor-upper">Upper teeth donor</label>
+              <select id="rig-donor-upper" title="Which frame's enamel row every frame wears. Auto elects the largest detected row; a chosen frame without detected enamel falls back to auto (advisory)."></select>
+            </div>
+            <div>
+              <label for="rig-donor-lower">Lower teeth donor</label>
+              <select id="rig-donor-lower" title="Which frame's enamel row every frame wears. Auto elects the largest detected row; a chosen frame without detected enamel falls back to auto (advisory)."></select>
+            </div>
+          </div>
           <div class="rig-locks">
             <div class="rig-lock"><small>Nose bridge + tip</small><b>0% · rigid</b></div>
             <div class="rig-lock"><small>Upper / lower dental identity</small><b id="rig-donor">Locked</b></div>
@@ -3032,7 +3045,8 @@ function rigStatus(message = '', state = '', percent = null) {
   }
   const brows = RIG_PROFILE.brows === undefined ? '' : ` · brows ${RIG_PROFILE.brows}%`;
   const forehead = RIG_PROFILE.forehead === undefined ? '' : ` · forehead ${RIG_PROFILE.forehead}%`;
-  const targets = `Targets · lip ${RIG_PROFILE.lips}% · jaw ${RIG_PROFILE.jaw}% · cheeks ${RIG_PROFILE.cheeks}%${brows}${forehead} · folds ${RIG_PROFILE.nasolabial}% · nose ${RIG_PROFILE.nose}%`;
+  const teeth = RIG_PROFILE.teeth === undefined ? '' : ` · teeth ${RIG_PROFILE.teeth}%`;
+  const targets = `Targets · lip ${RIG_PROFILE.lips}% · jaw ${RIG_PROFILE.jaw}% · cheeks ${RIG_PROFILE.cheeks}%${brows}${forehead} · folds ${RIG_PROFILE.nasolabial}% · nose ${RIG_PROFILE.nose}%${teeth}`;
   const experimental = rigExperimentalKeys();
   const legacyBackend = Number(RIG.schema.version || 0) < 2;
   const guidance = experimental.length
@@ -3088,6 +3102,31 @@ function renderRigControls() {
   });
 }
 
+function renderRigDental() {
+  // Donor dropdowns: every candidate frame with its detected enamel pixel
+  // count, "auto" (the largest-row election) as default. Advisory like the
+  // sliders - a choice the scan can't honor falls back to auto downstream.
+  const candidates = (RIG.dental && RIG.dental.candidates) || {};
+  const donors = (RIG.dental && RIG.dental.donors) || {};
+  ['upper', 'lower'].forEach(row => {
+    const select = $('#rig-donor-' + row);
+    if (!select) return;
+    const elected = donors[row];
+    select.innerHTML = [
+      `<option value="auto">Auto${elected ? ` · elects ${esc(elected)}` : ''}</option>`,
+      ...(candidates[row] || []).map(candidate =>
+        `<option value="${esc(candidate.name)}">${esc(candidate.name)} · ${candidate.pixels}px enamel</option>`)
+    ].join('');
+    const wanted = RIG_PROFILE[row + '_teeth_donor'] || 'auto';
+    select.value = [...select.options].some(option => option.value === wanted)
+      ? wanted : 'auto';
+    select.onchange = () => {
+      RIG_PROFILE[row + '_teeth_donor'] = select.value;
+      rigStatus();
+    };
+  });
+}
+
 function renderRigPoses() {
   $('#rig-visemes').innerHTML = '<strong>Pose</strong>' +
     RIG.preview_visemes.map(pose => `<button class="rig-chip ${pose === RIG_POSE ? 'on' : ''}" data-rig-pose="${pose}">${pose}</button>`).join('');
@@ -3138,6 +3177,7 @@ async function openRig(slug) {
     gapsButton.textContent = `Generate ${RIG_GAPS.length} missing renders`;
   }
   renderRigControls();
+  renderRigDental();
   renderRigPoses();
   rigStatus(response.can_recompose ? '' :
     'Cannot rebuild yet: the original build lost renders for '
@@ -3229,7 +3269,12 @@ async function applyRig() {
 $('#rig-preset').onchange = event => {
   const name = event.target.value;
   if (!RIG || name === 'custom') return;
-  RIG_PROFILE = {...RIG.schema.presets[name]};
+  // Presets are motion targets; dental identity choices (donor overrides
+  // and lock strength) survive a preset switch.
+  RIG_PROFILE = {...RIG.schema.presets[name],
+    teeth: RIG_PROFILE.teeth,
+    upper_teeth_donor: RIG_PROFILE.upper_teeth_donor,
+    lower_teeth_donor: RIG_PROFILE.lower_teeth_donor};
   renderRigControls();
   drawRig();
   rigStatus();
