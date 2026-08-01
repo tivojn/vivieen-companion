@@ -1453,6 +1453,20 @@ class PetMatteTests(unittest.TestCase):
         self.assertLess(int(alpha[175, 35]), 220)
         self.assertGreater(int(alpha[165, 120]), 20)
 
+    def test_missing_runtime_layers_heal_themselves(self):
+        # A publish swaps the runtime directory under a reloading pet: one
+        # fetch lands in the gap, resolves null, and the avatar silently
+        # loses its body until the next manual reload (carol, 2026-08-01 -
+        # "the full-body is no longer attached"). The loader retries the
+        # missing layers with fresh cache-busters until they heal, and
+        # re-arms the roam engine when the walk clip arrives late.
+        renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("heal=${Date.now()}", renderer)
+        self.assertIn("if(M.body&&!BODY)BODY=await reload(M.body.image);", renderer)
+        self.assertIn("if(M.body&&!HEADMASK)HEADMASK=await reload(M.body.head_mask);", renderer)
+        self.assertIn("if(M.cutout&&!CUTOUT)CUTOUT=await reload(M.cutout.src);", renderer)
+        self.assertIn("M.motion.walk&&!MOTION.walk", renderer)
+
     def test_body_plate_tone_matches_the_portrait_along_the_seam(self):
         # A dissolve cannot hide a brightness difference - it spreads it
         # into a gradient band. The body plate's low frequencies shift

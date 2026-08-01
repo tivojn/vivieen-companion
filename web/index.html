@@ -703,6 +703,31 @@ function routedStatus(route,fallback=''){
     if(motionReady)motionProfileZoom=roamZoomValue();
     SHELL.setPetMotionReady(motionReady?motionPlaybackProfile():{ready:false});
   }
+  // A publish can swap the runtime directory under a reloading pet: one
+  // fetch lands in the gap, resolves null, and the avatar silently loses
+  // its body until the next manual reload (carol, 2026-08-01 - "the
+  // full-body is no longer attached"). Keep retrying the missing layers
+  // with fresh cache-busters until they heal.
+  (async()=>{
+    const reload=src=>load(`${src}${src.includes('?')?'&':'?'}heal=${Date.now()}`);
+    for(let attempt=0;attempt<8;attempt++){
+      const missing=(M.body&&(!BODY||!HEADMASK))||(M.cutout&&!CUTOUT)
+        ||(M.motion&&M.motion.walk&&!MOTION.walk);
+      if(!missing)return;
+      await new Promise(resolve=>setTimeout(resolve,1200+attempt*600));
+      if(M.body&&!BODY)BODY=await reload(M.body.image);
+      if(M.body&&!HEADMASK)HEADMASK=await reload(M.body.head_mask);
+      if(M.cutout&&!CUTOUT)CUTOUT=await reload(M.cutout.src);
+      if(M.motion&&M.motion.walk&&!MOTION.walk){
+        await loadMotion('walk');
+        if(MOTION.walk&&SHELL&&SHELL.isElectron
+           &&typeof SHELL.setPetMotionReady==='function'){
+          motionProfileZoom=roamZoomValue();
+          SHELL.setPetMotionReady(motionPlaybackProfile());
+        }
+      }
+    }
+  })();
   ready=true;requestAnimationFrame(loop);poll();
 })();
 
