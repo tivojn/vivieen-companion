@@ -2227,12 +2227,6 @@ async def pet_menu():
                         headers={"Cache-Control": "no-store"})
 
 
-@app.get("/intro")
-async def enconvo_intro():
-    return HTMLResponse(open(os.path.join(WEB, "intro.html")).read(),
-                        headers={"Cache-Control": "no-store"})
-
-
 @app.get("/appearance")
 async def appearance():
     return HTMLResponse(open(os.path.join(WEB, "appearance.html")).read(),

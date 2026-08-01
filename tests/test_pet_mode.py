@@ -1495,61 +1495,25 @@ class PetMatteTests(unittest.TestCase):
         self.assertEqual(main.count("openAccessibilitySettings();"), 2)
         self.assertIn("flip the switch next '\n        + 'to Vivieen", main)
 
-    def test_enconvo_pitch_shows_at_first_launch_not_on_couple_click(self):
-        # The undecided user never clicks "Couple" - and whoever DOES click
-        # has already decided (the owner's own point, 2026-08-01). So the
-        # pitch card shows once at FIRST LAUNCH (a beat after the avatar
-        # lands, skipped entirely on already-coupled installs), while the
-        # couple click itself is instant when EnConvo is installed. The
-        # only couple-click card is the missing-EnConvo case, where
-        # coupling would silently wait on an app that does not exist - the
-        # download leads there.
+    def test_coupling_is_a_plain_toggle_with_no_pitch(self):
+        # The EnConvo explainer (card window, narration, first-launch
+        # trigger) was removed on 2026-08-01 - "keep the app simple and
+        # clean". Coupling is a plain toggle again from every entry point,
+        # and none of the intro machinery may linger.
         main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
-        self.assertIn("function maybeShowLaunchIntro()", main)
-        self.assertIn("if (state.enconvoIntroSeen || state.followEnconvo) return;",
+        self.assertIn("click: () => setEnconvoMonitoring(!followingEnconvo)",
                       main)
-        self.assertIn("maybeShowLaunchIntro();", main)
-        self.assertIn("function enconvoInstalled()", main)
-        self.assertIn("if (enconvoInstalled()) return setEnconvoMonitoring(true);",
+        self.assertIn("click: (item) => setEnconvoMonitoring(item.checked)",
                       main)
-        self.assertIn("runEnconvoIntro('missing')", main)
-        self.assertIn("runEnconvoIntro('launch')", main)
-        self.assertIn("shell.openExternal('https://enconvo.com')", main)
-        self.assertEqual(main.count("void coupleToEnconvo()"), 2)
-        self.assertIn("value ? coupleToEnconvo() : setEnconvoMonitoring(false)",
-                      main)
-        # The card adapts: at launch the decline reads "I'll use my own
-        # keys"; without EnConvo installed the download is primary.
-        intro = (ROOT / "web" / "intro.html").read_text(encoding="utf-8")
-        self.assertIn("I'll use my own keys", intro)
-        self.assertIn("get.classList.add('pri');", intro)
-        self.assertIn("installed=${installed ? 1 : 0}", main)
-        # The pitch is a Vivieen-styled card window, not the native message
-        # box with the giant app icon the owner called ugly: wordmark, both
-        # design systems, three choices wired through a sandboxed preload.
-        self.assertIn("function showEnconvoIntroWindow(mode = 'launch', installed = false)",
-                      main)
-        self.assertIn("guardNavigation(introWindow, 'intro')", main)
-        self.assertIn("intro-preload.cjs", main)
-        intro = (ROOT / "web" / "intro.html").read_text(encoding="utf-8")
-        self.assertIn("Best together with EnConvo", intro)
-        self.assertIn('data-choice="1"', intro)
-        self.assertIn("vivieen-design", intro)
-        self.assertNotIn("<img", intro)
-        preload = (ROOT / "electron" / "intro-preload.cjs"
-                   ).read_text(encoding="utf-8")
-        self.assertIn("vivieen:intro-choice", preload)
-        app_source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
-        self.assertIn('@app.get("/intro")', app_source)
-        # The pitch narrates itself: a pre-generated EnConvo TTS take
-        # (Gemini 3.1 Flash TTS Preview, voice Kore) plays behind the
-        # dialog and is killed the moment a button is picked. The asset
-        # lives under electron/ so the packager ships it.
-        self.assertIn("'assets', 'enconvo-intro.m4a'", main)
-        self.assertIn("narration.kill()", main)
-        audio = ROOT / "electron" / "assets" / "enconvo-intro.m4a"
-        self.assertTrue(audio.is_file())
-        self.assertGreater(audio.stat().st_size, 40_000)
+        self.assertIn("(_event, value) => setEnconvoMonitoring(value)", main)
+        for relic in ("coupleToEnconvo", "showEnconvoIntroWindow",
+                      "maybeShowLaunchIntro", "enconvoIntroSeen",
+                      "enconvo-intro.m4a", "intro-preload"):
+            self.assertNotIn(relic, main)
+        self.assertNotIn('@app.get("/intro")',
+                         (ROOT / "server" / "app.py").read_text(encoding="utf-8"))
+        self.assertFalse((ROOT / "web" / "intro.html").exists())
+        self.assertFalse((ROOT / "electron" / "intro-preload.cjs").exists())
 
     def test_cursor_head_follow_is_a_whisper_not_a_swing(self):
         # Tuned DOWN twice on the live desktop (2026-08-01): 12/5/1.0 swung
