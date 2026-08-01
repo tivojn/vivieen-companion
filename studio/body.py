@@ -200,6 +200,8 @@ STYLE — {style_text}. Match the reference head's lighting direction, color tem
 
 NO GREEN — ban the color green everywhere in the image: no green clothing, garment parts, or accessories, no green props or jewelry stones, no green background, backdrop tint, or green cast in the lighting. If the editable art direction asks for green, substitute a different color and keep everything else of that direction. Downstream alpha keying misreads green as background, so any green in the plate corrupts the cutout.
 
+NO WHITE WARDROBE — ban white and off-white in everything worn: no white or off-white tops, shirts, dresses, trousers, skirts, jackets, or outerwear, and absolutely no white shoes, sneakers, heels, or soles. The figure is cut out from a light studio backdrop, and white wardrobe dissolves into it and shreds the silhouette. If the editable art direction asks for white, substitute a clearly non-white, non-green color and keep everything else of that direction.
+
 BACKGROUND — simple clean studio backdrop with strong person/background separation, never green or green-tinted. The application will remove the background locally, so preserve fine hair edges and do not add smoke, veils, loose particles, or cast shadows behind the figure."""
 
 

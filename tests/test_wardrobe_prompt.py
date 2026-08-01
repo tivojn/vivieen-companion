@@ -460,6 +460,11 @@ class EyewearLockTests(unittest.TestCase):
             self.assertIn("no green clothing", plate)
             self.assertIn("never green or green-tinted", plate)
             self.assertIn("substitute a different color", plate)
+            # Second owner rule, same day: white wardrobe dissolves into
+            # the light studio backdrop and shreds the cutout silhouette.
+            self.assertIn("NO WHITE WARDROBE", plate)
+            self.assertIn("no white shoes", plate)
+            self.assertIn("clearly non-white, non-green color", plate)
 
 
 if __name__ == "__main__":
