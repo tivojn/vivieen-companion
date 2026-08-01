@@ -191,6 +191,23 @@ def inspector_payload(landmarks, shape):
         [round(x1 / width, 6), round(y_bottom / height, 6)],
         [round(x0 / width, 6), round(y_bottom / height, 6)],
     ]]
+    # The eyebag band has no landmark ring either - synthesize one per eye:
+    # from just under the lower lash line down ~0.45 eye-widths, so the
+    # panel can show the infraorbital layer that animates with the cheeks.
+    bags = []
+    for group in (face.EYE_L, face.EYE_R):
+        points = np.asarray(landmarks[group], np.float32)
+        ex0, ex1 = float(points[:, 0].min()), float(points[:, 0].max())
+        eye_width = max(ex1 - ex0, 1.0)
+        top = float(points[:, 1].max()) + 0.04 * eye_width
+        bottom = min(float(height), top + 0.45 * eye_width)
+        bags.append([
+            [round(ex0 / width, 6), round(top / height, 6)],
+            [round(ex1 / width, 6), round(top / height, 6)],
+            [round(ex1 / width, 6), round(bottom / height, 6)],
+            [round(ex0 / width, 6), round(bottom / height, 6)],
+        ])
+    regions["eyebags"] = bags
     return dict(points=points, edges=mesh_edges(landmarks, width, height),
                 regions=regions, width=width, height=height)
 

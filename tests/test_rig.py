@@ -72,6 +72,35 @@ class RigProfileTests(unittest.TestCase):
                      self.assertRaises(ValueError):
                     rig.normalize({name: value})
 
+    def test_eyebag_band_animates_and_shows_in_the_landscape(self):
+        # Owner, rachel 2026-08-01: the infraorbital "eyebag" triangles were
+        # the one patch of face no layer touched - cheek weight centred
+        # lower on the malar, eye layer stopping at the lid. A thin layer
+        # now rides the cheek envelope (same warp, shallower travel), the
+        # landscape panel shows the band, and it answers the Cheeks slider.
+        from studio import expression, export
+        self.assertEqual(expression.EYEBAG_UP, [0.0, 0.5, 1.0, 1.6, 2.3])
+        source = open(os.path.join(ROOT, "studio", "expression.py"),
+                      encoding="utf-8").read()
+        self.assertIn("def _eyebag_weight", source)
+        self.assertIn('out["eyebag"][side] = dict(', source)
+        export_source = open(os.path.join(ROOT, "studio", "export.py"),
+                             encoding="utf-8").read()
+        self.assertIn('_strip(expr["eyebag"], "eyebag"', export_source)
+        self.assertIn("eyebag=eyebag", export_source)
+        rig_source = open(os.path.join(ROOT, "studio", "rig.py"),
+                          encoding="utf-8").read()
+        self.assertIn('regions["eyebags"] = bags', rig_source)
+        renderer = open(os.path.join(ROOT, "web", "index.html"),
+                        encoding="utf-8").read()
+        self.assertIn("M.eyebag?['l','r'].map", renderer)
+        self.assertIn("drawSnap(EB[s],M.eyebag[s],M.eyebag.ups,ck[s]*ebTop/ckTop,0);",
+                      renderer)
+        settings = open(os.path.join(ROOT, "web", "settings.html"),
+                        encoding="utf-8").read()
+        self.assertIn("eyebags: [126, 196, 226]", settings)
+        self.assertIn("name === 'eyebags' ? 'cheeks' : name", settings)
+
     def test_tilted_source_heads_regenerate_toward_frontal(self):
         # rachel (2026-08-01): a tilted selfie kept its pose through the
         # canonical head (yaw -9.1, pitch 23, roll 18, foreshortening 0.56)
@@ -390,7 +419,7 @@ class RigProfileTests(unittest.TestCase):
         self.assertIn('regions["forehead"]', rig_source)
         settings = open(os.path.join(ROOT, "web", "settings.html"),
                         encoding="utf-8").read()
-        self.assertIn("'forehead', 'brows', 'cheeks'", settings)
+        self.assertIn("'forehead', 'brows', 'eyebags', 'cheeks'", settings)
         export_source = open(os.path.join(ROOT, "studio", "export.py"),
                              encoding="utf-8").read()
         self.assertIn('sqs=expr["brow"].get("sqs"', export_source)

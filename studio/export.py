@@ -307,12 +307,15 @@ def export(slug, dest, quality=92, states=blink.N_STATES, log=print,
     brow = _strip(expr["brow"], "brow", dict(dys=expr["brow"]["dys"],
                                              sqs=expr["brow"].get("sqs", [0.0])))
     cheek = _strip(expr["cheek"], "cheek", dict(ups=expr["cheek"]["ups"]))
+    eyebag = (_strip(expr["eyebag"], "eyebag", dict(ups=expr["eyebag"]["ups"]))
+              if expr.get("eyebag") else None)
 
     timing = dict(close=blink.CLOSE, hold=blink.HOLD, open=blink.OPEN,
                   settle=blink.SETTLE, creep=blink.CREEP)
     manifest = dict(v=12, w=W, h=H, avatar=dict(slug=slug, name=m["name"]),
                     visemes=names, frames=frames, eyes=eyes, gaze=gaze, brow=brow,
-                    cheek=cheek, neck=expression.neck(klm), cutout=cutout_meta,
+                    cheek=cheek, eyebag=eyebag,
+                    neck=expression.neck(klm), cutout=cutout_meta,
                     body=body_meta, motion=motion_meta, blink=timing,
                     built=m.get("updated"), quality=m.get("quality"),
                     rig_profile=m.get("rig_profile"))
