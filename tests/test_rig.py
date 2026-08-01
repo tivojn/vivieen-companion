@@ -245,14 +245,18 @@ class RigProfileTests(unittest.TestCase):
         self.assertIn("function idleMouthFor", renderer)
         self.assertIn("function idleJawDrift", renderer)
         self.assertIn("speaking?shape:idleJawDrift(now)", renderer)
-        # Retuned after the first live viewing ("bare can notice"): closed-
-        # lip shapes wash at 34-54%, the parted 'ih' stays lighter, and the
-        # jaw and cheeks lean into each gesture through idleEnv().
-        self.assertIn("idleShape==='ih'?0.22+Math.random()*0.16:0.34+Math.random()*0.20",
+        # Retuned twice against the live desktop (2026-08-01): first pass
+        # sat below notice, second pass reads but stayed lips-closed. Now
+        # the parted shapes ('ih', 'E') run strong enough that a hint of
+        # teeth deliberately shows, presses/swallows wash at 42-64%, and
+        # the jaw and cheeks lean into each gesture through idleEnv().
+        self.assertIn("r<0.25?'PP':r<0.50?'ih':r<0.65?'E':r<0.85?'SS':'nn'",
+                      renderer)
+        self.assertIn("?0.32+Math.random()*0.16:0.42+Math.random()*0.22",
                       renderer)
         self.assertIn("function idleEnv", renderer)
-        self.assertIn("0.24*idleEnv(now)", renderer)
-        self.assertIn("0.30*idleEnv(now)", renderer)
+        self.assertIn("0.34*idleEnv(now)", renderer)
+        self.assertIn("0.38*idleEnv(now)", renderer)
         self.assertIn("plate(idleWash.img,mouthWarp?mouthWarp.cur:0)", renderer)
         self.assertIn("/Math.max(0.55,browGain())", renderer)
         # Brow and forehead are SEPARATE tissues (2026-08-01): the strips

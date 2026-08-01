@@ -1250,21 +1250,24 @@ function idleMouthFor(now){
   if(speaking||recording){nextIdleMouth=now+3000+Math.random()*4000;return null;}
   if(now>=nextIdleMouth){
     const r=Math.random();
-    // Closed-lip shapes (press / tension / swallow) take a stronger wash;
-    // the parted 'ih' stays lighter so ghost teeth never shimmer through.
-    idleShape=r<0.40?'PP':r<0.70?'ih':r<0.90?'nn':'SS';
-    idleAmp=idleShape==='ih'?0.22+Math.random()*0.16:0.34+Math.random()*0.20;
-    idleDur=900+Math.random()*1100;
+    // Presses, swallows and tension carry the strongest wash; the parted
+    // shapes ('ih', 'E') run strong enough that a hint of teeth shows
+    // through the opening - deliberate now, but still under half opacity
+    // so it reads as a breath apart, never the start of a word.
+    idleShape=r<0.25?'PP':r<0.50?'ih':r<0.65?'E':r<0.85?'SS':'nn';
+    idleAmp=(idleShape==='ih'||idleShape==='E')
+      ?0.32+Math.random()*0.16:0.42+Math.random()*0.22;
+    idleDur=1000+Math.random()*1300;
     idleT0=now;
-    nextIdleMouth=now+5000+Math.random()*8000;
+    nextIdleMouth=now+3800+Math.random()*6000;
   }
   const env=idleEnv(now);
   if(!env||!idleShape||!IMG[idleShape])return null;
   return {img:IMG[idleShape].open,a:idleAmp*env*env};
 }
 function idleJawDrift(now){
-  // breathing sway a hair under half a pixel, leaning into each gesture
-  return 0.15+0.11*vn(now/1000*0.09,17)+0.24*idleEnv(now);
+  // breathing sway around half a pixel, leaning firmly into each gesture
+  return 0.17+0.12*vn(now/1000*0.09,17)+0.34*idleEnv(now);
 }
 function jawFor(now,mix){
   const a=JAW_V[prevV]||0,b=JAW_V[curV]||0;
@@ -1284,7 +1287,7 @@ function cheekFor(now,lid,mix){
   }else{
     // idle: a slow wander plus a lift that rides each mouth micro-gesture,
     // so the cheeks visibly live between replies instead of freezing
-    tgt=top*(0.10+0.20*(vn(now/1000*0.18,11)+1)/2+0.30*idleEnv(now));
+    tgt=top*(0.10+0.24*(vn(now/1000*0.20,11)+1)/2+0.38*idleEnv(now));
   }
   const dt=cheekT<0?16:Math.min(80,now-cheekT);cheekT=now;
   cheek+=(tgt-cheek)*(1-Math.exp(-dt/(tgt>cheek?55:130)));
