@@ -9,6 +9,7 @@ const {
   globalShortcut,
   ipcMain,
   nativeImage,
+  powerMonitor,
   screen,
   session,
   shell,
@@ -507,7 +508,10 @@ function visibleBounds(bounds) {
 }
 
 function shellState() {
+  let onBattery = false;
+  try { onBattery = powerMonitor.isOnBattery(); } catch {}
   return {
+    onBattery,
     alwaysOnTop: Boolean(state && state.alwaysOnTop),
     backendOwned: ownsBackend,
     backendUrl: baseUrl(),
@@ -2554,6 +2558,9 @@ async function boot() {
   installRecoveryShortcut();
   scheduleUpdateChecks();
   if (state.followEnconvo) enconvoMonitor.setEnabled(true);
+  // Battery-aware pacing: the renderer halves its frame caps on battery.
+  powerMonitor.on('on-battery', broadcastState);
+  powerMonitor.on('on-ac', broadcastState);
   const metadata = await vivieenMetadata(3000);
   if (!metadata || !metadata.active) openSettings();
   if (metadata && metadata.companion) createBuddyWindow(metadata.companion);
