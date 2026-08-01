@@ -67,11 +67,11 @@ def default_head_provider():
     return body.default_provider()
 
 
-def _head_command(provider, reference, out_dir, quality):
+def _head_command(provider, reference, out_dir, quality, prompt=None):
     route = provider["route"]
     command = [
         ENCONVO, "image_create", "features", route,
-        "--prompt", HEAD_PROMPT,
+        "--prompt", prompt or HEAD_PROMPT,
         "--reference_images", reference,
         "--output_dir", out_dir,
         "--file_name", "head",
@@ -97,12 +97,18 @@ def _head_command(provider, reference, out_dir, quality):
 
 
 def generate_head(reference, destination, provider=None, quality="high",
-                  timeout=1800, log=print, overwrite=False):
-    """Create and cache the canonical head-only identity asset used downstream."""
+                  timeout=1800, log=print, overwrite=False, pose_note=""):
+    """Create and cache the canonical head-only identity asset used downstream.
+
+    pose_note carries a measured correction ("previous attempt: yaw -9.1deg
+    ...") appended to the prompt when a frontality retry runs - tilted
+    source selfies (rachel, 2026-08-01: pitch 23, roll 18, foreshortening
+    0.56) otherwise keep their tilt and degrade every mouth stage after."""
     provider = provider or default_head_provider()
+    prompt = HEAD_PROMPT + pose_note
     signature = hashlib.sha256((
         f"v{HEAD_PROMPT_VERSION}\n{provider['name']}\n{provider.get('model')}\n"
-        f"{quality}\n{HEAD_PROMPT}\n" + _file_digest(reference)
+        f"{quality}\n{prompt}\n" + _file_digest(reference)
     ).encode("utf-8")).hexdigest()
     signature_file = destination + ".prompt"
     if not overwrite and os.path.isfile(destination) and os.path.getsize(destination) > 4096:
@@ -123,7 +129,8 @@ def generate_head(reference, destination, provider=None, quality="high",
             stdout = ""
             try:
                 result = subprocess.run(
-                    _head_command(provider, reference, stage, quality),
+                    _head_command(provider, reference, stage, quality,
+                                  prompt=prompt),
                     capture_output=True, text=True, timeout=timeout,
                     stdin=subprocess.DEVNULL)
                 stdout = result.stdout or ""

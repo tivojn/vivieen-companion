@@ -239,6 +239,48 @@ def _articulation_failure(row):
             f"{minimum:.2f}-{maximum:.2f} (target {row['want_width']:.2f})")
 
 
+# A tilted source selfie must not become a tilted avatar: the canonical
+# head is prompted frontal, but providers sometimes keep the source pose
+# (rachel, 2026-08-01: yaw -9.1, pitch 23, roll 18, foreshortening 0.56 -
+# and every mouth stage after degrades: viseme transfer, landmark accuracy,
+# the dental band). Measured limits; outside them the head regenerates with
+# a corrective note, best candidate wins, and a stubborn tilt ships with an
+# ADVISORY - never a block.
+FRONTAL_YAW = 8.0
+FRONTAL_ROLL = 6.0
+FRONTAL_PITCH = (-6.0, 16.0)
+FRONTAL_FORESHORTENING = 0.85
+
+
+def _frontality_issues(metrics):
+    issues = []
+    yaw = float(metrics.get("yaw") or 0.0)
+    roll = float(metrics.get("roll") or 0.0)
+    pitch = float(metrics.get("pitch") or 0.0)
+    depth = float(metrics.get("foreshortening") or 1.0)
+    if abs(yaw) > FRONTAL_YAW:
+        issues.append(f"yaw {yaw:+.1f}deg (want within +/-{FRONTAL_YAW:.0f})")
+    if abs(roll) > FRONTAL_ROLL:
+        issues.append(f"roll {roll:+.1f}deg (want within +/-{FRONTAL_ROLL:.0f})")
+    if not FRONTAL_PITCH[0] <= pitch <= FRONTAL_PITCH[1]:
+        issues.append(f"pitch {pitch:+.1f}deg (want {FRONTAL_PITCH[0]:.0f}"
+                      f"..{FRONTAL_PITCH[1]:.0f})")
+    if depth < FRONTAL_FORESHORTENING:
+        issues.append(f"foreshortening {depth:.2f} "
+                      f"(want >= {FRONTAL_FORESHORTENING:.2f})")
+    return issues
+
+
+def _frontality_score(metrics):
+    yaw = abs(float(metrics.get("yaw") or 0.0)) / FRONTAL_YAW
+    roll = abs(float(metrics.get("roll") or 0.0)) / FRONTAL_ROLL
+    pitch = float(metrics.get("pitch") or 0.0)
+    pitch_excess = max(FRONTAL_PITCH[0] - pitch, pitch - FRONTAL_PITCH[1], 0.0) / 10.0
+    depth = max(0.0, FRONTAL_FORESHORTENING
+                - float(metrics.get("foreshortening") or 1.0)) / 0.10
+    return yaw + roll + pitch_excess + depth
+
+
 def raw_render_gaps(slug):
     raw_dir = os.path.join(adir(slug), "raw")
     return [name for name in visemes.ORDER
@@ -471,12 +513,41 @@ def build_avatar(slug, shapes=None, log=None, quality="high"):
         emit("creating canonical HD head-only identity reference...")
         head_path = os.path.join(d, "head.png")
         head_provider = generate.default_head_provider()
-        generate.generate_head(
-            source_keyframe, head_path, provider=head_provider,
-            log=emit, quality=quality)
         staged_keyframe = os.path.join(d, ".head-keyframe.png")
-        head_metrics = prep.build_keyframe(
-            head_path, staged_keyframe, diag_dir=diag)
+        best = None
+        pose_note = ""
+        for pose_attempt in range(3):
+            generate.generate_head(
+                source_keyframe, head_path, provider=head_provider,
+                log=emit, quality=quality, pose_note=pose_note,
+                overwrite=bool(pose_attempt))
+            head_metrics = prep.build_keyframe(
+                head_path, staged_keyframe, diag_dir=diag)
+            issues = _frontality_issues(head_metrics)
+            score = _frontality_score(head_metrics)
+            if best is None or score < best[0]:
+                shutil.copy2(head_path, head_path + ".best")
+                shutil.copy2(staged_keyframe, staged_keyframe + ".best")
+                best = (score, issues, head_metrics)
+            if not issues:
+                break
+            emit(f"  head pose off-frontal: {'; '.join(issues)}"
+                 + (f" - regenerating (retry {pose_attempt + 1}/2)"
+                    if pose_attempt < 2 else ""))
+            pose_note = (
+                "\n\nPOSE CORRECTION - a previous attempt measured "
+                + "; ".join(issues)
+                + ". Render the head PERFECTLY FRONTAL this time: zero yaw, "
+                  "zero roll, camera exactly at eye level with no upward or "
+                  "downward tilt, both ears equally visible.")
+        os.replace(head_path + ".best", head_path)
+        os.replace(staged_keyframe + ".best", staged_keyframe)
+        score, issues, head_metrics = best
+        if issues:
+            emit("ADVISORY head is not fully frontal after retries: "
+                 + "; ".join(issues)
+                 + " - mouth and dental quality may suffer; a straighter, "
+                   "camera-level source photo gives the best result")
         os.replace(staged_keyframe, key)
         m.setdefault("source_metrics", copy.deepcopy(m.get("metrics") or {}))
         m["metrics"] = head_metrics
