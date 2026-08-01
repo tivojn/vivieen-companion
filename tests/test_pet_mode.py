@@ -1453,6 +1453,22 @@ class PetMatteTests(unittest.TestCase):
         self.assertLess(int(alpha[175, 35]), 220)
         self.assertGreater(int(alpha[165, 120]), 20)
 
+    def test_roam_and_edge_idle_never_leave_the_screen(self):
+        # Owner rule 2026-08-01: the edge idle held at a screen corner must
+        # never poke out of the screen - at most the figure fills the work
+        # area top to bottom, feet above the Dock (the window is bottom-
+        # anchored, so an over-tall roam zoom pushed the HEAD past the
+        # screen top). Every path that sizes a roam window - pet start,
+        # pet zoom resize, buddy start, and the docked stillness idle -
+        # clamps through the same helper, width scaling with height.
+        main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
+        self.assertIn("function clampRoamSizeToArea(size, area)", main)
+        self.assertIn("const scale = area.height / size.height;", main)
+        self.assertEqual(main.count("clampRoamSizeToArea("), 5)
+        self.assertIn("clampRoamSizeToArea(petRoamSize(zoom), area)", main)
+        self.assertIn(
+            "clampRoamSizeToArea(\n      petZoomSize(PET_BASE_SIZE", main)
+
     def test_accessibility_failures_open_the_settings_pane_directly(self):
         # Owner request 2026-08-01: the old bubble described the System
         # Settings path in words and left the user to walk it. Both voice-

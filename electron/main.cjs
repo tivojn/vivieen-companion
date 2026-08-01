@@ -797,10 +797,24 @@ function petRoamSize(zoom) {
     PET_ROAM_SIZE, PET_ROAM_MINIMUM, clampPetZoom(requested, PET_ROAM_ZOOM_RANGE));
 }
 
+// The roaming figure - and especially the edge idle held at a screen
+// corner - must never leave the screen: at most she fills the work area
+// top to bottom, feet above the Dock, crown at the menu bar, width
+// scaling with the height (owner rule 2026-08-01: a tall roam zoom pushed
+// the head past the screen top because the window is bottom-anchored).
+function clampRoamSizeToArea(size, area) {
+  if (size.height <= area.height) return size;
+  const scale = area.height / size.height;
+  return {
+    width: Math.max(1, Math.round(size.width * scale)),
+    height: Math.round(area.height),
+  };
+}
+
 function resizePetRoamWindow(zoom) {
   if (!mainWindow || mainWindow.isDestroyed()) return null;
-  const size = petRoamSize(zoom);
   const area = petRoamDisplay().workArea;
+  const size = clampRoamSizeToArea(petRoamSize(zoom), area);
   const bounds = mainWindow.getBounds();
   const centre = bounds.x + bounds.width / 2;
   const rightEdge = area.x + area.width - size.width;
@@ -981,7 +995,7 @@ function startPetRoamMotion() {
   const display = petRoamDisplay();
   const area = display.workArea;
   const home = state.petHomeBounds || state.bounds || {};
-  const size = petRoamSize();
+  const size = clampRoamSizeToArea(petRoamSize(), area);
   const maximumX = area.x + area.width - size.width;
   const homeCenter = Number.isFinite(home.x) && Number.isFinite(home.width)
     ? home.x + home.width / 2 : area.x + area.width / 2;
@@ -1306,7 +1320,7 @@ function startBuddyRoamMotion() {
   const display = buddyRoamDisplay();
   const area = display.workArea;
   const home = buddyWindow.getBounds();
-  const size = petRoamSize();
+  const size = clampRoamSizeToArea(petRoamSize(), area);
   const maximumX = area.x + area.width - size.width;
   const homeCenter = Number.isFinite(home.x) && Number.isFinite(home.width)
     ? home.x + home.width / 2 : area.x + area.width / 2;
@@ -2338,7 +2352,8 @@ function installIpc() {
     if (!mainWindow || event.sender !== mainWindow.webContents) return;
     if (state.petRoam || state.petLocked) return;
     const area = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
-    const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);
+    const size = clampRoamSizeToArea(
+      petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom), area);
     // Flush against the work area: the idle pose leans on the window's right
     // edge, so any dock margin becomes a phantom wall floating in air - she
     // must rest on the actual screen edge, feet just above the Dock.
