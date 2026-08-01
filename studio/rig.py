@@ -17,10 +17,13 @@ CONTROLS = {
     "cheeks": dict(label="Cheeks", minimum=0, maximum=100,
                    safe_minimum=0, safe_maximum=70, step=1,
                    default=50, help="Speech-coupled cheek movement."),
+    # Tuned live (2026-08-01) once the strips actually rendered: the gesture
+    # units were calibrated against invisible 15%-alpha strips, so at full
+    # opacity 55 reads theatrical. 8 is the owner-approved resting default.
     "brows": dict(label="Eyebrows", minimum=0, maximum=100,
-                  safe_minimum=20, safe_maximum=85, step=1,
-                  default=55, help="Speech-coupled eyebrow gestures. "
-                                   "Applied live by the runtime."),
+                  safe_minimum=5, safe_maximum=85, step=1,
+                  default=8, help="Speech-coupled eyebrow gestures. "
+                                  "Applied live by the runtime."),
     "forehead": dict(label="Forehead", minimum=0, maximum=100,
                      safe_minimum=15, safe_maximum=85, step=1,
                      default=55, help="How much the forehead skin follows a "
@@ -33,11 +36,11 @@ CONTROLS = {
                  default=8, help="Maximum speech influence; bridge and tip stay locked."),
 }
 PRESETS = {
-    "natural": dict(lips=100, jaw=62, cheeks=50, brows=55, forehead=55,
+    "natural": dict(lips=100, jaw=62, cheeks=50, brows=8, forehead=55,
                     nasolabial=55, nose=8),
-    "subtle": dict(lips=88, jaw=42, cheeks=25, brows=30, forehead=30,
+    "subtle": dict(lips=88, jaw=42, cheeks=25, brows=5, forehead=30,
                    nasolabial=32, nose=4),
-    "expressive": dict(lips=100, jaw=76, cheeks=65, brows=80, forehead=80,
+    "expressive": dict(lips=100, jaw=76, cheeks=65, brows=30, forehead=80,
                        nasolabial=68, nose=10),
 }
 REGION_GROUPS = {

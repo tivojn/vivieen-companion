@@ -219,6 +219,12 @@ class RigProfileTests(unittest.TestCase):
         # ceiling was measured live as imperceptible on screen.
         self.assertIn("forehead", rig.CONTROLS)
         self.assertEqual(rig.CONTROLS["brows"]["label"], "Eyebrows")
+        # Owner-tuned (2026-08-01) once the strips actually rendered: the
+        # gesture units were calibrated against invisible 15%-alpha strips,
+        # so 55 reads theatrical at full opacity. 8 is the resting default.
+        self.assertEqual(rig.CONTROLS["brows"]["default"], 8)
+        self.assertEqual(rig.PRESETS["natural"]["brows"], 8)
+        self.assertLessEqual(rig.CONTROLS["brows"]["safe_minimum"], 8)
         self.assertEqual(rig.CONTROLS["forehead"]["label"], "Forehead")
         from studio import expression
         self.assertEqual(max(expression.BROW_DY), 9.5)
@@ -232,6 +238,15 @@ class RigProfileTests(unittest.TestCase):
         # is broadcast for this avatar, else the published rig_profile.
         self.assertIn("Math.min(2,liveRig('brows')/55)", renderer)
         self.assertIn("(M&&M.rig_profile&&Number(M.rig_profile[key]))||55", renderer)
+        # Idle life (owner request 2026-08-01): standing by, the face does
+        # more than blink - a breathing-rate jaw sway plus occasional soft
+        # lip press / parting / swallow, washed in at 15-30% alpha from the
+        # pose-locked viseme plates so it never reads as speech.
+        self.assertIn("function idleMouthFor", renderer)
+        self.assertIn("function idleJawDrift", renderer)
+        self.assertIn("speaking?shape:idleJawDrift(now)", renderer)
+        self.assertIn("idleAmp=0.15+Math.random()*0.15", renderer)
+        self.assertIn("plate(idleWash.img,mouthWarp?mouthWarp.cur:0)", renderer)
         self.assertIn("/Math.max(0.55,browGain())", renderer)
         # Brow and forehead are SEPARATE tissues (2026-08-01): the strips
         # flick fast and asymmetric; the forehead runs its own damped
