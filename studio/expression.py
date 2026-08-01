@@ -278,6 +278,41 @@ def cheek_state(key, up, s, box, w, lat):
     return np.dstack([rgb.astype(np.uint8), (a * 255).astype(np.uint8)])
 
 
+# ---- eyebag ----------------------------------------------------------------
+# The infraorbital triangle - the "eyebag" band between the lower lash line
+# and the malar cheek mass - was the one patch of face no layer touched: the
+# cheek weight is centred lower on the malar, the eye layer stops at the
+# lid, and the band between them sat frozen through speech (owner, rachel
+# 2026-08-01: "that's the only place not responsive changing during talk").
+# On a real face this skin bunches with every smile-adjacent phoneme, so it
+# gets its own thin layer riding the cheek envelope: same warp mechanics as
+# the cheek (up and slightly medial), anchored just under the lash line and
+# dying out half an eye-width down.
+
+EYEBAG_UP = [0.0, 0.5, 1.0, 1.6, 2.3]
+
+
+def _eyebag_weight(shape, lm, side, s):
+    H, W = shape[:2]
+    low = lm[LOWER[side]]
+    x0, x1 = float(low[:, 0].min()), float(low[:, 0].max())
+    width = max(x1 - x0, 1.0)
+    ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
+    lidy = _line(low, np.clip(xs[0], x0, x1))
+    below = ys - lidy[None, :]
+    # full just below the lash line - never above it, so the eyeball and
+    # lid layers are undisturbed - fading out ~0.6 eye-widths down where
+    # the cheek layer takes over
+    v = _smoothstep(1.5 * s, 6.0 * s, below) * (
+        1.0 - _smoothstep(0.28 * width, 0.60 * width, below))
+    u = 1.0 - _smoothstep(0.50 * width, 0.72 * width,
+                          np.abs(xs - (x0 + x1) * 0.5))
+    w = v * u
+    oval = face.hull_mask(shape, lm, face.FACE_OVAL)
+    w = w * (cv2.GaussianBlur(oval, (0, 0), 5 * s).astype(np.float32) / 255.0)
+    return np.clip(w, 0.0, 1.0).astype(np.float32)
+
+
 # ---- build -----------------------------------------------------------------
 
 def build(key, lm=None, dxs=None, dys=None, brow_dys=None, ups=None,
@@ -314,7 +349,8 @@ def build(key, lm=None, dxs=None, dys=None, brow_dys=None, ups=None,
 
     out = dict(gaze=dict(dxs=dxs, dys=dys),
                brow=dict(dys=bdys, sqs=list(BROW_SQ)),
-               cheek=dict(ups=cups))
+               cheek=dict(ups=cups),
+               eyebag=dict(ups=list(EYEBAG_UP)))
     for side in SIDES:
         c, r = _iris(lm, side)
         ball = _eyeball_mask(key.shape, lm, side, s)
@@ -341,6 +377,15 @@ def build(key, lm=None, dxs=None, dys=None, brow_dys=None, ups=None,
             box=[int(v) for v in cbox],
             patches=[cheek_state(key, u, s, cbox, cw, lat) for u in cups])
         log(f"  cheek {side}: {len(cups)} states, patch {cbox[2]}x{cbox[3]}")
+
+        ew = _eyebag_weight(key.shape, lm, side, s)
+        ebox = _box(ew, int(4 * s), key.shape)
+        out["eyebag"][side] = dict(
+            box=[int(v) for v in ebox],
+            patches=[cheek_state(key, u, s, ebox, ew, lat)
+                     for u in EYEBAG_UP])
+        log(f"  eyebag {side}: {len(EYEBAG_UP)} states, "
+            f"patch {ebox[2]}x{ebox[3]}")
     return out
 
 

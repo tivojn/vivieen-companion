@@ -2852,7 +2852,8 @@ $('#body-modal').addEventListener('click', event => { if (event.target === $('#b
 const RIG_COLORS = {
   lips: [84, 214, 188], jaw: [92, 149, 222], cheeks: [137, 110, 219],
   nasolabial: [217, 126, 184], nose: [235, 152, 82],
-  brows: [222, 186, 96], forehead: [186, 156, 222], locked: [239, 102, 89]
+  brows: [222, 186, 96], forehead: [186, 156, 222],
+  eyebags: [126, 196, 226], locked: [239, 102, 89]
 };
 
 function rigImage(pose = RIG_POSE) {
@@ -2912,8 +2913,11 @@ function drawRig() {
     if (keyframe && pose) {
       $('#rig-image').style.visibility = 'hidden';
       ctx.drawImage(keyframe, 0, 0, canvas.width, canvas.height);
-      ['cheeks', 'jaw', 'nasolabial', 'lips', 'nose'].forEach(name => {
-        const weight = Math.max(0, Math.min(1, (RIG_PROFILE[name] || 0) / 100));
+      ['cheeks', 'jaw', 'nasolabial', 'lips', 'nose', 'eyebags'].forEach(name => {
+        // the eyebag band rides the cheek envelope at runtime, so the
+        // panel answers the Cheeks slider there too
+        const weight = Math.max(0, Math.min(1,
+          (RIG_PROFILE[name === 'eyebags' ? 'cheeks' : name] || 0) / 100));
         if (!weight) return;
         (RIG.regions[name] || []).forEach(polygon => {
           ctx.save();
@@ -2931,10 +2935,10 @@ function drawRig() {
   }
 
   if ($('#rig-show-regions').checked) {
-    ['forehead', 'brows', 'cheeks', 'jaw', 'nasolabial', 'lips', 'nose', 'locked'].forEach(name => {
+    ['forehead', 'brows', 'eyebags', 'cheeks', 'jaw', 'nasolabial', 'lips', 'nose', 'locked'].forEach(name => {
       const color = RIG_COLORS[name];
       const strength = name === 'locked' ? 1 :
-        (name === 'lips' ? RIG_PROFILE.lips : RIG_PROFILE[name]) / 100;
+        (RIG_PROFILE[name === 'eyebags' ? 'cheeks' : name] || 0) / 100;
       (RIG.regions[name] || []).forEach(polygon => {
         rigPolygon(ctx, polygon, canvas.width, canvas.height);
         ctx.fillStyle = `rgba(${color.join(',')},${.045 + strength * .22})`;

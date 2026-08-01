@@ -492,7 +492,7 @@ controlRow.addEventListener('pointermove',event=>{
 controlRow.addEventListener('pointerleave',()=>{
   captionRowHot=false;scheduleCaptionFold();
 });
-let M=null,IMG={},EYE={},GZ={},BW={},CK={},RB={},CUTOUT=null,BODY=null,HEADMASK=null;
+let M=null,IMG={},EYE={},GZ={},BW={},CK={},EB={},RB={},CUTOUT=null,BODY=null,HEADMASK=null;
 let MOTION={walk:null,idle:null,move:null},ready=false;
 const faceSurface=document.createElement('canvas'),headSurface=document.createElement('canvas');
 const faceCtx=faceSurface.getContext('2d',{alpha:true}),headCtx=headSurface.getContext('2d',{alpha:true});
@@ -691,6 +691,7 @@ function routedStatus(route,fallback=''){
     ...(M.gaze?['l','r'].map(async s=>{GZ[s]=await load(M.gaze[s].src);}):[]),
     ...(M.brow?['l','r'].map(async s=>{BW[s]=await load(M.brow[s].src);}):[]),
     ...(M.cheek?['l','r'].map(async s=>{CK[s]=await load(M.cheek[s].src);}):[]),
+    ...(M.eyebag?['l','r'].map(async s=>{EB[s]=await load(M.eyebag[s].src);}):[]),
     ...(M.cutout?[load(M.cutout.src).then(image=>{CUTOUT=image;})]:[]),
     ...(M.body?[load(M.body.image).then(image=>{BODY=image;}),
                 load(M.body.head_mask).then(image=>{HEADMASK=image;})]:[]),
@@ -1351,6 +1352,14 @@ function drawFace(lids,gv,bv,ck){
     const sqRow=sqs.length>1?nearest(sqs,browSqueezeFor(performance.now())):0;
     for(const s of ['l','r'])
       drawSnap(BW[s],M.brow[s],M.brow.dys,bv[s],sqRow);
+  }
+  // The infraorbital band rides the cheek envelope, scaled into its own
+  // shallower travel table - the one patch of face no layer used to touch.
+  if(M.eyebag){
+    const ebTop=(M.eyebag.ups&&M.eyebag.ups[M.eyebag.ups.length-1])||2.3;
+    const ckTop=(M.cheek&&M.cheek.ups&&M.cheek.ups[M.cheek.ups.length-1])||2.7;
+    for(const s of ['l','r'])
+      drawSnap(EB[s],M.eyebag[s],M.eyebag.ups,ck[s]*ebTop/ckTop,0);
   }
   if(M.cheek)for(const s of ['l','r'])
     drawSnap(CK[s],M.cheek[s],M.cheek.ups,ck[s],0);
