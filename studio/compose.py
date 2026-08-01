@@ -34,6 +34,26 @@ def _mouth_cavity(shape, lm):
     return mask
 
 
+def _dental_band(shape, lm, cavity=None):
+    """The inner-mouth polygon routinely traces the lip line THROUGH the
+    teeth on open-mouth renders, leaving most of a bright dental row outside
+    the cavity - undetected, unremoved, and doubled under the pasted
+    canonical row (gary66 `ah`: 14732 enamel px in the mouth, 174 inside the
+    polygon). Grow the search band vertically, clamped to the outer-lip hull
+    so it can never wander into skin."""
+    if cavity is None:
+        cavity = _mouth_cavity(shape, lm)
+    ys = np.nonzero(cavity.max(axis=1))[0]
+    if not len(ys):
+        return cavity
+    reach = max(9, int(round((int(ys[-1]) - int(ys[0])) * 0.6))) | 1
+    band = cv2.dilate(cavity, np.ones((reach, 3), np.uint8))
+    hull = np.zeros_like(cavity)
+    cv2.fillPoly(hull, [cv2.convexHull(
+        lm[face.OUTER_LIP].astype(np.int32))], 255)
+    return cv2.bitwise_and(band, hull)
+
+
 def _row_zone(cavity, lm, row):
     if row not in DENTAL_ROWS:
         raise ValueError(f"unknown dental row: {row}")
@@ -69,8 +89,13 @@ def _tooth_mask(img, cavity, lm=None, upper_only=False, row=None):
 
 
 def _select_tooth_donor(viseme_dir, row="upper"):
+    """Pick the frame with the MOST complete detected row, not the first
+    acceptable one: a fixed priority order elected SS's clenched, lip-shaded
+    sliver as the canonical enamel while ah/eh held wide, well-lit rows."""
     if row not in DENTAL_ROWS:
         raise ValueError(f"unknown dental row: {row}")
+    best = None
+    best_pixels = 0
     for name in DENTAL_DONORS[row]:
         path = os.path.join(viseme_dir, f"v_{name}.jpg")
         donor = cv2.imread(path)
@@ -79,11 +104,13 @@ def _select_tooth_donor(viseme_dir, row="upper"):
         donor_lm, _ = face.detect(donor)
         if donor_lm is None:
             continue
-        cavity = _mouth_cavity(donor.shape, donor_lm)
-        master = _tooth_mask(donor, cavity, donor_lm, row=row)
-        if int(np.count_nonzero(master)) >= MIN_TEETH_PIXELS[row]:
-            return name, donor, donor_lm, master
-    return None
+        band = _dental_band(donor.shape, donor_lm)
+        master = _tooth_mask(donor, band, donor_lm, row=row)
+        pixels = int(np.count_nonzero(master))
+        if pixels >= MIN_TEETH_PIXELS[row] and pixels > best_pixels:
+            best = name, donor, donor_lm, master
+            best_pixels = pixels
+    return best
 
 
 def _select_dental_donors(viseme_dir):
@@ -174,14 +201,15 @@ def canonicalize_teeth(viseme_dir, diag_dir=None, log=print, selected=None):
         if lm is None:
             continue
         cavity = _mouth_cavity(img.shape, lm)
+        band = _dental_band(img.shape, lm, cavity)
         rows = {}
         remove = np.zeros(cavity.shape, np.uint8)
         for row, values in selected.items():
             donor_name, donor, donor_lm, master = values
             donor_frame, canonical, plate = _row_assets(
                 donor, donor_lm, master, lm, row)
-            zone = _row_zone(cavity, lm, row)
-            generated = _tooth_mask(img, cavity, lm, row=row)
+            zone = _row_zone(band, lm, row)
+            generated = _tooth_mask(img, band, lm, row=row)
             replace = name != donor_name
             if replace:
                 row_remove = cv2.bitwise_and(
@@ -196,7 +224,7 @@ def canonicalize_teeth(viseme_dir, diag_dir=None, log=print, selected=None):
             work = cv2.inpaint(img, remove, 2.0, cv2.INPAINT_TELEA).astype(np.float32)
         else:
             work = img.astype(np.float32)
-        cavity_inner = cv2.erode(cavity, np.ones((2, 2), np.uint8))
+        cavity_inner = cv2.erode(band, np.ones((2, 2), np.uint8))
         details = {}
         for row, values in rows.items():
             reveal = cv2.bitwise_and(values["plate"], cavity_inner)

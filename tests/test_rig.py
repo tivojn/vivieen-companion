@@ -6,7 +6,9 @@ from unittest import mock
 
 import numpy as np
 
-from studio import anatomy, build, compose, measure, rig, visemes
+import cv2
+
+from studio import anatomy, build, compose, face, measure, rig, visemes
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -72,6 +74,54 @@ class RigProfileTests(unittest.TestCase):
             anatomy._comparison_metrics([]),
             ((None, 0), (None, 1.0), (None, 0.0)),
         )
+
+    def test_dental_band_reaches_past_the_inner_lip_polygon(self):
+        # gary66 `ah` (2026-08-01): the inner-mouth polygon traced the lip
+        # line THROUGH the teeth - 14732 enamel px in the mouth, 174 inside
+        # the polygon. The lock inpainted a sliver, pasted the donor row
+        # lower, and both rows showed ("doubled teeth shadow"). The band
+        # grows the cavity vertically but stays inside the outer-lip hull.
+        landmarks = np.zeros((478, 2), np.float32)
+        landmarks[compose.INNER_MOUTH] = [40, 50]
+        for offset, point in enumerate(compose.INNER_MOUTH):
+            landmarks[point] = [30 + offset, 46 + (offset % 3) * 4]
+        landmarks[face.OUTER_LIP] = [40, 50]
+        for offset, point in enumerate(face.OUTER_LIP):
+            landmarks[point] = [24 + offset * 2, 30 + (offset % 5) * 10]
+        cavity = compose._mouth_cavity((100, 100, 3), landmarks)
+        band = compose._dental_band((100, 100, 3), landmarks, cavity)
+        self.assertGreater(int(np.count_nonzero(band)),
+                           int(np.count_nonzero(cavity)))
+        hull = np.zeros_like(band)
+        cv2.fillPoly(hull, [cv2.convexHull(
+            landmarks[face.OUTER_LIP].astype(np.int32))], 255)
+        self.assertEqual(int(np.count_nonzero(band & ~hull)), 0)
+
+    def test_tooth_donor_is_the_most_complete_row_not_the_first(self):
+        # SS (clenched, lip-shaded, 483px) used to win over eh's wide bright
+        # row (865px) purely by list position, so every frame got a dull
+        # beige paste. Selection now scans all candidates for the largest
+        # detected master.
+        source = open(os.path.join(ROOT, "studio", "compose.py"),
+                      encoding="utf-8").read()
+        self.assertIn("pixels >= MIN_TEETH_PIXELS[row] and pixels > best_pixels",
+                      source)
+        self.assertIn("_dental_band(donor.shape, donor_lm)", source)
+
+    def test_brow_envelope_uses_ascending_smoothstep_edges(self):
+        # _smoothstep clamps its denominator to 1e-6, so reversed edges
+        # degenerate into a hard step. The brow's vertical envelope shipped
+        # reversed: 1.0 in the forehead, 0.0 over the hair - every baked
+        # strip came out ~15% opaque and the brows never visibly moved.
+        from studio import expression
+        ys = np.array([473.0, 531.0, 560.0], np.float32)  # hairline..brow hair
+        up = expression._smoothstep(546 - 1.7 * 43, 546 - 0.35 * 43, ys)
+        self.assertLess(float(up[0]), 0.05)      # fades out at the hairline
+        self.assertGreater(float(up[2]), 0.95)   # full strength over the hair
+        source = open(os.path.join(ROOT, "studio", "expression.py"),
+                      encoding="utf-8").read()
+        self.assertIn("up = _smoothstep(btop - 1.7 * span, btop - 0.35 * span, ys)",
+                      source)
 
     def test_dental_rows_partition_at_the_lip_midline(self):
         cavity = np.full((10, 12), 255, np.uint8)

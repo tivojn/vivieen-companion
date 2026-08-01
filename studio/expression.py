@@ -188,7 +188,12 @@ def brow_state(key, lm, side, dy, s, box, alpha, sq=0.0):
     # across the brow: full over the hair, fading into the forehead and dying
     # before the lash line so it never fights the eyelid layer
     span = max(bbot - btop, 6.0)
-    up = 1.0 - _smoothstep(btop - 0.35 * span, btop - 1.7 * span, ys)
+    # _smoothstep needs ascending edges (its denominator is clamped to 1e-6,
+    # so reversed edges collapse into a hard step at the first edge). This
+    # call shipped reversed for months: the envelope read 1.0 in the
+    # forehead and 0.0 over the brow hair, and every baked brow strip came
+    # out ~15% opaque - flicking through 42 invisible tiles.
+    up = _smoothstep(btop - 1.7 * span, btop - 0.35 * span, ys)
     dn = 1.0 - _smoothstep(bbot + 0.15 * span, lash - 4.0 * s, ys)
     v = np.clip(np.minimum(up, dn), 0.0, 1.0)
 
