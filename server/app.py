@@ -366,6 +366,28 @@ def _publish_runtime_atomic(slug, log=print):
             shutil.rmtree(staged, ignore_errors=True)
 
 
+def _body_stage(slug, options, w, progress):
+    """Generate the three body plates and publish them. Shared by the
+    standalone body job and the one-click pipeline; raises on failure."""
+    from studio import body, library, motion
+    progress("generation", .12, "Generating front, side, and back bodies")
+    metadata = body.build(
+        reg().adir(slug), options, log=w, progress=progress)
+    motion.remove(reg().adir(slug))
+    for slot in ("walk", "idle"):
+        library.clear_active(reg().adir(slug), slot)
+    manifest = reg().read_manifest(slug) or {}
+    manifest["body"] = metadata
+    manifest.pop("motion", None)
+    reg().write_manifest(slug, manifest)
+    try:
+        library.archive_body(reg().adir(slug))
+    except Exception as archive_error:
+        w(f"could not archive the body set: {archive_error}")
+    progress("runtime", .86, "Publishing transparent companion")
+    _publish_runtime_atomic(slug, log=w)
+
+
 def _body_thread(slug, options):
     w = jlog(slug, "starting full-body generation")
     with _jlock:
@@ -374,25 +396,9 @@ def _body_thread(slug, options):
             progress={"stage": "provider", "value": .03,
                       "label": "Reading EnConvo image provider"})
     try:
-        from studio import body, library, motion
-        _job_progress(slug, "generation", .12, "Generating front, side, and back bodies")
-        metadata = body.build(
-            reg().adir(slug), options, log=w,
-            progress=lambda stage, value, label:
-                _job_progress(slug, stage, value, label))
-        motion.remove(reg().adir(slug))
-        for slot in ("walk", "idle"):
-            library.clear_active(reg().adir(slug), slot)
-        manifest = reg().read_manifest(slug) or {}
-        manifest["body"] = metadata
-        manifest.pop("motion", None)
-        reg().write_manifest(slug, manifest)
-        try:
-            library.archive_body(reg().adir(slug))
-        except Exception as archive_error:
-            w(f"could not archive the body set: {archive_error}")
-        _job_progress(slug, "runtime", .86, "Publishing transparent companion")
-        _publish_runtime_atomic(slug, log=w)
+        _body_stage(slug, options, w,
+                    lambda stage, value, label:
+                        _job_progress(slug, stage, value, label))
         _job_progress(slug, "done", 1.0, "Three full-body views ready")
         w("front, side, and back full-body companion plates ready")
     except Exception as error:
@@ -402,6 +408,58 @@ def _body_thread(slug, options):
     finally:
         with _jlock:
             _jobs[slug]["done"] = True
+
+
+def _motion_stage(slug, kinds, idle_pose, walk_style, move_style, writer,
+                  progress, reference_path=None):
+    """Generate motion takes and publish them, rolling back a half-replaced
+    bank on failure. Shared by the standalone motion job and the one-click
+    pipeline; raises on failure."""
+    from studio import motion
+    previous_manifest = reg().read_manifest(slug) or {}
+    motion_replaced = False
+    runtime_published = False
+    try:
+        metadata = motion.build(
+            reg().adir(slug),
+            pose_reference=reference_path,
+            idle_pose=idle_pose,
+            kinds=kinds,
+            walk_style=walk_style,
+            move_style=move_style,
+            log=writer,
+            progress=progress,
+            keep_previous=True,
+        )
+        motion_replaced = True
+        manifest = dict(previous_manifest)
+        manifest["motion"] = metadata
+        reg().write_manifest(slug, manifest)
+        progress("runtime", .94, "Publishing alpha motion")
+        _publish_runtime_atomic(slug, log=writer)
+        runtime_published = True
+        motion.commit_pending_build(reg().adir(slug))
+        try:
+            from studio import library
+            for archived_kind in tuple(kinds or ("walk", "idle")):
+                library.archive_motion(reg().adir(slug), archived_kind)
+        except Exception as archive_error:
+            writer(f"could not archive the motion set: {archive_error}")
+    except Exception as error:
+        failure = str(error)
+        rollback_errors = []
+        if motion_replaced and not runtime_published:
+            try:
+                motion.rollback_pending_build(reg().adir(slug))
+            except Exception as rollback_error:
+                rollback_errors.append(f"motion rollback: {rollback_error}")
+            try:
+                reg().write_manifest(slug, previous_manifest)
+            except Exception as rollback_error:
+                rollback_errors.append(f"manifest rollback: {rollback_error}")
+        if rollback_errors:
+            failure = f"{failure}; {'; '.join(rollback_errors)}"
+        raise RuntimeError(failure) from error
 
 
 def _motion_thread(
@@ -421,39 +479,13 @@ def _motion_thread(
             done=False, error="", log=[], kind="motion",
             progress={"stage": "provider", "value": .03,
                       "label": "Reading EnConvo media providers"})
-    previous_manifest = reg().read_manifest(slug) or {}
-    motion_replaced = False
-    runtime_published = False
     failure = ""
     try:
-        from studio import motion
-        metadata = motion.build(
-            reg().adir(slug),
-            pose_reference=reference_path,
-            idle_pose=idle_pose,
-            kinds=kinds,
-            walk_style=walk_style,
-            move_style=move_style,
-            log=writer,
-            progress=lambda stage, value, label: _job_progress(
+        _motion_stage(
+            slug, kinds, idle_pose, walk_style, move_style, writer,
+            lambda stage, value, label: _job_progress(
                 slug, stage, value, label, job_id=job_id),
-            keep_previous=True,
-        )
-        motion_replaced = True
-        manifest = dict(previous_manifest)
-        manifest["motion"] = metadata
-        reg().write_manifest(slug, manifest)
-        _job_progress(
-            slug, "runtime", .94, "Publishing alpha motion", job_id=job_id)
-        _publish_runtime_atomic(slug, log=writer)
-        runtime_published = True
-        motion.commit_pending_build(reg().adir(slug))
-        try:
-            from studio import library
-            for archived_kind in tuple(kinds or ("walk", "idle")):
-                library.archive_motion(reg().adir(slug), archived_kind)
-        except Exception as archive_error:
-            writer(f"could not archive the motion set: {archive_error}")
+            reference_path=reference_path)
         selected = tuple(kinds or ("walk", "idle"))
         kind_labels = {"walk": "Horizon Walk", "idle": "Edge Idle",
                        "move": "Show Me Some Moves"}
@@ -463,18 +495,6 @@ def _motion_thread(
         writer(f"{label} and standing interaction are ready")
     except Exception as error:
         failure = str(error)
-        rollback_errors = []
-        if motion_replaced and not runtime_published:
-            try:
-                motion.rollback_pending_build(reg().adir(slug))
-            except Exception as rollback_error:
-                rollback_errors.append(f"motion rollback: {rollback_error}")
-            try:
-                reg().write_manifest(slug, previous_manifest)
-            except Exception as rollback_error:
-                rollback_errors.append(f"manifest rollback: {rollback_error}")
-        if rollback_errors:
-            failure = f"{failure}; {'; '.join(rollback_errors)}"
         writer(f"FAILED: {failure}")
     finally:
         if reference_path:
@@ -482,6 +502,58 @@ def _motion_thread(
                 os.remove(reference_path)
             except FileNotFoundError:
                 pass
+        _finish_job(slug, job_id, failure)
+
+
+def _pipeline_thread(slug, job_id):
+    """One click, everything: talking face (if not built) -> full body ->
+    walk, edge idle, and moves - sequentially, in one background job."""
+    writer = jlog(slug, "one-click pipeline: face, full body, walk, idle, moves")
+    with _jlock:
+        job = _jobs.get(slug)
+        if not job or job.get("id") != job_id:
+            return
+        job.update(
+            done=False, error="", log=[], kind="pipeline",
+            progress={"stage": "face", "value": .01,
+                      "label": "One-click 1/3: talking face"})
+
+    def band(base, span, prefix):
+        def report(stage, value, label):
+            fraction = max(0.0, min(1.0, float(value or 0.0)))
+            _job_progress(slug, stage, base + fraction * span,
+                          prefix + label, job_id=job_id)
+        return report
+
+    failure = ""
+    try:
+        from studio import motion
+        manifest = reg().read_manifest(slug) or {}
+        if manifest.get("status") != "ready":
+            _job_progress(slug, "face", .02,
+                          "One-click 1/3: building the talking face",
+                          job_id=job_id)
+            manifest = reg().build_avatar(slug) or {}
+            if manifest.get("status") != "ready":
+                raise RuntimeError(
+                    manifest.get("error") or "the face build failed")
+        _job_progress(slug, "face", .30,
+                      "One-click 1/3: talking face ready", job_id=job_id)
+        _body_stage(slug, BodyProfileInput().model_dump(), writer,
+                    band(.30, .28, "One-click 2/3: "))
+        _motion_stage(slug, ("walk", "idle", "move"),
+                      motion.resolve_idle_pose(None, ""),
+                      motion.resolve_walk_style(None, ""),
+                      motion.resolve_move_style(None, ""),
+                      writer, band(.60, .38, "One-click 3/3: "))
+        _job_progress(slug, "done", 1.0,
+                      "Everything ready - face, body, walk, idle, and moves",
+                      job_id=job_id)
+        writer("one-click pipeline complete")
+    except Exception as error:
+        failure = str(error)
+        writer(f"FAILED: {failure}")
+    finally:
         _finish_job(slug, job_id, failure)
 
 
@@ -1086,6 +1158,32 @@ class MotionRepairRequest(BaseModel):
     frame_end: int | None = Field(default=None, ge=0, le=4096)
     mode: str = Field(default="patch", pattern=r"^(patch|drop)$")
     note: str = Field(default="", max_length=200)
+
+
+class PipelineRequest(BaseModel):
+    slug: str = Field(pattern=SLUG_PATTERN)
+
+
+@app.post("/api/avatar/pipeline")
+async def api_pipeline(request: PipelineRequest):
+    """One click, everything: build the face if needed, then the full body,
+    then walk + edge idle + moves - one sequential background job."""
+    manifest = reg().read_manifest(request.slug)
+    if not manifest:
+        raise HTTPException(404, "avatar not found")
+    job_id = _reserve_job(request.slug, "pipeline",
+                          "One-click: face, body, walk, idle, moves")
+    if not job_id:
+        return _already_running(request.slug)
+    try:
+        threading.Thread(
+            target=_pipeline_thread,
+            args=(request.slug, job_id), daemon=True).start()
+    except BaseException as error:
+        _finish_job(request.slug, job_id, getattr(error, "detail", error))
+        raise
+    return {"started": True, "slug": request.slug, "kind": "pipeline",
+            "job_id": job_id}
 
 
 @app.post("/api/avatar/motion/repair")

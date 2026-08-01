@@ -304,6 +304,33 @@ class ProviderDefaultsTests(unittest.TestCase):
         self.assertIn("[redacted]", text)
 
 
+class OneClickPipelineTests(unittest.TestCase):
+    def test_pipeline_chains_face_body_and_motion_in_one_job(self):
+        # Owner request 2026-08-01: one button on the avatar card runs
+        # face -> full body -> walk + edge idle + moves as a single
+        # sequential background job. The standalone body/motion jobs and
+        # the pipeline share the SAME stage functions (extracted, not
+        # duplicated), so their behavior - including the motion rollback -
+        # cannot drift apart.
+        source = open(os.path.join(ROOT, "server", "app.py"),
+                      encoding="utf-8").read()
+        self.assertIn('@app.post("/api/avatar/pipeline")', source)
+        self.assertIn("def _pipeline_thread", source)
+        self.assertIn("def _body_stage", source)
+        self.assertIn("def _motion_stage", source)
+        self.assertIn('_motion_stage(slug, ("walk", "idle", "move")', source)
+        self.assertIn("_body_stage(slug, options, w,", source)
+        self.assertIn("_body_stage(slug, BodyProfileInput().model_dump(), writer,",
+                      source)
+        # a still-running job refuses a second start instead of stacking
+        self.assertIn('_reserve_job(request.slug, "pipeline"', source)
+        settings = open(os.path.join(ROOT, "web", "settings.html"),
+                        encoding="utf-8").read()
+        self.assertIn('data-act="pipeline"', settings)
+        self.assertIn("One-click everything", settings)
+        self.assertIn("markAvatarBusy(slug, 'pipeline')", settings)
+
+
 class PublicReleaseSecurityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -1489,8 +1489,10 @@ function card(a) {
       ? `<button class="btn sm pri" data-act="activate" ${on ? 'disabled' : ''}>${on ? 'In use' : 'Use this face'}</button>
              <button class="btn sm" data-act="companion" ${on || busy ? 'disabled' : ''}>${duo ? 'Leave the desk' : 'Second avatar (left)'}</button>
              <button class="btn sm" data-act="calibrate" ${busy ? 'disabled' : ''}>${busy ? 'Calibrating…' : 'Rebuild'}</button>
-             <button class="btn sm" data-act="body" ${busy ? 'disabled' : ''}>${a.body ? 'Edit full body' : 'Create full body'}</button>`
-      : `<button class="btn sm pri" data-act="build" ${busy ? 'disabled' : ''}>${busy ? 'Building…' : 'Build avatar'}</button>`}
+             <button class="btn sm" data-act="body" ${busy ? 'disabled' : ''}>${a.body ? 'Edit full body' : 'Create full body'}</button>
+             <button class="btn sm" data-act="pipeline" ${busy ? 'disabled' : ''} title="Full body, walk, edge idle, and moves - one job, no more clicks">⚡ One-click everything</button>`
+      : `<button class="btn sm pri" data-act="build" ${busy ? 'disabled' : ''}>${busy ? 'Building…' : 'Build avatar'}</button>
+             <button class="btn sm" data-act="pipeline" ${busy ? 'disabled' : ''} title="Build the face, full body, walk, edge idle, and moves - one job, no more clicks">⚡ One-click everything</button>`}
         ${a.preview ? `<button class="btn sm" data-act="preview">Preview</button>` : ''}
         <button class="btn sm" data-act="export" ${busy ? 'disabled' : ''}>Export</button>
         <button class="btn sm danger" data-act="delete" ${on ? 'disabled' : ''}>Delete</button>
@@ -1704,6 +1706,12 @@ async function act(what, slug, btn) {
   });
   if (r.detail) { alert(r.detail); btn.disabled = false; return; }
   if (what === 'build') { note('Building ' + slug + '. This takes a while — the log is live.'); }
+  if (what === 'pipeline') {
+    note('One-click pipeline for ' + slug + ': face, full body, walk, idle, and moves. '
+      + 'Expect 10–20 minutes — the card tracks every stage.');
+    markAvatarBusy(slug, 'pipeline');
+    return;
+  }
   if (what === 'activate') {
     if (SHELL && SHELL.isElectron) await SHELL.avatarChanged();
     note(slug + ' is now the active face.');
