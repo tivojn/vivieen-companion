@@ -7,41 +7,46 @@ import numpy as np
 from . import face
 
 VERSION = 3
+# Owner calibration on the live desktop (2026-08-01): the canonical defaults
+# were so conservative that every avatar needed a hand rebuild at ~100% to
+# read as a normal human face. The owner's proven profile IS the default
+# now, sliders run to 150 (the transfer alphas clip at 1.0, so past 100 the
+# feathered ring saturates toward full strength - fuller transfer, never
+# extrapolation), and the green bands embrace the proven values. Brows stay
+# an exception: their strips render fully opaque since the alpha fix, and
+# 10 is the owner-approved resting default.
 CONTROLS = {
-    "lips": dict(label="Lips", minimum=0, maximum=100,
-                 safe_minimum=80, safe_maximum=100, step=1,
+    "lips": dict(label="Lips", minimum=0, maximum=150,
+                 safe_minimum=80, safe_maximum=120, step=1,
                  default=100, help="Direct lip and mouth-corner motion."),
-    "jaw": dict(label="Jaw and chin", minimum=0, maximum=100,
-                safe_minimum=25, safe_maximum=80, step=1,
-                default=62, help="How strongly the lower jaw follows speech."),
-    "cheeks": dict(label="Cheeks", minimum=0, maximum=100,
-                   safe_minimum=0, safe_maximum=70, step=1,
-                   default=50, help="Speech-coupled cheek movement."),
-    # Tuned live (2026-08-01) once the strips actually rendered: the gesture
-    # units were calibrated against invisible 15%-alpha strips, so at full
-    # opacity 55 reads theatrical. 8 is the owner-approved resting default.
-    "brows": dict(label="Eyebrows", minimum=0, maximum=100,
+    "jaw": dict(label="Jaw and chin", minimum=0, maximum=150,
+                safe_minimum=25, safe_maximum=110, step=1,
+                default=97, help="How strongly the lower jaw follows speech."),
+    "cheeks": dict(label="Cheeks", minimum=0, maximum=150,
+                   safe_minimum=0, safe_maximum=110, step=1,
+                   default=100, help="Speech-coupled cheek movement."),
+    "brows": dict(label="Eyebrows", minimum=0, maximum=150,
                   safe_minimum=5, safe_maximum=85, step=1,
-                  default=8, help="Speech-coupled eyebrow gestures. "
-                                  "Applied live by the runtime."),
-    "forehead": dict(label="Forehead", minimum=0, maximum=100,
-                     safe_minimum=15, safe_maximum=85, step=1,
-                     default=55, help="How much the forehead skin follows a "
-                                      "brow raise. Applied live by the runtime."),
-    "nasolabial": dict(label="Nasolabial folds", minimum=0, maximum=100,
-                       safe_minimum=0, safe_maximum=70, step=1,
-                       default=55, help="Motion beside the nose and mouth corners."),
-    "nose": dict(label="Nose base and nostrils", minimum=0, maximum=100,
-                 safe_minimum=0, safe_maximum=12, step=1,
-                 default=8, help="Maximum speech influence; bridge and tip stay locked."),
+                  default=10, help="Speech-coupled eyebrow gestures. "
+                                   "Applied live by the runtime."),
+    "forehead": dict(label="Forehead", minimum=0, maximum=150,
+                     safe_minimum=15, safe_maximum=110, step=1,
+                     default=100, help="How much the forehead skin follows a "
+                                       "brow raise. Applied live by the runtime."),
+    "nasolabial": dict(label="Nasolabial folds", minimum=0, maximum=150,
+                       safe_minimum=0, safe_maximum=110, step=1,
+                       default=100, help="Motion beside the nose and mouth corners."),
+    "nose": dict(label="Nose base and nostrils", minimum=0, maximum=150,
+                 safe_minimum=0, safe_maximum=110, step=1,
+                 default=100, help="Maximum speech influence; bridge and tip stay locked."),
 }
 PRESETS = {
-    "natural": dict(lips=100, jaw=62, cheeks=50, brows=8, forehead=55,
-                    nasolabial=55, nose=8),
-    "subtle": dict(lips=88, jaw=42, cheeks=25, brows=5, forehead=30,
-                   nasolabial=32, nose=4),
-    "expressive": dict(lips=100, jaw=76, cheeks=65, brows=30, forehead=80,
-                       nasolabial=68, nose=10),
+    "natural": dict(lips=100, jaw=97, cheeks=100, brows=10, forehead=100,
+                    nasolabial=100, nose=100),
+    "subtle": dict(lips=92, jaw=70, cheeks=60, brows=6, forehead=60,
+                   nasolabial=60, nose=30),
+    "expressive": dict(lips=120, jaw=115, cheeks=120, brows=20, forehead=120,
+                       nasolabial=120, nose=110),
 }
 REGION_GROUPS = {
     "lips": [face.OUTER_LIP],

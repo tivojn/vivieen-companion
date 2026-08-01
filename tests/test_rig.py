@@ -16,17 +16,20 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 class RigProfileTests(unittest.TestCase):
     def test_all_controls_span_zero_to_one_hundred_with_safe_bands(self):
         schema = rig.public_schema()["controls"]
+        # Owner calibration 2026-08-01: defaults are the proven live profile,
+        # sliders run to 150 (transfer alphas clip at 1.0 - saturation, not
+        # extrapolation), green bands embrace the proven values.
         expected_safe = {
-            "lips": (80.0, 100.0),
-            "jaw": (25.0, 80.0),
-            "cheeks": (0.0, 70.0),
-            "nasolabial": (0.0, 70.0),
-            "nose": (0.0, 12.0),
+            "lips": (80.0, 120.0),
+            "jaw": (25.0, 110.0),
+            "cheeks": (0.0, 110.0),
+            "nasolabial": (0.0, 110.0),
+            "nose": (0.0, 110.0),
         }
         for name, safe_limits in expected_safe.items():
             self.assertEqual(
                 (schema[name]["minimum"], schema[name]["maximum"]),
-                (0.0, 100.0),
+                (0.0, 150.0),
             )
             self.assertEqual(
                 (schema[name]["safe_minimum"], schema[name]["safe_maximum"]),
@@ -62,9 +65,9 @@ class RigProfileTests(unittest.TestCase):
         self.assertEqual(profile["lips"], 0.0)
         self.assertEqual(profile["nose"], 100.0)
 
-    def test_values_outside_zero_to_one_hundred_are_rejected(self):
+    def test_values_outside_the_control_span_are_rejected(self):
         for name in rig.CONTROLS:
-            for value in (-1, 101):
+            for value in (-1, 151):
                 with self.subTest(name=name, value=value), \
                      self.assertRaises(ValueError):
                     rig.normalize({name: value})
@@ -222,9 +225,14 @@ class RigProfileTests(unittest.TestCase):
         # Owner-tuned (2026-08-01) once the strips actually rendered: the
         # gesture units were calibrated against invisible 15%-alpha strips,
         # so 55 reads theatrical at full opacity. 8 is the resting default.
-        self.assertEqual(rig.CONTROLS["brows"]["default"], 8)
-        self.assertEqual(rig.PRESETS["natural"]["brows"], 8)
-        self.assertLessEqual(rig.CONTROLS["brows"]["safe_minimum"], 8)
+        self.assertEqual(rig.CONTROLS["brows"]["default"], 10)
+        self.assertEqual(rig.PRESETS["natural"]["brows"], 10)
+        self.assertLessEqual(rig.CONTROLS["brows"]["safe_minimum"], 10)
+        # The natural preset IS the owner's proven profile - a fresh upload
+        # builds ready to talk, no rebuild-to-100% ritual.
+        self.assertEqual(rig.PRESETS["natural"],
+                         dict(lips=100, jaw=97, cheeks=100, brows=10,
+                              forehead=100, nasolabial=100, nose=100))
         self.assertEqual(rig.CONTROLS["forehead"]["label"], "Forehead")
         from studio import expression
         self.assertEqual(max(expression.BROW_DY), 9.5)
@@ -236,7 +244,7 @@ class RigProfileTests(unittest.TestCase):
         self.assertIn("const browGain=", renderer)
         # Gains read through liveRig(): the panel's dragged value when one
         # is broadcast for this avatar, else the published rig_profile.
-        self.assertIn("Math.min(2,liveRig('brows')/55)", renderer)
+        self.assertIn("Math.min(3,liveRig('brows')/55)", renderer)
         self.assertIn("(M&&M.rig_profile&&Number(M.rig_profile[key]))||55", renderer)
         # Idle life (owner request 2026-08-01): standing by, the face does
         # more than blink - a breathing-rate jaw sway plus occasional soft
@@ -345,7 +353,7 @@ class RigProfileTests(unittest.TestCase):
         self.assertEqual(anatomy._experimental_keys(rig.PRESETS["natural"]), [])
         self.assertEqual(
             anatomy._experimental_keys(
-                dict(rig.PRESETS["natural"], jaw=100, nasolabial=100)),
+                dict(rig.PRESETS["natural"], jaw=130, nasolabial=130)),
             ["jaw", "nasolabial"])
         source = open(os.path.join(ROOT, "studio", "anatomy.py"),
                       encoding="utf-8").read()
@@ -386,7 +394,7 @@ class RigProfileTests(unittest.TestCase):
         self.assertIn("_band_suggestion(experimental)", window)
         self.assertEqual(
             build._band_suggestion(["nose"]),
-            "Nose base and nostrils 0–12%")
+            "Nose base and nostrils 0–110%")
         anatomy_source = open(os.path.join(ROOT, "studio", "anatomy.py"),
                               encoding="utf-8").read()
         self.assertIn("advisory = True", anatomy_source)
