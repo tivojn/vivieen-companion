@@ -519,7 +519,9 @@ MOVE_STYLES = {
             "hand-on-hip pose."),
     },
 }
-DEFAULT_MOVE_STYLE = "viral"
+# Owner defaults (2026-08-01): office walk, high-heel-touch edge idle,
+# K-pop point dance - what the one-click pipeline builds unprompted.
+DEFAULT_MOVE_STYLE = "kpop"
 
 
 def resolve_move_style(style_id=None, custom_prompt=""):

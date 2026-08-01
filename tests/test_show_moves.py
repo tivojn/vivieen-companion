@@ -17,7 +17,8 @@ class MoveStyles(unittest.TestCase):
         self.assertEqual(
             {"viral", "hiphop", "kpop", "ballet", "salsa"},
             set(motion.MOVE_STYLES))
-        self.assertEqual("viral", motion.DEFAULT_MOVE_STYLE)
+        # Owner default 2026-08-01: K-pop point dance ships unprompted.
+        self.assertEqual("kpop", motion.DEFAULT_MOVE_STYLE)
         for style_id in motion.MOVE_STYLES:
             style = motion.resolve_move_style(style_id)
             self.assertEqual("free", style["validation"])
