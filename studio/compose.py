@@ -15,14 +15,13 @@ NOSE_LOCK_STRENGTH = 1.0
 NOSE_LOCK_FEATHER = 2.5
 INNER_MOUTH = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324,
                308, 415, 310, 311, 312, 13, 82, 81, 80, 191]
-UPPER_TEETH_DONORS = ("SS", "eh", "ih", "ah", "kk", "TH", "DD", "nn", "CH", "FF", "RR")
-LOWER_TEETH_DONORS = ("ih", "SS", "eh", "TH", "FF", "ah", "DD", "kk", "CH", "nn", "RR")
+# Donor candidate lists live in rig (the profile normalizer validates donor
+# overrides and cannot import compose back); these names stay as aliases.
+UPPER_TEETH_DONORS = rig.UPPER_TEETH_DONORS
+LOWER_TEETH_DONORS = rig.LOWER_TEETH_DONORS
 TEETH_DONORS = UPPER_TEETH_DONORS
-DENTAL_ROWS = ("upper", "lower")
-DENTAL_DONORS = {
-    "upper": UPPER_TEETH_DONORS,
-    "lower": LOWER_TEETH_DONORS,
-}
+DENTAL_ROWS = rig.DENTAL_ROWS
+DENTAL_DONORS = rig.DENTAL_DONORS
 LOWER_MOUTH_ANCHORS = [14, 17, 84, 181, 91, 146, 314, 405, 321, 375]
 TEETH_SHAPES = {"FF", "TH", "DD", "nn", "kk", "CH", "SS", "ah", "eh", "ih"}
 MIN_TEETH_PIXELS = {"upper": 20, "lower": 20}
@@ -88,14 +87,13 @@ def _tooth_mask(img, cavity, lm=None, upper_only=False, row=None):
     return clean
 
 
-def _select_tooth_donor(viseme_dir, row="upper"):
-    """Pick the frame with the MOST complete detected row, not the first
-    acceptable one: a fixed priority order elected SS's clenched, lip-shaded
-    sliver as the canonical enamel while ah/eh held wide, well-lit rows."""
+def _scan_tooth_donors(viseme_dir, row="upper"):
+    """Detect the enamel row on every candidate frame: the election and the
+    calibration panel's donor dropdown (name + detected pixels) share one
+    scan instead of running face detection twice per frame."""
     if row not in DENTAL_ROWS:
         raise ValueError(f"unknown dental row: {row}")
-    best = None
-    best_pixels = 0
+    candidates = []
     for name in DENTAL_DONORS[row]:
         path = os.path.join(viseme_dir, f"v_{name}.jpg")
         donor = cv2.imread(path)
@@ -106,18 +104,40 @@ def _select_tooth_donor(viseme_dir, row="upper"):
             continue
         band = _dental_band(donor.shape, donor_lm)
         master = _tooth_mask(donor, band, donor_lm, row=row)
-        pixels = int(np.count_nonzero(master))
+        candidates.append(
+            (name, donor, donor_lm, master, int(np.count_nonzero(master))))
+    return candidates
+
+
+def _elect_tooth_donor(candidates, row, choice="auto"):
+    """Pick the frame with the MOST complete detected row, not the first
+    acceptable one: a fixed priority order elected SS's clenched, lip-shaded
+    sliver as the canonical enamel while ah/eh held wide, well-lit rows.
+    An explicit choice overrides the election (the owner saw the auto donor
+    carry a defect - carol 2026-08-01); a choice with no detected enamel
+    falls back to the election, advisory, never a veto."""
+    best = None
+    best_pixels = 0
+    for name, donor, donor_lm, master, pixels in candidates:
+        if choice != "auto" and name == choice and pixels > 0:
+            return name, donor, donor_lm, master
         if pixels >= MIN_TEETH_PIXELS[row] and pixels > best_pixels:
             best = name, donor, donor_lm, master
             best_pixels = pixels
     return best
 
 
-def _select_dental_donors(viseme_dir):
+def _select_tooth_donor(viseme_dir, row="upper", choice="auto"):
+    return _elect_tooth_donor(_scan_tooth_donors(viseme_dir, row), row, choice)
+
+
+def _select_dental_donors(viseme_dir, profile=None):
+    profile = rig.normalize(profile)
     return {
         row: selected
         for row in DENTAL_ROWS
-        if (selected := _select_tooth_donor(viseme_dir, row)) is not None
+        if (selected := _select_tooth_donor(
+            viseme_dir, row, profile[f"{row}_teeth_donor"])) is not None
     }
 
 
@@ -162,19 +182,32 @@ def _row_assets(donor, donor_lm, master, target_lm, row):
     return donor_frame, transformed, _tooth_plate(transformed)
 
 
-def canonicalize_teeth(viseme_dir, diag_dir=None, log=print, selected=None):
+def canonicalize_teeth(viseme_dir, diag_dir=None, log=print, selected=None,
+                       profile=None):
     """Lock skull-attached upper teeth and jaw-attached lower teeth."""
+    profile = rig.normalize(profile)
+    strength = profile["teeth"] / 100.0
+    if strength <= 0.0:
+        log("  dental lock released: strength 0, every frame keeps its own teeth")
+        return []
     if selected is None:
-        selected = _select_dental_donors(viseme_dir)
+        selected = _select_dental_donors(viseme_dir, profile)
     if not selected:
         log("  dental lock skipped: no canonical dental rows found")
         return []
     missing = [row for row in DENTAL_ROWS if row not in selected]
     if missing:
         log(f"  dental lock warning: no canonical {', '.join(missing)} row found")
+    for row, values in selected.items():
+        choice = profile[f"{row}_teeth_donor"]
+        if choice != "auto" and values[0] != choice:
+            log(f"  ADVISORY {row} donor override {choice} has no detected "
+                f"enamel - auto election {values[0]} used instead")
     donor_summary = ", ".join(
         f"{row} {values[0]} ({np.count_nonzero(values[3])}px)"
         for row, values in selected.items())
+    if strength < 1.0:
+        donor_summary += f" at {profile['teeth']:.0f}% strength"
     log(f"  dental lock donors: {donor_summary}")
     dental_diag_dir = None
     if diag_dir:
@@ -256,6 +289,11 @@ def canonicalize_teeth(viseme_dir, diag_dir=None, log=print, selected=None):
                          if values["replace"] else 0),
                 revealed=int(np.count_nonzero(enamel)),
             )
+        # Partial lock: a literal lerp toward the frame's own render. Only
+        # the dental band differs between img and work, so the whole-frame
+        # blend is regional by construction; 100 keeps today's exact bytes.
+        if strength < 1.0:
+            work = img.astype(np.float32) * (1.0 - strength) + work * strength
         cv2.imwrite(path, np.clip(work, 0, 255).astype(np.uint8),
                     [cv2.IMWRITE_JPEG_QUALITY, 95])
         report.append(dict(name=name, rows=details))
@@ -491,10 +529,10 @@ def compose_all(keyframe_path, raw_dir, out_dir, diag_dir=None, log=print,
         log(f"  {name:7s} rigid residual {resid:5.2f}px   off-region delta {outside:.4f}"
             + (f"   foreshortening {fs:.2f}" if fs else ""))
 
-    dental_donors = _select_dental_donors(out_dir)
+    dental_donors = _select_dental_donors(out_dir, profile)
     oral_shadows = soften_oral_shadows(out_dir, log)
     teeth = canonicalize_teeth(
-        out_dir, diag_dir, log, selected=dental_donors)
+        out_dir, diag_dir, log, selected=dental_donors, profile=profile)
     if diag_dir:
         json.dump(dict(keyframe=kmet, visemes=report, teeth=teeth,
                        oral_shadows=oral_shadows, rig_profile=profile),

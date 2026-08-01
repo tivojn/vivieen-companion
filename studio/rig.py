@@ -39,6 +39,25 @@ CONTROLS = {
     "nose": dict(label="Nose base and nostrils", minimum=0, maximum=150,
                  safe_minimum=0, safe_maximum=110, step=1,
                  default=100, help="Maximum speech influence; bridge and tip stay locked."),
+    # Owner request 2026-08-01 (carol, upper TH 765px): the dental lock gets
+    # a control surface. Strength is a blend alpha, not a motion gain - 100
+    # is today's full canonical paste (the only proven value, hence the
+    # one-point green band), 0 keeps every frame's own rendered teeth.
+    "teeth": dict(label="Teeth lock strength", minimum=0, maximum=100,
+                  safe_minimum=100, safe_maximum=100, step=1,
+                  default=100, help="How firmly every frame wears the canonical "
+                                    "dental row. Below 100 each frame's own "
+                                    "teeth blend back in."),
+}
+# The dental-donor candidate lists live HERE, not in compose: the profile
+# normalizer must validate donor overrides, and compose already imports rig
+# (the reverse import would be circular). compose aliases these names.
+DENTAL_ROWS = ("upper", "lower")
+UPPER_TEETH_DONORS = ("SS", "eh", "ih", "ah", "kk", "TH", "DD", "nn", "CH", "FF", "RR")
+LOWER_TEETH_DONORS = ("ih", "SS", "eh", "TH", "FF", "ah", "DD", "kk", "CH", "nn", "RR")
+DENTAL_DONORS = {
+    "upper": UPPER_TEETH_DONORS,
+    "lower": LOWER_TEETH_DONORS,
 }
 PRESETS = {
     "natural": dict(lips=100, jaw=97, cheeks=100, brows=10, forehead=100,
@@ -82,6 +101,18 @@ def normalize(profile=None):
     result["teeth_lock"] = True
     result["upper_teeth_lock"] = True
     result["lower_teeth_lock"] = True
+    # Donor overrides ride the profile as plain shape names; "auto" keeps
+    # the largest-detected-row election. Validation is the only gate here -
+    # a chosen frame with no detected enamel is compose's advisory fallback,
+    # never a rebuild veto.
+    for row in DENTAL_ROWS:
+        key = f"{row}_teeth_donor"
+        choice = (profile.get(key) if profile else None) or "auto"
+        if not isinstance(choice, str) or (
+                choice != "auto" and choice not in DENTAL_DONORS[row]):
+            raise ValueError(
+                f"{key} must be auto or one of {', '.join(DENTAL_DONORS[row])}")
+        result[key] = choice
     preset = profile.get("preset") if profile else "natural"
     result["preset"] = preset if preset in {*PRESETS, "custom"} else "custom"
     return result

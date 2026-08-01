@@ -552,6 +552,11 @@ def _rig_control_field(name):
     return Field(default=spec["default"], ge=spec["minimum"], le=spec["maximum"])
 
 
+def _dental_donor_field(row):
+    return Field(default="auto",
+                 pattern="^(auto|" + "|".join(rig.DENTAL_DONORS[row]) + ")$")
+
+
 class RigProfileInput(BaseModel):
     lips: float = _rig_control_field("lips")
     jaw: float = _rig_control_field("jaw")
@@ -560,6 +565,9 @@ class RigProfileInput(BaseModel):
     forehead: float = _rig_control_field("forehead")
     nasolabial: float = _rig_control_field("nasolabial")
     nose: float = _rig_control_field("nose")
+    teeth: float = _rig_control_field("teeth")
+    upper_teeth_donor: str = _dental_donor_field("upper")
+    lower_teeth_donor: str = _dental_donor_field("lower")
     teeth_lock: bool = True
     upper_teeth_lock: bool = True
     lower_teeth_lock: bool = True
@@ -733,13 +741,23 @@ async def api_rig(slug: str = Query(pattern=SLUG_PATTERN)):
         if os.path.isfile(os.path.join(
             directory, "visemes", f"v_{name}.jpg"))
     ]
-    selected = compose._select_dental_donors(
-        os.path.join(directory, "visemes"))
-    dental = dict(donor=None, donors={}, rows={}, contours=[])
+    # One enamel scan per row serves both the donor dropdown (every
+    # candidate frame with its detected pixel count) and the election the
+    # overlay draws - honoring the profile's saved donor overrides.
+    viseme_dir = os.path.join(directory, "visemes")
+    dental = dict(donor=None, donors={}, rows={}, contours=[],
+                  candidates={}, overrides={})
     for row in compose.DENTAL_ROWS:
-        if row not in selected:
+        candidates = compose._scan_tooth_donors(viseme_dir, row)
+        dental["candidates"][row] = [
+            dict(name=name, pixels=pixels)
+            for name, _, _, _, pixels in candidates]
+        choice = profile.get(f"{row}_teeth_donor", "auto")
+        dental["overrides"][row] = choice
+        selected = compose._elect_tooth_donor(candidates, row, choice)
+        if selected is None:
             continue
-        donor_name, _, _, master = selected[row]
+        donor_name, _, _, master = selected
         height, width = master.shape
         contours, _ = cv2.findContours(
             master, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
