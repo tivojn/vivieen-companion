@@ -539,17 +539,73 @@ def _pipeline_thread(slug, job_id):
                     manifest.get("error") or "the face build failed")
         _job_progress(slug, "face", .30,
                       "One-click 1/3: talking face ready", job_id=job_id)
-        _body_stage(slug, BodyProfileInput().model_dump(), writer,
-                    band(.30, .28, "One-click 2/3: "))
-        _motion_stage(slug, ("walk", "idle", "move"),
-                      motion.resolve_idle_pose(None, ""),
-                      motion.resolve_walk_style(None, ""),
-                      motion.resolve_move_style(None, ""),
-                      writer, band(.60, .38, "One-click 3/3: "))
-        _job_progress(slug, "done", 1.0,
-                      "Everything ready - face, body, walk, idle, and moves",
-                      job_id=job_id)
-        writer("one-click pipeline complete")
+        # Resumable: a re-click after a partial run picks up where it
+        # stopped instead of regenerating finished stages.
+        body_manifest_path = os.path.join(
+            reg().adir(slug), "body", "body.json")
+        if (reg().read_manifest(slug) or {}).get("body") \
+                and os.path.isfile(body_manifest_path):
+            writer("full body already built - skipping")
+            _job_progress(slug, "body", .58,
+                          "One-click 2/3: full body already built",
+                          job_id=job_id)
+        else:
+            _body_stage(slug, BodyProfileInput().model_dump(), writer,
+                        band(.30, .28, "One-click 2/3: "))
+        # The takes run ONE AT A TIME with backoff retries: firing all
+        # three at once burst past xAI's 2-requests-per-second team limit
+        # ("Too many requests", eve 2026-08-01) and one provider hiccup
+        # killed the whole stage. A kind that still fails after retries is
+        # reported and the pipeline moves on to the next.
+        kind_labels = {"walk": "Horizon Walk", "idle": "Edge Idle",
+                       "move": "Show Me Some Moves"}
+        idle_pose = motion.resolve_idle_pose(None, "")
+        walk_style = motion.resolve_walk_style(None, "")
+        move_style = motion.resolve_move_style(None, "")
+        existing = set((reg().read_manifest(slug) or {}).get("motion") or {})
+        bands = {"walk": (.58, .14), "idle": (.72, .13), "move": (.85, .13)}
+        motion_failures = {}
+        for kind in ("walk", "idle", "move"):
+            base, span = bands[kind]
+            if kind in existing:
+                writer(f"{kind} take already built - skipping")
+                _job_progress(slug, kind, base + span,
+                              f"One-click 3/3: {kind_labels[kind]} already built",
+                              job_id=job_id)
+                continue
+            for attempt in range(3):
+                try:
+                    _motion_stage(
+                        slug, (kind,), idle_pose, walk_style, move_style,
+                        writer,
+                        band(base, span, f"One-click 3/3 {kind_labels[kind]}: "))
+                    motion_failures.pop(kind, None)
+                    break
+                except Exception as take_error:
+                    motion_failures[kind] = str(take_error)
+                    if attempt < 2:
+                        pause = 25 * (attempt + 1)
+                        writer(f"{kind} take failed ({take_error}); "
+                               f"retrying in {pause}s ({attempt + 1}/2)")
+                        _job_progress(
+                            slug, kind, base,
+                            f"One-click 3/3 {kind_labels[kind]}: retrying "
+                            f"in {pause}s", job_id=job_id)
+                        time.sleep(pause)
+        if len(motion_failures) == 3:
+            raise RuntimeError(
+                "all three motion takes failed - last error: "
+                + motion_failures["move"])
+        if motion_failures:
+            failed = ", ".join(kind_labels[k] for k in motion_failures)
+            done_label = (f"Ready with gaps - {failed} failed; regenerate "
+                          f"from the Full Body Studio")
+        else:
+            done_label = "Everything ready - face, body, walk, idle, and moves"
+        _job_progress(slug, "done", 1.0, done_label, job_id=job_id)
+        writer("one-click pipeline complete"
+               + (f" ({len(motion_failures)} take(s) failed)"
+                  if motion_failures else ""))
     except Exception as error:
         failure = str(error)
         writer(f"FAILED: {failure}")
