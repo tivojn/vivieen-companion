@@ -27,7 +27,7 @@ sys.path.insert(0, ROOT)
 import numpy as np
 from fastapi import (FastAPI, UploadFile, File, Form, HTTPException, Query,
                      WebSocket, WebSocketDisconnect)
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 import providers as P
@@ -2192,6 +2192,51 @@ async def api_live_voices(provider: str = Query(pattern=r"^(xai|elevenlabs)$")):
         return {"voices": await asyncio.to_thread(fetch)}
     except Exception as e:
         return {"voices": [], "error": P.safe_error(e, 120)}
+
+
+@app.get("/api/live/voice-preview")
+async def api_live_voice_preview(
+        provider: str = Query(pattern=r"^(xai|elevenlabs)$"),
+        voice: str = Query(default="", max_length=64)):
+    """A short spoken sample so a voice can be chosen by EAR - the whole
+    point of a voice list (owner request 2026-08-02). xAI generates a
+    line via its TTS REST; ElevenLabs ships ready preview clips with its
+    voice roster."""
+    live = P.load().get("live") or {}
+    import requests
+
+    def fetch():
+        if provider == "xai":
+            key = live.get("xai_api_key") or ""
+            if not key:
+                raise RuntimeError("no xAI key stored")
+            r = requests.post(
+                "https://api.x.ai/v1/tts",
+                headers={"Authorization": "Bearer " + key},
+                json={"text": "Hi, I'm Vivieen - this is how I sound live.",
+                      "voice": voice or "eve", "language": "en"},
+                timeout=30)
+            r.raise_for_status()
+            return r.content, r.headers.get("content-type") or "audio/mpeg"
+        key = live.get("eleven_api_key") or ""
+        if not key:
+            raise RuntimeError("no ElevenLabs key stored")
+        r = requests.get("https://api.elevenlabs.io/v1/voices",
+                         headers={"xi-api-key": key}, timeout=20)
+        r.raise_for_status()
+        url = next((v.get("preview_url") for v in r.json().get("voices") or []
+                    if v.get("voice_id") == voice and v.get("preview_url")), "")
+        if not url:
+            raise RuntimeError("no preview for this voice")
+        clip = requests.get(url, timeout=20)
+        clip.raise_for_status()
+        return clip.content, clip.headers.get("content-type") or "audio/mpeg"
+    try:
+        data, mime = await asyncio.to_thread(fetch)
+        return Response(content=data, media_type=mime,
+                        headers={"Cache-Control": "max-age=3600"})
+    except Exception as e:
+        raise HTTPException(502, P.safe_error(e, 160))
 
 
 @app.get("/live-worklet.js")

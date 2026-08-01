@@ -757,11 +757,17 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
       <div class="f" id="live-xai" ><label>xAI API key</label>
         <input id="live-xai-key" type="password" placeholder="stored — leave blank to keep">
         <label style="margin-top:10px">Voice</label>
-        <select id="live-xai-voice"></select></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="live-xai-voice" style="flex:1"></select>
+          <button class="btn sm" type="button" id="live-xai-preview" title="Hear a short sample of the selected voice">▶</button>
+        </div></div>
       <div class="f hidden" id="live-eleven"><label>ElevenLabs API key</label>
         <input id="live-eleven-key" type="password" placeholder="stored — leave blank to keep">
         <label style="margin-top:10px">Voice</label>
-        <select id="live-eleven-voice"><option value="">Agent default</option></select></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="live-eleven-voice" style="flex:1"><option value="">Agent default</option></select>
+          <button class="btn sm" type="button" id="live-eleven-preview" title="Hear a short sample of the selected voice">▶</button>
+        </div></div>
     </div>
     <p class="note" style="margin-top:12px">Start and stop from the avatar's
     right-click menu → <b>Live talk</b>. Billed per open-line minute by the
@@ -3532,6 +3538,22 @@ async function fillLiveVoices(provider, select, current) {
       `<option value="${esc(keep)}" selected>${esc(r.error)}</option>`);
   }
 }
+let livePreviewAudio = null;
+function playLivePreview(provider, selectId, button) {
+  const voice = $(selectId).value;
+  if (provider === 'elevenlabs' && !voice) { note('Pick a voice to preview.'); return; }
+  if (livePreviewAudio) { livePreviewAudio.pause(); livePreviewAudio = null; }
+  button.disabled = true; button.textContent = '…';
+  const audio = new Audio('/api/live/voice-preview?provider=' + provider
+    + '&voice=' + encodeURIComponent(voice));
+  livePreviewAudio = audio;
+  const done = () => { button.disabled = false; button.textContent = '▶'; };
+  audio.onended = done;
+  audio.onerror = () => { done(); note('Preview unavailable for this voice.'); };
+  audio.play().then(done).catch(() => { done(); note('Preview unavailable.'); });
+  audio.onplaying = () => { button.textContent = '♪'; button.disabled = false; };
+  audio.onended = () => { button.textContent = '▶'; };
+}
 function renderLiveBlock() {
   const live = CFG.live || {};
   $('#live-provider').value = live.provider || 'xai';
@@ -3547,6 +3569,10 @@ function renderLiveBlock() {
     $('#live-eleven').classList.toggle('hidden', xai);
   };
   $('#live-provider').onchange = () => { swap(); dirty(); };
+  $('#live-xai-preview').onclick = () =>
+    playLivePreview('xai', '#live-xai-voice', $('#live-xai-preview'));
+  $('#live-eleven-preview').onclick = () =>
+    playLivePreview('elevenlabs', '#live-eleven-voice', $('#live-eleven-preview'));
   ['live-xai-key', 'live-eleven-key']
     .forEach(id => { $('#' + id).oninput = dirty; });
   ['live-xai-voice', 'live-eleven-voice']
