@@ -314,8 +314,12 @@ def _head_mask(cutout_image, landmarks, destination):
     center = (left + right) * 0.5
     face_width = max(1.0, right - left)
     face_height = max(1.0, chin - top)
+    # Long dissolve: the live head and the generated body render hair with
+    # different tone and sharpness, and a short fade turns that difference
+    # into a visible horizontal band (carol, 2026-08-01). Half a face-height
+    # spreads the handover below anything the eye can anchor on.
     fade_start = min(alpha.shape[0] - 2, chin + face_height * 0.05)
-    fade_end = min(alpha.shape[0], chin + face_height * 0.34)
+    fade_end = min(alpha.shape[0], chin + face_height * 0.55)
     ys = np.arange(alpha.shape[0], dtype=np.float32)
     fade = np.ones_like(ys)
     if fade_end > fade_start:
@@ -325,7 +329,9 @@ def _head_mask(cutout_image, landmarks, destination):
     neck_start = chin + face_height * 0.01
     progress = np.clip((ys - neck_start) / max(1.0, fade_end - neck_start), 0.0, 1.0)
     half_width = face_width * (0.34 - 0.07 * progress)
-    feather = max(8.0, face_width * 0.035)
+    # A narrow feather sliced vertically through the side hair; the gate
+    # now dissolves over ~12% of the face width instead of 3.5%.
+    feather = max(16.0, face_width * 0.12)
     xs = np.arange(alpha.shape[1], dtype=np.float32)[None, :]
     neck_gate = np.clip((half_width[:, None] + feather - np.abs(xs - center)) / feather, 0.0, 1.0)
     neck_gate[ys <= neck_start] = 1.0
