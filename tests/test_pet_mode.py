@@ -1456,6 +1456,37 @@ class PetMatteTests(unittest.TestCase):
         self.assertLess(int(alpha[175, 35]), 220)
         self.assertGreater(int(alpha[165, 120]), 20)
 
+    def test_standby_sips_power_instead_of_gulping(self):
+        # Power audit 2026-08-01: the renderer burned 115% CPU (+20% GPU
+        # helper) while she just stood there - the full compositing
+        # pipeline ran at ProMotion's 120Hz, a GPU->CPU getImageData
+        # readback fired at 30Hz under a stationary cursor, control rects
+        # forced a layout flush every frame, and the shell pushed 31
+        # pointer IPCs a second for an unmoved point. Standby now paces to
+        # 30fps (lively states get 60), the readback and rect reports are
+        # cached/throttled, and a stationary cursor sends nothing.
+        renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("function frameInterval(now)", renderer)
+        self.assertIn("if(now-lastFrameAt<frameInterval(now))return;", renderer)
+        self.assertIn("return lively?1000/60-2:1000/30-2;", renderer)
+        self.assertIn("if(still&&now-hitSampleAt<250){", renderer)
+        self.assertIn("if(now-lastRectsAt>140){lastRectsAt=now;reportControlRects();}",
+                      renderer)
+        main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
+        self.assertIn("const pointerLastSent = { pet: null, buddy: null };", main)
+        self.assertIn("|| Date.now() - previous.at > 250;", main)
+        self.assertIn("if (sendNow) window.webContents.send('vivieen:pet-pointer', localPoint);",
+                      main)
+        # Second pass, the structural half (115% -> ~25% measured): the
+        # face surfaces rasterise at the scale the compositor actually
+        # samples instead of always-1024 (consumers sample them back into
+        # keyframe space, so drawing coordinates are untouched), and
+        # assets decode once into GPU-resident ImageBitmaps.
+        self.assertIn("faceScaleHint*1.15", renderer)
+        self.assertIn("faceOutScale=surfaceW/ref.width;", renderer)
+        self.assertIn("0,0,FACE_KEY.w,FACE_KEY.h)", renderer)
+        self.assertIn("createImageBitmap(i).then(res).catch(()=>res(i));", renderer)
+
     def test_chat_placeholder_fits_the_field_it_sits_in(self):
         # The roam-sized chat bar is far narrower than the docked one, and
         # the full placeholder clipped mid-sentence (owner screenshot,

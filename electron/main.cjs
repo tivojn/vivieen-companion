@@ -64,6 +64,7 @@ let petDrag = null;
 let petControlRects = [];
 let buddyControlRects = [];
 let petPointerTimer = null;
+const pointerLastSent = { pet: null, buddy: null };
 let petPointerInteractive = null;
 let petPointerDebugAt = 0;
 let petRoamTimer = null;
@@ -583,9 +584,9 @@ function startPetPointerTracking() {
   petPointerTimer = setInterval(() => {
     const point = screen.getCursorScreenPoint();
     for (const target of [
-      { window: () => mainWindow, setHit: setPetHit,
+      { key: 'pet', window: () => mainWindow, setHit: setPetHit,
         rects: () => petControlRects, dragging: () => petDrag },
-      { window: () => buddyWindow, setHit: setBuddyHit,
+      { key: 'buddy', window: () => buddyWindow, setHit: setBuddyHit,
         rects: () => buddyControlRects, dragging: () => buddyDrag },
     ]) {
       const window = target.window();
@@ -599,14 +600,25 @@ function startPetPointerTracking() {
       const localPoint = {
         x: point.x - bounds.x, y: point.y - bounds.y, inside,
       };
+      // A stationary cursor sends nothing: 31 IPC messages a second per
+      // window for an unmoved point was pure heat (2026-08-01 power
+      // audit). Movement or an inside-flip sends immediately; a 250ms
+      // heartbeat keeps the renderer's staleness checks honest.
+      const previous = pointerLastSent[target.key];
+      const sendNow = !previous
+        || Math.abs(localPoint.x - previous.x) >= 1
+        || Math.abs(localPoint.y - previous.y) >= 1
+        || localPoint.inside !== previous.inside
+        || Date.now() - previous.at > 250;
+      if (sendNow) pointerLastSent[target.key] = { ...localPoint, at: Date.now() };
       if (!state.petClickThrough) {
         // The window is always interactive, but the gaze still needs the
         // cursor, so the feed keeps flowing in this branch too.
         target.setHit(true, 'click-through-off');
-        window.webContents.send('vivieen:pet-pointer', localPoint);
+        if (sendNow) window.webContents.send('vivieen:pet-pointer', localPoint);
         continue;
       }
-      window.webContents.send('vivieen:pet-pointer', localPoint);
+      if (sendNow) window.webContents.send('vivieen:pet-pointer', localPoint);
       // A drag in flight owns the window. The cursor legitimately outruns
       // the moving bounds, and forcing click-through in that gap lost the
       // mouseup that would have ended the drag - the renderer's pointer
