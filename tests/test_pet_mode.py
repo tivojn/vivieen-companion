@@ -156,6 +156,16 @@ class PetInputBridgeTests(unittest.TestCase):
         marker = renderer.index("html.electron.pet.chat-open #bar{")
         self.assertIn("pointer-events:none", renderer[marker:marker + 220])
         self.assertIn("#bar #manual{pointer-events:auto}", renderer)
+        # The input must never sit ON the avatar (2026-08-01, zoomed-out
+        # screenshot: the field covered the chin; full-body would put it on
+        # the legs). With the chat bar or listening chip up, the camera
+        # reserves a measured lane at the window bottom and the avatar
+        # glides up into the remaining height.
+        self.assertIn("function petBottomReserve", renderer)
+        self.assertIn("barHeight+18", renderer)
+        self.assertIn("petLaneNow+=(petBottomReserve()-petLaneNow)*0.22", renderer)
+        self.assertIn("Math.min(cv.width/crop.w,avail/crop.h)*margin", renderer)
+        self.assertIn("PET.roam?avail*.995-(crop.y+crop.h)*scale", renderer)
         # Pointing at where the bar LIVES wakes it: without this, a cursor
         # aimed straight at the EnConvo mark (no detour over the avatar)
         # found an invisible bar that never revealed itself, so hover and

@@ -1514,13 +1514,34 @@ function viewCrop(meta,width,height){
   }
   return clampCrop(crop,width,height);
 }
+/* The chat bar and the listening chip pin to the WINDOW bottom while the
+   avatar fits the whole window - at small zoom the input sat on her chin,
+   and in full-body it would cover her legs. Whenever either is up, the
+   camera keeps a lane clear below her: the fit height shrinks by the
+   bar's measured extent and she glides up out of the way. */
+let petLaneNow=0;
+function petBottomReserve(){
+  const de=document.documentElement;
+  if(!de.classList.contains('pet'))return 0;
+  let want=0;
+  if(de.classList.contains('chat-open')){
+    const barBox=document.getElementById('bar');
+    const barHeight=barBox?barBox.getBoundingClientRect().height:0;
+    want=Math.max(want,barHeight+18);
+  }
+  if(de.classList.contains('listening'))want=Math.max(want,88);
+  return want*(devicePixelRatio||1);
+}
 function petCamera(meta,width,height){
   const crop=viewCrop(meta,width,height);
+  petLaneNow+=(petBottomReserve()-petLaneNow)*0.22;
+  const lane=petLaneNow<1?0:petLaneNow;
+  const avail=Math.max(cv.height*0.35,cv.height-lane);
   const margin=PET.roam?0.985:(PET.view==='full'?0.94:0.98);
-  const scale=Math.min(cv.width/crop.w,cv.height/crop.h)*margin;
+  const scale=Math.min(cv.width/crop.w,avail/crop.h)*margin;
   const x=cv.width/2-(crop.x+crop.w/2)*scale;
-  const y=PET.roam?cv.height*.995-(crop.y+crop.h)*scale:
-    cv.height/2-(crop.y+crop.h/2)*scale;
+  const y=PET.roam?avail*.995-(crop.y+crop.h)*scale:
+    avail/2-(crop.y+crop.h/2)*scale;
   return {scale,x,y,crop};
 }
 const ROAM_BOX={width:250,height:340};
