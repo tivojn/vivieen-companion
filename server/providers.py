@@ -47,6 +47,15 @@ DEFAULTS = {
             "base_url": "", "api_key": "", "speed": 1.0},
     "stt": {"provider": "enconvo", "model": "",
             "base_url": "", "api_key": "", "language": "auto"},
+    # Realtime conversation ("Live talk"): a full speech-to-speech loop.
+    # xAI is the primary backend - one websocket, one price, Grok included.
+    # ElevenLabs runs through a Conversational-AI agent (auto-created on
+    # first use and remembered). Keys never leave this server.
+    "live": {"provider": "xai",
+             "xai_api_key": "", "xai_voice": "eve",
+             "xai_model": "grok-voice-think-fast-1.0",
+             "eleven_api_key": "", "eleven_voice_id": "",
+             "eleven_agent_id": ""},
     "persona": {
         "name": "Vivieen",
         "system": (
@@ -100,11 +109,16 @@ def redacted(cfg):
     """Never send a key back to the browser - only whether one is stored."""
     out = json.loads(json.dumps(cfg))
     for k in ("llm", "tts", "stt"):
-        if out.get(k, {}).get("api_key"):
-            out[k]["api_key"] = ""
-            out[k]["has_key"] = True
+        block = out.setdefault(k, {})
+        if block.get("api_key"):
+            block["api_key"] = ""
+            block["has_key"] = True
         else:
-            out[k]["has_key"] = False
+            block["has_key"] = False
+    live = out.setdefault("live", {})
+    for field in ("xai_api_key", "eleven_api_key"):
+        live["has_" + field] = bool(live.get(field))
+        live[field] = ""
     return out
 
 

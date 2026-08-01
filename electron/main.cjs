@@ -2018,6 +2018,12 @@ function showPetMenu() {
       } },
     { name: followingEnconvo ? 'De-couple from EnConvo' : 'Couple to EnConvo',
       click: () => setEnconvoMonitoring(!followingEnconvo) },
+    { name: 'Live talk', hint: 'realtime voice · toggle',
+      click: () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('vivieen:live-toggle');
+        }
+      } },
     { type: 'separator' },
     { name: state.petRoam ? 'Walking' : 'Walk',
       hint: !petMotionReady ? 'generate first'

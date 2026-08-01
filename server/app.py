@@ -1892,6 +1892,16 @@ async def api_config_set(body: dict):
             blk["api_key"] = ""
         elif not requested_key:
             blk.pop("api_key", None)
+    live = body.get("live")
+    if isinstance(live, dict):
+        for field in ("xai_api_key", "eleven_api_key"):
+            live.pop("has_" + field, None)
+            if live.get(field) == "__clear__":
+                live[field] = ""
+                if field == "eleven_api_key":
+                    live["eleven_agent_id"] = ""
+            elif not live.get(field):
+                live.pop(field, None)
     new = P.save(body)
     if (new.get("stt") or {}).get("provider") != (cur.get("stt") or {}).get("provider") or \
        (new.get("tts") or {}).get("provider") != (cur.get("tts") or {}).get("provider"):
@@ -2136,6 +2146,233 @@ async def stt_stream(client: WebSocket):
             await client.close()
         except Exception:
             pass
+
+
+# ------------------------------------------------------------ live voice
+# "Live talk": a realtime speech-to-speech conversation. The renderer
+# streams raw PCM16 mic frames as binary websocket messages; this bridge
+# speaks the provider's protocol server-side (keys never reach the
+# renderer) and forwards a unified event stream back:
+#   {type:ready,input_rate,output_rate,provider} | {type:audio,data,rate}
+#   {type:user_text,text} | {type:agent_text,text,final} | {type:interrupt}
+#   {type:closed,reason} | {type:error,message}
+# A silence watchdog hangs up after two quiet minutes: realtime providers
+# bill per OPEN-LINE minute, and an idle line must never be a meter.
+
+XAI_REALTIME_URL = "wss://api.x.ai/v1/realtime"
+ELEVEN_CONVAI_URL = "wss://api.elevenlabs.io/v1/convai/conversation"
+LIVE_SILENCE_HANGUP_S = 120
+
+
+def _live_settings():
+    cfg = P.load()
+    live = cfg.get("live") or {}
+    persona = (cfg.get("persona") or {}).get("system") or ""
+    provider = live.get("provider") or "xai"
+    if provider == "xai" and live.get("xai_api_key"):
+        return dict(provider="xai", key=live["xai_api_key"],
+                    voice=live.get("xai_voice") or "eve",
+                    model=live.get("xai_model") or "grok-voice-think-fast-1.0",
+                    persona=persona)
+    if provider == "elevenlabs" and live.get("eleven_api_key"):
+        return dict(provider="elevenlabs", key=live["eleven_api_key"],
+                    voice=live.get("eleven_voice_id") or "",
+                    agent_id=live.get("eleven_agent_id") or "",
+                    persona=persona)
+    return None
+
+
+def _ensure_eleven_agent(settings):
+    """Create (once) and remember the Conversational-AI agent that carries
+    the persona; ElevenLabs realtime only talks through an agent."""
+    if settings.get("agent_id"):
+        return settings["agent_id"]
+    import requests
+    agent = {
+        "name": "Vivieen live talk",
+        "conversation_config": {
+            "agent": {
+                "first_message": "",
+                "language": "en",
+                "prompt": {"prompt": settings["persona"] or
+                           "You are Vivieen, a warm desktop companion. "
+                           "Keep replies to one or two short spoken sentences."},
+            },
+        },
+    }
+    if settings.get("voice"):
+        agent["conversation_config"]["tts"] = {"voice_id": settings["voice"]}
+    response = requests.post(
+        "https://api.elevenlabs.io/v1/convai/agents/create",
+        headers={"xi-api-key": settings["key"]}, json=agent, timeout=30)
+    response.raise_for_status()
+    agent_id = str(response.json().get("agent_id") or "")
+    if not agent_id:
+        raise RuntimeError("agent creation returned no agent_id")
+    P.save({"live": {"eleven_agent_id": agent_id}})
+    return agent_id
+
+
+@app.websocket("/live/voice")
+async def live_voice(client: WebSocket):
+    if AUTH_TOKEN:
+        supplied = client.headers.get("x-vivieen-token", "")
+        if not secrets.compare_digest(supplied, AUTH_TOKEN):
+            await client.close(code=4403)
+            return
+    await client.accept()
+    settings = _live_settings()
+    if not settings:
+        await client.send_json({
+            "type": "error",
+            "message": "Live talk is not configured - add an xAI or "
+                       "ElevenLabs key under Settings > Models > Live voice."})
+        await client.close()
+        return
+    import websockets
+    last_audio = [time.time()]
+    try:
+        if settings["provider"] == "xai":
+            url = f"{XAI_REALTIME_URL}?model={settings['model']}"
+            headers = {"Authorization": "Bearer " + settings["key"]}
+            async with websockets.connect(
+                    url, additional_headers=headers,
+                    max_size=1 << 24, open_timeout=15) as upstream:
+                await upstream.send(json.dumps({
+                    "type": "session.update", "session": {
+                        "voice": settings["voice"],
+                        "instructions": settings["persona"],
+                        "turn_detection": {"type": "server_vad",
+                                           "silence_duration_ms": 700},
+                        "audio": {
+                            "input": {"format": {"type": "audio/pcm",
+                                                 "rate": 24000},
+                                      "transport": "json"},
+                            "output": {"format": {"type": "audio/pcm",
+                                                  "rate": 24000},
+                                       "transport": "json"},
+                        }}}))
+                await client.send_json({"type": "ready", "provider": "xai",
+                                        "input_rate": 24000,
+                                        "output_rate": 24000})
+                await _live_pump(client, upstream, _xai_event, last_audio,
+                                 lambda b64: json.dumps(
+                                     {"type": "input_audio_buffer.append",
+                                      "audio": b64}))
+        else:
+            agent_id = await asyncio.to_thread(_ensure_eleven_agent, settings)
+            url = f"{ELEVEN_CONVAI_URL}?agent_id={agent_id}"
+            headers = {"xi-api-key": settings["key"]}
+            async with websockets.connect(
+                    url, additional_headers=headers,
+                    max_size=1 << 24, open_timeout=15) as upstream:
+                await client.send_json({"type": "ready",
+                                        "provider": "elevenlabs",
+                                        "input_rate": 16000,
+                                        "output_rate": 16000})
+                await _live_pump(client, upstream, _eleven_event, last_audio,
+                                 lambda b64: json.dumps(
+                                     {"user_audio_chunk": b64}))
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print("[viv] live voice failed:", P.safe_error(e), flush=True)
+        try:
+            await client.send_json({"type": "error",
+                                    "message": P.safe_error(e, 200)})
+        except Exception:
+            pass
+    finally:
+        try:
+            await client.close()
+        except Exception:
+            pass
+
+
+async def _live_pump(client, upstream, translate, last_audio, wrap_audio):
+    """Three tasks: mic frames up, provider events down, silence watchdog."""
+    async def uplink():
+        while True:
+            message = await client.receive()
+            if message.get("type") == "websocket.disconnect":
+                return
+            data = message.get("bytes")
+            if data:
+                last_audio[0] = time.time()
+                await upstream.send(wrap_audio(
+                    base64.b64encode(data).decode("ascii")))
+            elif message.get("text"):
+                control = json.loads(message["text"])
+                if control.get("type") == "stop":
+                    return
+
+    async def downlink():
+        async for raw in upstream:
+            if isinstance(raw, (bytes, bytearray)):
+                continue
+            payload = json.loads(raw)
+            if payload.get("type") == "ping":       # ElevenLabs keep-alive
+                await upstream.send(json.dumps({
+                    "type": "pong",
+                    "event_id": (payload.get("ping_event") or {}).get("event_id")}))
+                continue
+            for event in translate(payload):
+                await client.send_json(event)
+
+    async def watchdog():
+        while True:
+            await asyncio.sleep(5)
+            if time.time() - last_audio[0] > LIVE_SILENCE_HANGUP_S:
+                await client.send_json({"type": "closed", "reason": "silence"})
+                return
+
+    tasks = [asyncio.create_task(coro())
+             for coro in (uplink, downlink, watchdog)]
+    try:
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in tasks:
+            task.cancel()
+
+
+def _xai_event(payload):
+    kind = payload.get("type") or ""
+    if kind == "response.output_audio.delta":
+        data = payload.get("delta") or payload.get("audio") or ""
+        if data:
+            yield {"type": "audio", "data": data, "rate": 24000}
+    elif kind == "response.output_audio_transcript.delta":
+        yield {"type": "agent_text",
+               "text": payload.get("delta") or "", "final": False}
+    elif kind == "response.output_audio_transcript.done":
+        yield {"type": "agent_text",
+               "text": payload.get("transcript") or "", "final": True}
+    elif kind == "conversation.item.input_audio_transcription.updated":
+        yield {"type": "user_text", "text": payload.get("transcript") or ""}
+    elif kind == "input_audio_buffer.speech_started":
+        yield {"type": "interrupt"}
+    elif kind == "error":
+        yield {"type": "error",
+               "message": str((payload.get("error") or {}).get("message")
+                              or payload)[:200]}
+
+
+def _eleven_event(payload):
+    kind = payload.get("type") or ""
+    if kind == "audio":
+        data = (payload.get("audio_event") or {}).get("audio_base_64") or ""
+        if data:
+            yield {"type": "audio", "data": data, "rate": 16000}
+    elif kind == "user_transcript":
+        yield {"type": "user_text",
+               "text": (payload.get("user_transcription_event") or {}
+                        ).get("user_transcript") or ""}
+    elif kind == "agent_response":
+        yield {"type": "agent_text",
+               "text": (payload.get("agent_response_event") or {}
+                        ).get("agent_response") or "", "final": True}
+    elif kind == "interruption":
+        yield {"type": "interrupt"}
 
 
 class Turn(BaseModel):

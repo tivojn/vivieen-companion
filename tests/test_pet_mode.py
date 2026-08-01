@@ -1456,6 +1456,29 @@ class PetMatteTests(unittest.TestCase):
         self.assertLess(int(alpha[175, 35]), 220)
         self.assertGreater(int(alpha[165, 120]), 20)
 
+    def test_live_talk_rides_the_existing_speech_machinery(self):
+        # Realtime conversation (2026-08-01): mic PCM streams to the server
+        # bridge as binary frames; provider audio plays through the SAME
+        # actx + analyser as turn-based replies, so speaking, level() and
+        # the byEnergy mouth work unmodified. Barge-in flushes the queue;
+        # the menu toggles it; EnConvo coupling and live talk are mutually
+        # exclusive over the voice channel.
+        renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("async function startLiveTalk()", renderer)
+        self.assertIn("registerProcessor('viv-live-capture'", renderer)
+        self.assertIn("'/live/voice'", renderer)
+        self.assertIn("localSource=src;speaking=true;track=[];", renderer)
+        self.assertIn("function liveFlush(session)", renderer)
+        self.assertIn("De-couple from EnConvo first", renderer)
+        self.assertIn("SHELL.onLiveToggle(()=>{void startLiveTalk();});", renderer)
+        preload = (ROOT / "electron" / "preload.cjs").read_text(encoding="utf-8")
+        self.assertIn("'vivieen:live-toggle'", preload)
+        main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
+        self.assertIn("{ name: 'Live talk', hint: 'realtime voice · toggle',", main)
+        settings = (ROOT / "web" / "settings.html").read_text(encoding="utf-8")
+        self.assertIn('id="blk-live"', settings)
+        self.assertIn("collectLiveBlock();", settings)
+
     def test_standby_sips_power_instead_of_gulping(self):
         # Power audit 2026-08-01: the renderer burned 115% CPU (+20% GPU
         # helper) while she just stood there - the full compositing
