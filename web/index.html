@@ -629,7 +629,18 @@ async function refreshAssetsIfChanged(){
 addEventListener('focus',refreshAssetsIfChanged);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshAssetsIfChanged();});
 
+// The placeholder must fit the field it sits in: the roam-sized chat bar
+// is far narrower than the docked one, and the full sentence clipped to
+// "Hold her head to talk" wrapped mid-word (owner screenshot 2026-08-01).
+function fitTxtPlaceholder(){
+  if(!txt)return;
+  const width=txt.clientWidth||0;
+  txt.placeholder=width>=260?'Hold her head to talk, or type…':
+    width>=150?'Hold head to talk…':'Type…';
+}
+addEventListener('resize',()=>fitTxtPlaceholder());
 function fit(){const d=devicePixelRatio||1;cv.width=innerWidth*d;cv.height=innerHeight*d;
+  fitTxtPlaceholder();
   // Resizing resets context state. Animation frames are upscaled whenever the
   // Animation Size zoom outruns the 720p source, and the default bilinear
   // filter is what reads as "low resolution" - high quality costs nothing.
