@@ -196,10 +196,13 @@ def inspector_payload(landmarks, shape):
     # panel can show the infraorbital layer that animates with the cheeks.
     bags = []
     for group in (face.EYE_L, face.EYE_R):
-        points = np.asarray(landmarks[group], np.float32)
-        ex0, ex1 = float(points[:, 0].min()), float(points[:, 0].max())
+        # NOT `points` - that name already holds the serialized landmark
+        # list, and shadowing it here shipped a raw numpy array to FastAPI
+        # (every calibration open 500'd: "reading facial landmarks" hung).
+        eye_points = np.asarray(landmarks[group], np.float32)
+        ex0, ex1 = float(eye_points[:, 0].min()), float(eye_points[:, 0].max())
         eye_width = max(ex1 - ex0, 1.0)
-        top = float(points[:, 1].max()) + 0.04 * eye_width
+        top = float(eye_points[:, 1].max()) + 0.04 * eye_width
         bottom = min(float(height), top + 0.45 * eye_width)
         bags.append([
             [round(ex0 / width, 6), round(top / height, 6)],
