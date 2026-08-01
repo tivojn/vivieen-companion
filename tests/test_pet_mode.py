@@ -165,7 +165,10 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("barHeight+18", renderer)
         self.assertIn("petLaneNow+=(petBottomReserve()-petLaneNow)*0.22", renderer)
         self.assertIn("Math.min(cv.width/crop.w,avail/crop.h)*margin", renderer)
-        self.assertIn("PET.roam?avail*.995-(crop.y+crop.h)*scale", renderer)
+        # Feet anchor at the EXACT window bottom - the shell rests that
+        # edge on the Dock's top line, and the old 0.5% reserve read as
+        # the figure hovering above the Dock (owner, 2026-08-01).
+        self.assertIn("PET.roam?avail-(crop.y+crop.h)*scale", renderer)
         # Pointing at where the bar LIVES wakes it: without this, a cursor
         # aimed straight at the EnConvo mark (no detour over the avatar)
         # found an invisible bar that never revealed itself, so hover and
