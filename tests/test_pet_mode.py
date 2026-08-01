@@ -1453,6 +1453,24 @@ class PetMatteTests(unittest.TestCase):
         self.assertLess(int(alpha[175, 35]), 220)
         self.assertGreater(int(alpha[165, 120]), 20)
 
+    def test_first_coupling_explains_enconvo_with_a_download_link(self):
+        # First-time users clicking "Couple to EnConvo" get the pitch once:
+        # Vivieen runs standalone, but EnConvo ships LLM, TTS, ASR, and
+        # image/video generation out of the box - standalone means BYOK and
+        # a challenging setup. The dialog's first button is the clickable
+        # path to the enconvo.com download. Every enable entry point (pet
+        # menu, tray checkbox, coupled-bar icon via IPC) routes through it;
+        # de-coupling never nags.
+        main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
+        self.assertIn("async function coupleToEnconvo()", main)
+        self.assertIn("state.enconvoIntroSeen", main)
+        self.assertIn("shell.openExternal('https://enconvo.com')", main)
+        self.assertIn("'Download EnConvo (enconvo.com)', 'Couple now', 'Not now'",
+                      main)
+        self.assertEqual(main.count("void coupleToEnconvo()"), 2)
+        self.assertIn("value ? coupleToEnconvo() : setEnconvoMonitoring(false)",
+                      main)
+
     def test_cursor_head_follow_is_a_whisper_not_a_swing(self):
         # Tuned DOWN twice on the live desktop (2026-08-01): 12/5/1.0 swung
         # the whole head with the pointer, and even 4.5/2/0.4 slid the head
