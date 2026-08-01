@@ -372,6 +372,43 @@ function setEnconvoMonitoring(value) {
   return shellState();
 }
 
+// The first coupling explains WHY EnConvo before flipping the switch:
+// Vivieen runs standalone as a desktop avatar companion, but coupled with
+// EnConvo it is fully equipped out of the box - LLM chat, text-to-speech,
+// voice recognition (ASR), and image/video generation all come from
+// EnConvo. Standalone means bring-your-own-keys, and that setup is the
+// hard road. The first dialog button is the clickable path to the
+// enconvo.com download; shown once, then coupling is a single click.
+async function coupleToEnconvo() {
+  if (!state.enconvoIntroSeen) {
+    state.enconvoIntroSeen = true;
+    saveStateSoon();
+    const { response } = await dialog.showMessageBox({
+      type: 'info',
+      title: 'Couple with EnConvo',
+      message: 'Best together with EnConvo',
+      detail:
+        'Vivieen works on its own as a desktop avatar companion - but '
+        + 'coupled with EnConvo it is fully equipped out of the box: LLM '
+        + 'chat, text-to-speech, voice recognition (ASR), and image/video '
+        + 'generation are all included, with nothing to configure.\n\n'
+        + 'Without EnConvo you bring your own API keys (Settings → '
+        + 'Models), and that setup can be challenging.\n\n'
+        + 'New to EnConvo? Download it from enconvo.com first, then '
+        + 'couple again.',
+      buttons: ['Download EnConvo (enconvo.com)', 'Couple now', 'Not now'],
+      defaultId: 0,
+      cancelId: 2,
+    });
+    if (response === 0) {
+      shell.openExternal('https://enconvo.com').catch(() => {});
+      return shellState();
+    }
+    if (response === 2) return shellState();
+  }
+  return setEnconvoMonitoring(true);
+}
+
 function stopBackend() {
   if (!backend || !ownsBackend) return;
   backend.removeAllListeners('exit');
@@ -1918,7 +1955,8 @@ function buildTrayMenu() {
     { label: 'Size & Opacity…', click: showAppearanceWindow },
     { type: 'separator' },
     { label: 'Couple to EnConvo Audio', type: 'checkbox', checked: monitorState().enabled,
-      click: (item) => setEnconvoMonitoring(item.checked) },
+      click: (item) => (item.checked
+        ? void coupleToEnconvo() : setEnconvoMonitoring(false)) },
     { label: 'Always on Top', type: 'checkbox', checked: state.alwaysOnTop,
       click: (item) => applyAlwaysOnTop(item.checked) },
     { label: petMotionReady ? 'Horizon Walk Along Dock' : 'Horizon Walk · Generate Motion First',
@@ -1970,7 +2008,8 @@ function showPetMenu() {
         mainWindow.webContents.send('vivieen:pet-chat');
       } },
     { name: followingEnconvo ? 'De-couple from EnConvo' : 'Couple to EnConvo',
-      click: () => setEnconvoMonitoring(!followingEnconvo) },
+      click: () => (followingEnconvo
+        ? setEnconvoMonitoring(false) : void coupleToEnconvo()) },
     { type: 'separator' },
     { name: state.petRoam ? 'Walking' : 'Walk',
       hint: !petMotionReady ? 'generate first'
@@ -2255,7 +2294,8 @@ function installIpc() {
     petDrag = null;
     saveStateSoon();
   });
-  ipcMain.handle('vivieen:set-enconvo-monitor', (_event, value) => setEnconvoMonitoring(value));
+  ipcMain.handle('vivieen:set-enconvo-monitor', (_event, value) => (
+    value ? coupleToEnconvo() : setEnconvoMonitoring(false)));
   ipcMain.handle('vivieen:avatar-changed', () => {
     if (state.petRoam) applyPetRoam(false);
     petMotionReady = false;
