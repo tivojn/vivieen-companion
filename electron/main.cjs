@@ -377,7 +377,7 @@ function setEnconvoMonitoring(value) {
 // icon, which the owner rightly called ugly. Resolves 0 (download),
 // 1 (couple now) or 2 (not now); closing the window counts as "not now".
 let introWindow = null;
-function showEnconvoIntroWindow() {
+function showEnconvoIntroWindow(mode = 'launch', installed = false) {
   return new Promise((resolve) => {
     if (introWindow && !introWindow.isDestroyed()) introWindow.destroy();
     const area = screen.getPrimaryDisplay().workArea;
@@ -422,43 +422,60 @@ function showEnconvoIntroWindow() {
       introWindow.show();
       introWindow.focus();
     });
-    introWindow.loadURL(`${baseUrl()}/intro?electron=1`);
+    introWindow.loadURL(`${baseUrl()}/intro?electron=1`
+      + `&mode=${encodeURIComponent(mode)}&installed=${installed ? 1 : 0}`);
   });
 }
 
-// The first coupling explains WHY EnConvo before flipping the switch:
-// Vivieen runs standalone as a desktop avatar companion, but coupled with
-// EnConvo it is fully equipped out of the box - LLM chat, text-to-speech,
-// voice recognition (ASR), and image/video generation all come from
-// EnConvo. Standalone means bring-your-own-keys, and that setup is the
-// hard road. The first dialog button is the clickable path to the
-// enconvo.com download; shown once, then coupling is a single click.
-async function coupleToEnconvo() {
-  if (!state.enconvoIntroSeen) {
-    state.enconvoIntroSeen = true;
-    saveStateSoon();
-    // The pitch narrates itself: a pre-generated EnConvo TTS take
-    // (Gemini 3.1 Flash TTS Preview, voice Kore) plays behind the dialog
-    // and stops the moment a button is picked.
-    let narration = null;
-    try {
-      narration = spawn('/usr/bin/afplay',
-        [path.join(__dirname, 'assets', 'enconvo-intro.m4a')],
-        { stdio: 'ignore' });
-    } catch { narration = null; }
-    let response = 2;
-    try {
-      response = await showEnconvoIntroWindow();
-    } finally {
-      if (narration) { try { narration.kill(); } catch {} }
-    }
-    if (response === 0) {
-      shell.openExternal('https://enconvo.com').catch(() => {});
-      return shellState();
-    }
-    if (response === 2) return shellState();
+function enconvoInstalled() {
+  return ['/Applications/EnConvo.app',
+          path.join(app.getPath('home'), 'Applications', 'EnConvo.app')]
+    .some((candidate) => {
+      try { return fs.existsSync(candidate); } catch { return false; }
+    });
+}
+
+// The pitch explains WHY EnConvo: Vivieen runs standalone, but coupled it
+// is fully equipped out of the box - LLM chat, TTS, voice recognition,
+// image/video generation. It narrates itself (pre-generated EnConvo TTS,
+// Gemini 3.1 Flash Preview voice Kore) and the narration stops on any
+// choice.
+async function runEnconvoIntro(mode) {
+  let narration = null;
+  try {
+    narration = spawn('/usr/bin/afplay',
+      [path.join(__dirname, 'assets', 'enconvo-intro.m4a')],
+      { stdio: 'ignore' });
+  } catch { narration = null; }
+  let response = 2;
+  try {
+    response = await showEnconvoIntroWindow(mode, enconvoInstalled());
+  } finally {
+    if (narration) { try { narration.kill(); } catch {} }
   }
-  return setEnconvoMonitoring(true);
+  if (response === 0) shell.openExternal('https://enconvo.com').catch(() => {});
+  if (response === 1) setEnconvoMonitoring(true);
+  return response;
+}
+
+// The undecided user is the one who never clicks "Couple" - so the pitch's
+// home is the FIRST LAUNCH, once, a beat after the avatar lands. Already-
+// coupled installs never see it.
+function maybeShowLaunchIntro() {
+  if (state.enconvoIntroSeen || state.followEnconvo) return;
+  state.enconvoIntroSeen = true;
+  saveStateSoon();
+  setTimeout(() => { void runEnconvoIntro('launch'); }, 3500);
+}
+
+async function coupleToEnconvo() {
+  // Clicking "Couple to EnConvo" IS the decision (the owner's own point)
+  // - couple instantly, no pitch. The card appears here only when EnConvo
+  // is not installed, because coupling would otherwise silently wait on
+  // an app that does not exist; the pitch then leads with the download.
+  if (enconvoInstalled()) return setEnconvoMonitoring(true);
+  await runEnconvoIntro('missing');
+  return shellState();
 }
 
 function stopBackend() {
@@ -2589,6 +2606,7 @@ async function boot() {
   const metadata = await vivieenMetadata(3000);
   if (!metadata || !metadata.active) openSettings();
   if (metadata && metadata.companion) createBuddyWindow(metadata.companion);
+  maybeShowLaunchIntro();
 }
 
 const lock = app.requestSingleInstanceLock();

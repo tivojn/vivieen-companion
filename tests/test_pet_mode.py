@@ -1453,25 +1453,40 @@ class PetMatteTests(unittest.TestCase):
         self.assertLess(int(alpha[175, 35]), 220)
         self.assertGreater(int(alpha[165, 120]), 20)
 
-    def test_first_coupling_explains_enconvo_with_a_download_link(self):
-        # First-time users clicking "Couple to EnConvo" get the pitch once:
-        # Vivieen runs standalone, but EnConvo ships LLM, TTS, ASR, and
-        # image/video generation out of the box - standalone means BYOK and
-        # a challenging setup. The dialog's first button is the clickable
-        # path to the enconvo.com download. Every enable entry point (pet
-        # menu, tray checkbox, coupled-bar icon via IPC) routes through it;
-        # de-coupling never nags.
+    def test_enconvo_pitch_shows_at_first_launch_not_on_couple_click(self):
+        # The undecided user never clicks "Couple" - and whoever DOES click
+        # has already decided (the owner's own point, 2026-08-01). So the
+        # pitch card shows once at FIRST LAUNCH (a beat after the avatar
+        # lands, skipped entirely on already-coupled installs), while the
+        # couple click itself is instant when EnConvo is installed. The
+        # only couple-click card is the missing-EnConvo case, where
+        # coupling would silently wait on an app that does not exist - the
+        # download leads there.
         main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
-        self.assertIn("async function coupleToEnconvo()", main)
-        self.assertIn("state.enconvoIntroSeen", main)
+        self.assertIn("function maybeShowLaunchIntro()", main)
+        self.assertIn("if (state.enconvoIntroSeen || state.followEnconvo) return;",
+                      main)
+        self.assertIn("maybeShowLaunchIntro();", main)
+        self.assertIn("function enconvoInstalled()", main)
+        self.assertIn("if (enconvoInstalled()) return setEnconvoMonitoring(true);",
+                      main)
+        self.assertIn("runEnconvoIntro('missing')", main)
+        self.assertIn("runEnconvoIntro('launch')", main)
         self.assertIn("shell.openExternal('https://enconvo.com')", main)
         self.assertEqual(main.count("void coupleToEnconvo()"), 2)
         self.assertIn("value ? coupleToEnconvo() : setEnconvoMonitoring(false)",
                       main)
+        # The card adapts: at launch the decline reads "I'll use my own
+        # keys"; without EnConvo installed the download is primary.
+        intro = (ROOT / "web" / "intro.html").read_text(encoding="utf-8")
+        self.assertIn("I'll use my own keys", intro)
+        self.assertIn("get.classList.add('pri');", intro)
+        self.assertIn("installed=${installed ? 1 : 0}", main)
         # The pitch is a Vivieen-styled card window, not the native message
         # box with the giant app icon the owner called ugly: wordmark, both
         # design systems, three choices wired through a sandboxed preload.
-        self.assertIn("function showEnconvoIntroWindow()", main)
+        self.assertIn("function showEnconvoIntroWindow(mode = 'launch', installed = false)",
+                      main)
         self.assertIn("guardNavigation(introWindow, 'intro')", main)
         self.assertIn("intro-preload.cjs", main)
         intro = (ROOT / "web" / "intro.html").read_text(encoding="utf-8")

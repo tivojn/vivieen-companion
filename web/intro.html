@@ -74,13 +74,13 @@ button.ghost:hover{color:var(--ink);background:var(--hover)}
   <p>Without EnConvo you bring your own API keys
   (Settings&nbsp;→&nbsp;Models), and that setup can be challenging.</p>
   <div class="acts">
-    <button class="pri" data-choice="1">Couple now</button>
-    <button data-choice="0">Get EnConvo</button>
+    <button class="pri" id="couple" data-choice="1">Couple now</button>
+    <button id="get" data-choice="0">Get EnConvo</button>
     <span class="grow"></span>
-    <button class="ghost" data-choice="2">Not now</button>
+    <button class="ghost" id="skip" data-choice="2">Not now</button>
   </div>
-  <div class="site">New to EnConvo? <u data-choice="0">Download it at
-  enconvo.com</u>, then couple again.</div>
+  <div class="site" id="foot">New to EnConvo? <u data-choice="0">Download it
+  at enconvo.com</u>, then couple again.</div>
 </div>
 <script>
 (function(){
@@ -90,6 +90,24 @@ button.ghost:hover{color:var(--ink);background:var(--hover)}
     var design=localStorage.getItem('vivieen-design');
     if(design)document.documentElement.dataset.design=design;
   }catch(e){}
+  // Context-aware: at first launch the decline reads as the honest
+  // alternative (bring your own keys); when EnConvo is not installed the
+  // download becomes the primary action, since coupling would only wait.
+  var params=new URLSearchParams(location.search);
+  var installed=params.get('installed')==='1';
+  if(params.get('mode')==='launch')
+    document.getElementById('skip').textContent="I'll use my own keys";
+  if(!installed){
+    var couple=document.getElementById('couple'),get=document.getElementById('get');
+    couple.classList.remove('pri');
+    get.classList.add('pri');
+    get.parentNode.insertBefore(get,couple);
+    // the generic [data-choice] binding below runs after this swap, so
+    // the rewritten link wires itself
+    document.getElementById('foot').innerHTML=
+      'EnConvo isn’t installed yet — <u data-choice="0">download it '
+      +'at enconvo.com</u>, then couple with one click.';
+  }
   function choose(value){
     if(window.vivieenIntro)window.vivieenIntro.choose(value);
   }
