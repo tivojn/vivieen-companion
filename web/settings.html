@@ -2906,7 +2906,7 @@ function drawRig() {
           ctx.save();
           rigPolygon(ctx, polygon, canvas.width, canvas.height);
           ctx.clip();
-          ctx.globalAlpha = weight;
+          ctx.globalAlpha = Math.min(1, weight);
           ctx.drawImage(pose, 0, 0, canvas.width, canvas.height);
           ctx.restore();
         });
@@ -3060,9 +3060,9 @@ function renderRigControls() {
         <span class="rig-value" id="rig-value-${key}">${RIG_PROFILE[key]}%</span>
       </div>
       <input type="range" id="rig-${key}" data-rig-control="${key}"
-        min="0" max="100" step="${spec.step}" value="${RIG_PROFILE[key]}"
-        style="--safe-start:${safeMinimum}%;--safe-end:${safeMaximum}%">
-      <div class="rig-help">${esc(spec.help)} · full control 0–100%</div>
+        min="${spec.minimum}" max="${spec.maximum}" step="${spec.step}" value="${RIG_PROFILE[key]}"
+        style="--safe-start:${safeMinimum / spec.maximum * 100}%;--safe-end:${safeMaximum / spec.maximum * 100}%">
+      <div class="rig-help">${esc(spec.help)} · full control ${spec.minimum}–${spec.maximum}%</div>
       <div class="rig-range"><span class="safe">green safe ${safeMinimum}–${safeMaximum}%</span><span class="experimental">red experimental</span></div>
     </div>`;
   }).join('');

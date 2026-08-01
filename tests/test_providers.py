@@ -358,8 +358,12 @@ class PublicReleaseSecurityTests(unittest.TestCase):
             lips=0, jaw=100, cheeks=100, nasolabial=99, nose=100)
         self.assertEqual(profile.nasolabial, 99)
         self.assertEqual(profile.nose, 100)
+        # Sliders run to 150 now (owner calibration 2026-08-01); past the
+        # span is still rejected.
+        self.assertEqual(
+            self.app_module.RigProfileInput(nasolabial=150).nasolabial, 150)
         with self.assertRaises(ValueError):
-            self.app_module.RigProfileInput(nasolabial=101)
+            self.app_module.RigProfileInput(nasolabial=151)
 
     def test_audio_upload_limit_is_enforced(self):
         with patch.object(self.app_module, "AUTH_TOKEN", ""), \
@@ -428,7 +432,7 @@ class PublicReleaseSecurityTests(unittest.TestCase):
         self.assertIn("pollBusyAvatars", source)
         self.assertIn("data-busy=", source)
         self.assertIn("class=\"jobbox", source)
-        self.assertIn("full control 0–100%", source)
+        self.assertIn("full control ${spec.minimum}–${spec.maximum}%", source)
         self.assertIn("--safe-start:", source)
         self.assertIn("red experimental", source)
         self.assertIn("formatRigError", source)

@@ -70,7 +70,9 @@ class SettingsMarkupTest(unittest.TestCase):
         self.assertIn("function rigBitmap", self.settings)
         self.assertIn("function resetRigBitmaps", self.settings)
         self.assertIn("ctx.clip();", self.settings)
-        self.assertIn("ctx.globalAlpha = weight;", self.settings)
+        # weight can exceed 1 now that sliders run past 100; canvas ignores
+        # out-of-range alpha assignments, so it is clamped explicitly.
+        self.assertIn("ctx.globalAlpha = Math.min(1, weight);", self.settings)
         self.assertIn("'rig-show-blend', 'rig-show-mesh'", self.settings)
         self.assertIn('press "Use this face" to see it live', self.settings)
 

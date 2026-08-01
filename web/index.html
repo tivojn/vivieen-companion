@@ -1134,8 +1134,8 @@ const liveRig=key=>{
      &&Number.isFinite(Number(LIVE_RIG[key])))return Number(LIVE_RIG[key]);
   return (M&&M.rig_profile&&Number(M.rig_profile[key]))||55;
 };
-const browGain=()=>Math.max(0,Math.min(2,liveRig('brows')/55));
-const foreheadGain=()=>Math.max(0,Math.min(2,liveRig('forehead')/55));
+const browGain=()=>Math.max(0,Math.min(3,liveRig('brows')/55));
+const foreheadGain=()=>Math.max(0,Math.min(3,liveRig('forehead')/55));
 const browRange=()=>(M&&M.brow&&M.brow.dys?Math.max(...M.brow.dys):3.5)/3.5;
 
 // Per-gesture side bias: most gestures move both brows, some favour one -
