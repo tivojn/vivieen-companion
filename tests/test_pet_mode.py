@@ -1495,7 +1495,7 @@ class PetMatteTests(unittest.TestCase):
         renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn("function frameInterval(now)", renderer)
         self.assertIn("if(now-lastFrameAt<frameInterval(now))return;", renderer)
-        self.assertIn("return lively?1000/60-2:1000/30-2;", renderer)
+        self.assertIn("if(lively)return 1000/(powerOnBattery?30:60)-2;", renderer)
         self.assertIn("if(still&&now-hitSampleAt<250){", renderer)
         self.assertIn("if(now-lastRectsAt>140){lastRectsAt=now;reportControlRects();}",
                       renderer)
@@ -1504,6 +1504,27 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("|| Date.now() - previous.at > 250;", main)
         self.assertIn("if (sendNow) window.webContents.send('vivieen:pet-pointer', localPoint);",
                       main)
+        # Round 3 (owner: "burning too much battery still"): while a
+        # looping alpha-WebM take is on screen (edge idle, stillness, a
+        # move show) the <video> element shows DIRECTLY - compositor
+        # playback, no per-frame canvas copy - and the loop drops to 10fps
+        # bookkeeping; hit-tests use the video's rect. Walk stays on
+        # canvas (stride-synced to window travel). Unattended standby
+        # fades to 15fps after a minute; on battery every cap halves.
+        self.assertIn("function showDomVideo(kind,edgeOverride)", renderer)
+        self.assertIn("function hideDomVideo()", renderer)
+        self.assertIn("if(motionKind==='idle'&&showDomVideo('idle'))return;",
+                      renderer)
+        self.assertIn("if(showDomVideo('idle',PET_SIDE))return;", renderer)
+        self.assertIn("if(!clipOwns)renderFaceSurface(", renderer)
+        self.assertIn("if(domVideo.el&&!petHit)return 1000/10-2;", renderer)
+        self.assertIn("const unattended=now-lastEngagedAt>60000;", renderer)
+        self.assertIn("powerOnBattery?(unattended?10:20):(unattended?15:30)",
+                      renderer)
+        self.assertIn("domVideo.el.getBoundingClientRect()", renderer)
+        main_source = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
+        self.assertIn("powerMonitor.isOnBattery()", main_source)
+        self.assertIn("powerMonitor.on('on-battery', broadcastState);", main_source)
         # Second pass, the structural half (115% -> ~25% measured): the
         # face surfaces rasterise at the scale the compositor actually
         # samples instead of always-1024 (consumers sample them back into

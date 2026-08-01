@@ -281,6 +281,7 @@ const PET_PREVIEW=new URLSearchParams(location.search).has('pet-preview');
 // A second on-desk avatar loads this same page at /c/<slug>/?side=left: it
 // idles against the LEFT screen edge while the active avatar keeps the right.
 const PET_SIDE=new URLSearchParams(location.search).get('side')==='left'?'left':'right';
+let powerOnBattery=false;
 let syncShellState=()=>{};
 if(PET_PREVIEW)document.documentElement.classList.add('electron','pet');
 if(SHELL&&SHELL.isElectron){
@@ -292,6 +293,7 @@ if(SHELL&&SHELL.isElectron){
   pin.onclick=()=>SHELL.toggleAlwaysOnTop();
   syncShellState=s=>{
     if(!s)return;
+    powerOnBattery=Boolean(s.onBattery);
     pin.classList.toggle('on',!!s.alwaysOnTop);
     if(s.pet){
       // A pinch in flight owns the zoom: never let the shell echo rewind it.
@@ -1686,13 +1688,66 @@ function drawMotionClip(kind,now,edgeOverride){
   draw();
   ctx.restore();return true;
 }
+/* DOM-video clip mode (power round 2, 2026-08-01): while a looping
+   alpha-WebM take is what's on screen - edge idle, the standing
+   stillness, a move show - the canvas path copied the SAME decoded
+   frames to the canvas every paced frame. Showing the <video> element
+   directly hands playback to the compositor: hardware decode, alpha
+   composited by Chromium, zero rAF raster. Walk stays on canvas - its
+   frames are stride-synced to the window's travel and a free-running
+   video would foot-slide. */
+let domVideo={el:null,kind:null};
+function clipCamera(kind,edgeOverride){
+  const clip=MOTION[kind];if(!clip||!clip.video)return null;
+  const width=clip.frame_width,height=clip.frame_height;
+  const camera=petCamera({bounds:clip.bounds||[0,0,width,height]},width,height);
+  const edge=edgeOverride!==undefined?edgeOverride:ROAM.edge;
+  const freeAct=kind==='idle'&&clip.anchor_mode==='free';
+  const mirror=kind==='walk'?ROAM.direction<0:(edge==='right'&&!freeAct);
+  if(kind==='idle'&&edge&&!freeAct){
+    const anchors=clip.edge_anchors||{left:(clip.bounds||[0])[0]||0};
+    const support=Number(anchors.left)||0;
+    const wallPadding=3;
+    camera.x=edge==='left'?wallPadding-support*camera.scale:
+      cv.width-wallPadding-(width-support)*camera.scale;
+  }
+  return {clip,camera,mirror,width,height};
+}
+function showDomVideo(kind,edgeOverride){
+  const fit=clipCamera(kind,edgeOverride);
+  if(!fit)return false;
+  const video=fit.clip.video,d=devicePixelRatio||1;
+  if(domVideo.el!==video){
+    hideDomVideo();
+    video.style.position='fixed';video.style.left='0';video.style.top='0';
+    video.style.pointerEvents='none';video.style.transformOrigin='top left';
+    video.style.zIndex='1';
+    document.body.appendChild(video);
+    domVideo.el=video;domVideo.kind=kind;
+  }
+  if(video.paused)video.play().catch(()=>{});
+  const scale=fit.camera.scale/d,x=fit.camera.x/d,y=fit.camera.y/d;
+  video.style.width=fit.width+'px';video.style.height=fit.height+'px';
+  video.style.transform=fit.mirror
+    ?`translate(${x+fit.width*scale}px,${y}px) scale(${-scale},${scale})`
+    :`translate(${x}px,${y}px) scale(${scale},${scale})`;
+  return true;
+}
+function hideDomVideo(){
+  if(!domVideo.el)return;
+  try{domVideo.el.pause();}catch(e){}
+  try{domVideo.el.remove();}catch(e){}
+  domVideo.el=null;domVideo.kind=null;
+}
 function drawPetScene(now){
   ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
   ctx.clearRect(0,0,cv.width,cv.height);
   const motionKind=PET.roam&&ROAM.enabled?
     (ROAM.mode==='walk'?'walk':ROAM.mode.startsWith('ledge-')?'idle':null):null;
-  if(motionKind&&drawMotionClip(motionKind,now))return;
-  if(moveShowActive(now)&&drawMotionClip('move',now))return;
+  if(motionKind==='idle'&&showDomVideo('idle'))return;
+  if(motionKind&&drawMotionClip(motionKind,now)){hideDomVideo();return;}
+  if(moveShowActive(now)&&showDomVideo('move'))return;
+  if(moveShowActive(now)&&drawMotionClip('move',now)){hideDomVideo();return;}
   if(moveShowUntil&&now>=moveShowUntil)moveShowUntil=0;
   if(standingIdleActive(now)){
     // She settles in her bottom corner above the Dock and leans on the screen
@@ -1703,8 +1758,10 @@ function drawPetScene(now){
       idleDocked=true;
       if(typeof SHELL.dockPet==='function')SHELL.dockPet();
     }
+    if(showDomVideo('idle',PET_SIDE))return;
     if(drawMotionClip('idle',now,PET_SIDE))return;
   }else idleDocked=false;
+  hideDomVideo();
   const hasBody=Boolean(BODY&&HEADMASK&&M.body);
   const width=hasBody?BODY.width:FACE_KEY.w,height=hasBody?BODY.height:FACE_KEY.h;
   const fallback={bounds:(M.cutout&&M.cutout.bounds)||[0,0,width,height],
@@ -1753,7 +1810,14 @@ function frameInterval(now){
   const lively=speaking||recording||dragging||gesture||REACT||
     externalAudio.active||now<moveShowUntil||
     (ROAM.enabled&&ROAM.mode==='walk');
-  return lively?1000/60-2:1000/30-2;
+  if(lively)return 1000/(powerOnBattery?30:60)-2;
+  // Clip mode: the compositor is playing the video; this loop only runs
+  // bookkeeping and hit tests.
+  if(domVideo.el&&!petHit)return 1000/10-2;
+  // Unattended standby fades to a heartbeat; any attention snaps it back.
+  const unattended=now-lastEngagedAt>60000;
+  const fps=powerOnBattery?(unattended?10:20):(unattended?15:30);
+  return 1000/fps-2;
 }
 function loop(now){
   requestAnimationFrame(loop);if(!ready)return;
@@ -1860,7 +1924,9 @@ function loop(now){
   const eyes=legacy&&(lids.l+lids.r)/2>0.5?'shut':'open';
 
   const ref=IMG[curV][eyes]||IMG[curV].open;
-  renderFaceSurface(ref,eyes,mix,h,lids,gv,bv,ck,jawPx,ts,mouthWarp);
+  const clipOwns=(PET.roam&&ROAM.enabled&&(ROAM.mode==='walk'||
+    ROAM.mode.startsWith('ledge-')))||moveShowActive(now)||standingIdleActive(now);
+  if(!clipOwns)renderFaceSurface(ref,eyes,mix,h,lids,gv,bv,ck,jawPx,ts,mouthWarp);
   drawPetScene(now);updatePetHit();
   if(false){
   const cw=cv.width,ch=cv.height;
@@ -2335,7 +2401,12 @@ function updatePetHit(force=false){
   // and losing interactivity there loses the release that ends the take.
   const modalHit=pointerOverChatControls()||recording||!document.getElementById('emptyState').hidden;
   let sample=modalHit;
-  if(!sample&&ready&&pointer.x>=0&&pointer.y>=0&&pointer.x<innerWidth&&pointer.y<innerHeight){
+  if(!sample&&domVideo.el&&pointer.x>=0){
+    // Clip mode: the canvas is empty, the figure IS the video element.
+    const box=domVideo.el.getBoundingClientRect();
+    sample=pointer.x>=box.left&&pointer.x<=box.right&&
+      pointer.y>=box.top&&pointer.y<=box.bottom;
+  }else if(!sample&&ready&&pointer.x>=0&&pointer.y>=0&&pointer.x<innerWidth&&pointer.y<innerHeight){
     // getImageData is a GPU->CPU readback that stalls the whole canvas
     // pipeline - at 30Hz it was a measurable slice of the standby burn. A
     // stationary cursor reuses its last sample; only movement pays.
