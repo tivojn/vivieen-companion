@@ -2229,6 +2229,17 @@ async def live_voice(client: WebSocket):
                        "ElevenLabs key under Settings > Models > Live voice."})
         await client.close()
         return
+    # The live mistake (2026-08-01): the console's key ID (a UUID) pasted
+    # where the API key goes - upstream answers an opaque HTTP 400. Catch
+    # it here with a message that names the fix.
+    if settings["provider"] == "xai" and not settings["key"].startswith("xai-"):
+        await client.send_json({
+            "type": "error",
+            "message": "That xAI value looks like a key ID, not an API key "
+                       "- real keys start with 'xai-'. Copy the full key "
+                       "from console.x.ai and save it again."})
+        await client.close()
+        return
     import websockets
     last_audio = [time.time()]
     try:

@@ -2328,7 +2328,13 @@ function installRequestAuthentication() {
     { urls: ['<all_urls>'] },
     (details, callback) => {
       try {
-        if (new URL(details.url).origin === baseUrl()) {
+        // WebSocket upgrades carry a ws:// origin, which never equals the
+        // http:// base URL - so /stt/stream and /live/voice were 403'd
+        // silently (dictation fell back to batch; live talk just died,
+        // 2026-08-01). Compare host, allow only http/ws to this backend.
+        const target = new URL(details.url);
+        if (target.host === new URL(baseUrl()).host
+            && (target.protocol === 'http:' || target.protocol === 'ws:')) {
           details.requestHeaders['X-Vivieen-Token'] = backendToken;
         }
       } catch {}

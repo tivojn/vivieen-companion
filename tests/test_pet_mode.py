@@ -1475,6 +1475,10 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("'vivieen:live-toggle'", preload)
         main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
         self.assertIn("{ name: 'Live talk', hint: 'realtime voice · toggle',", main)
+        # The auth token must reach WEBSOCKET upgrades too: comparing full
+        # origins left ws:// unmatched and both realtime endpoints 403'd.
+        self.assertIn("target.protocol === 'http:' || target.protocol === 'ws:'",
+                      main)
         settings = (ROOT / "web" / "settings.html").read_text(encoding="utf-8")
         self.assertIn('id="blk-live"', settings)
         self.assertIn("collectLiveBlock();", settings)
