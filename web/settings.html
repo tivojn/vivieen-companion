@@ -161,9 +161,14 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .rig-shell{display:none;position:fixed;inset:0;z-index:50;overflow:auto;
   background:var(--scrim);backdrop-filter:blur(4px);padding:26px}
 .rig-shell.on{display:block}
-.rig-dialog{max-width:1220px;min-height:calc(100vh - 52px);margin:0 auto;
+/* One-shot calibration (owner, 2026-08-01): the dialog is a fixed-height
+   flex column - header, content, footer - and every control is visible
+   without scrolling. The stage flexes to whatever height remains. */
+.rig-dialog{max-width:1400px;height:calc(100vh - 56px);margin:0 auto;
+  display:flex;flex-direction:column;
   background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;
   box-shadow:var(--shadow-modal)}
+#rig-content:not(.hidden){display:flex;flex-direction:column;flex:1;min-height:0}
 .rig-head{display:flex;align-items:center;gap:16px;padding:16px 22px;
   border-bottom:1px solid var(--line)}
 .rig-head h3{margin:0;font-size:16px;font-weight:600}
@@ -176,13 +181,14 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .preview-stage{padding:18px;background:var(--bg-sub)}
 .preview-stage video{display:block;width:100%;max-height:calc(100vh - 190px);
   border-radius:8px;background:#000}
-.rig-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(430px,.95fr);
-  min-height:660px}
+.rig-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(430px,.95fr);
+  flex:1;min-height:0;overflow:hidden}
 /* Every slider visible at once: two columns, compact rows - the panel
    should never hide half the controls behind a scroll the user has to
    discover by accident. */
 #rig-controls{display:grid;grid-template-columns:1fr 1fr;gap:0 20px}
-.rig-visual{padding:20px;border-right:1px solid var(--line);min-width:0}
+.rig-visual{padding:14px 18px;border-right:1px solid var(--line);min-width:0;
+  display:flex;flex-direction:column;min-height:0}
 .rig-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .rig-toolbar strong{font-size:11px;text-transform:uppercase;letter-spacing:.07em;
   color:var(--faint);margin-right:4px}
@@ -191,7 +197,7 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
   transition:background .12s,color .12s,border-color .12s}
 .rig-chip:hover{background:var(--hover);color:var(--ink)}
 .rig-chip.on{color:var(--ink);border-color:var(--line-strong);background:var(--press);font-weight:600}
-.rig-stage{position:relative;aspect-ratio:1;max-height:690px;margin:auto;
+.rig-stage{position:relative;flex:1;min-height:0;
   background:var(--bg-sub);border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .rig-stage img,.rig-stage canvas{position:absolute;inset:0;width:100%;height:100%;
   object-fit:contain}.rig-stage canvas{pointer-events:none}
@@ -202,11 +208,13 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .rig-overlays input{width:auto;margin:0;accent-color:var(--accent)}
 .rig-legend{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap}
 .rig-legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
-.rig-panel{padding:18px 20px;overflow:auto;max-height:calc(100vh - 158px)}
-.rig-panel h4{margin:0 0 14px;font-size:11px;text-transform:uppercase;
+.rig-panel{padding:12px 18px;overflow:auto;min-height:0}
+.rig-panel h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;
   letter-spacing:.07em;color:var(--faint);font-weight:600}
-.rig-preset{margin-bottom:20px}
-.rig-control{padding:10px 0;border-top:1px solid var(--line)}
+.rig-preset{margin-bottom:10px;display:flex;align-items:center;gap:10px}
+.rig-preset label{margin:0;flex:none}
+.rig-preset select{width:auto;flex:1}
+.rig-control{padding:6px 0;border-top:1px solid var(--line)}
 .rig-control-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 .rig-control-head label{margin:0;color:var(--ink);font-size:13px;letter-spacing:0;
   text-transform:none}.rig-value{font:600 12px ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -226,11 +234,11 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .rig-range{display:flex;justify-content:space-between;gap:10px;margin-top:5px;
   font:600 10px ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase}
 .rig-range .safe{color:var(--ok-text)}.rig-range .experimental{color:var(--accent-text)}
-.rig-dental{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 0;
+.rig-dental{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 0;
   padding-top:12px;border-top:1px solid var(--line)}
 .rig-dental label{margin-bottom:4px}
-.rig-locks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}
-.rig-lock{padding:11px;border:1px solid var(--line);border-radius:8px;background:var(--panel-sub)}
+.rig-locks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 0}
+.rig-lock{padding:7px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel-sub)}
 .rig-lock small{display:block;color:var(--faint);font-size:10px;text-transform:uppercase;
   letter-spacing:.06em}.rig-lock b{display:block;margin-top:4px;font-size:12px;color:var(--ok-text)}
 .rig-status{padding:13px;border-radius:8px;border:1px solid var(--line);background:var(--panel-sub);
@@ -247,8 +255,12 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .rig-progress i{display:block;height:100%;width:0;background:var(--accent);transition:width .5s ease}
 .rig-progress.hidden{display:none}
 #preview-modal{z-index:60}
-.rig-foot{display:flex;align-items:center;gap:12px;padding:14px 22px;
+/* The status card owns the footer's left side, right next to the rebuild
+   button - always visible in the one-shot layout, impossible to miss. */
+.rig-foot{display:flex;align-items:center;gap:12px;padding:10px 18px;
   border-top:1px solid var(--line);background:var(--panel-sub)}
+.rig-foot-status{flex:1;min-width:0}
+.rig-foot .rig-status{margin:0;max-height:74px;overflow:auto}
 .rig-foot .note{margin:0;margin-right:auto;max-width:650px}
 .body-grid{display:grid;grid-template-columns:minmax(320px,1.15fr) minmax(300px,.85fr);min-height:580px}
 .body-visual{position:relative;display:grid;place-items:center;padding:30px;overflow:hidden;min-height:660px;
@@ -685,6 +697,11 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
 <main>
 <!-- ------------------------------------------------------------ AVATAR -->
 <section id="tab-avatar" class="on">
+  <!-- The face IN USE leads the page (owner, 2026-08-01); everything
+       below it is candidacy - new uploads, then the bench. -->
+  <h2>On the desk</h2>
+  <div class="grid" id="avatars-active"></div>
+
   <h2>New face</h2>
   <div class="card">
     <div class="drop" id="drop">
@@ -708,7 +725,7 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
     </div>
   </div>
 
-  <h2>Your avatars</h2>
+  <h2>Candidates</h2>
   <div class="grid" id="avatars"></div>
 </section>
 
@@ -817,16 +834,17 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
             <div class="rig-lock"><small>Nose bridge + tip</small><b>0% · rigid</b></div>
             <div class="rig-lock"><small>Upper / lower dental identity</small><b id="rig-donor">Locked</b></div>
           </div>
-          <div class="rig-status" id="rig-status"></div>
-          <div class="rig-progress hidden" id="rig-progress" aria-hidden="true"><i></i></div>
         </aside>
       </div>
       <div class="rig-foot">
-        <p class="note">Rebuild uses retained expression renders, runs anatomy QA in staging, and publishes only after a rollback snapshot is complete. No model credits are used.</p>
+        <div class="rig-foot-status">
+          <div class="rig-status" id="rig-status"></div>
+          <div class="rig-progress hidden" id="rig-progress" aria-hidden="true"><i></i></div>
+        </div>
         <button class="btn hidden" id="rig-fill-gaps" type="button" title="Regenerate only the renders the original build lost - uses model credits">Generate missing renders</button>
         <button class="btn" id="rig-preview-play" type="button" title="Play the published viseme preview - right here, including straight after a rebuild">▶ Play preview</button>
         <button class="btn" id="rig-cancel">Cancel</button>
-        <button class="btn pri" id="rig-apply">Validate & rebuild</button>
+        <button class="btn pri" id="rig-apply" title="Rebuild uses retained expression renders, runs anatomy QA in staging, and publishes only after a rollback snapshot is complete. No model credits are used.">Validate & rebuild</button>
       </div>
     </div>
   </div>
@@ -876,7 +894,7 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
                 <button class="motion-play" id="body-motion-play" type="button">Pause</button>
                 <input id="body-motion-scrubber" type="range" min="0" max="0" value="0" aria-label="Animation frame">
                 <span class="motion-frame-label" id="body-motion-frame-label">Frame 1 / 1</span>
-                <input id="body-motion-frames" size="7" placeholder="48 or 1-6" title="Which frames: one like 48, or a run like 1-6. Empty = the frame on screen." style="height:30px;padding:0 9px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--ink);font:11px ui-monospace,SFMono-Regular,Menlo,monospace">
+                <input id="body-motion-frames" size="10" placeholder="48 or 1-6" title="Which frames: one like 48, or a run like 1-6. Empty = the frame on screen." style="height:30px;width:96px;flex:none;padding:0 9px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--ink);font:11px ui-monospace,SFMono-Regular,Menlo,monospace">
                 <button class="btn sm" id="body-motion-fix" type="button" title="Rebuild this frame from its loop neighbours - a one-frame flash loses the vote">Fix frame</button>
                 <button class="btn sm" id="body-motion-dropframe" type="button" title="Remove this frame from the loop entirely">Drop</button>
               </div>
@@ -1529,8 +1547,17 @@ async function loadAvatars() {
   const r = await api('/api/avatars');
   ACTIVE = r.active;
   COMPANION = r.companion || null;
-  $('#avatars').innerHTML = r.avatars.map(card).join('') ||
-    '<p class="note">No avatars yet. Drop a portrait above.</p>';
+  // In use on top - active face first, then the second (left) avatar;
+  // the bench below, freshest work first.
+  const inUse = r.avatars.filter(a => a.slug === ACTIVE)
+    .concat(r.avatars.filter(a => a.slug === COMPANION && a.slug !== ACTIVE));
+  const bench = r.avatars.filter(a => a.slug !== ACTIVE && a.slug !== COMPANION)
+    .sort((a, b) => String(b.updated || '').localeCompare(String(a.updated || '')));
+  $('#avatars-active').innerHTML = inUse.map(card).join('') ||
+    '<p class="note">Nothing on the desk yet — build a face below and press “Use this face”.</p>';
+  $('#avatars').innerHTML = bench.map(card).join('') ||
+    '<p class="note">No other avatars yet. Drop a portrait above.</p>';
+  bindAvatarActions($('#avatars-active'));
   bindAvatarActions($('#avatars'));
   const busy = r.avatars.filter(a => a.status === 'building' || (a.job && !a.job.done));
   busy.forEach(a => tail(a.slug));
@@ -3080,7 +3107,9 @@ function renderRigControls() {
   const controls = RIG.schema.controls;
   $('#rig-controls').innerHTML = Object.entries(controls).map(([key, spec]) => {
     const [safeMinimum, safeMaximum] = rigSafeBounds(spec);
-    return `<div class="rig-control">
+    // One-shot layout: the prose lives in the tooltip, the green band
+    // lives on the track itself - a control is one label row + one slider.
+    return `<div class="rig-control" title="${esc(spec.help)} · full control ${spec.minimum}–${spec.maximum}% · green safe ${safeMinimum}–${safeMaximum}%, red experimental beyond">
       <div class="rig-control-head">
         <label for="rig-${key}">${esc(spec.label)}</label>
         <span class="rig-value" id="rig-value-${key}">${RIG_PROFILE[key]}%</span>
@@ -3088,8 +3117,6 @@ function renderRigControls() {
       <input type="range" id="rig-${key}" data-rig-control="${key}"
         min="${spec.minimum}" max="${spec.maximum}" step="${spec.step}" value="${RIG_PROFILE[key]}"
         style="--safe-start:${safeMinimum / spec.maximum * 100}%;--safe-end:${safeMaximum / spec.maximum * 100}%">
-      <div class="rig-help">${esc(spec.help)} · full control ${spec.minimum}–${spec.maximum}%</div>
-      <div class="rig-range"><span class="safe">green safe ${safeMinimum}–${safeMaximum}%</span><span class="experimental">red experimental</span></div>
     </div>`;
   }).join('');
   Object.keys(controls).forEach(paintRigControl);

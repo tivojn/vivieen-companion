@@ -94,6 +94,34 @@ class SettingsMarkupTest(unittest.TestCase):
         self.assertIn('teeth: float = _rig_control_field("teeth")', app)
         self.assertIn('dental["candidates"][row]', app)
 
+    def test_calibration_fits_one_screen_with_footer_status(self):
+        # Owner 2026-08-01: the calibration room shows in ONE SHOT - a
+        # fixed-height flex dialog, nothing behind a scroll. Each control
+        # is a label row plus its banded slider (the prose moved into the
+        # tooltip), the stage flexes into the remaining height, and the
+        # status/progress card owns the footer's left side right next to
+        # Validate & rebuild - always visible, pulsing while busy.
+        self.assertIn("height:calc(100vh - 56px)", self.settings)
+        self.assertIn("#rig-content:not(.hidden){display:flex", self.settings)
+        self.assertIn('class="rig-foot-status"', self.settings)
+        self.assertNotIn('<div class="rig-help">', self.settings)
+        self.assertIn(".rig-stage{position:relative;flex:1;min-height:0",
+                      self.settings)
+        self.assertIn("green safe ${safeMinimum}–${safeMaximum}%, "
+                      "red experimental beyond", self.settings)
+
+    def test_avatar_page_leads_with_the_face_in_use(self):
+        # Owner 2026-08-01: the face IN USE tops the page; below it, the
+        # upload card and then the bench, freshest first. Also pinned: the
+        # frame-fix input is wide enough for its own placeholder.
+        self.assertIn('id="avatars-active"', self.settings)
+        self.assertIn("<h2>On the desk</h2>", self.settings)
+        self.assertIn("<h2>Candidates</h2>", self.settings)
+        self.assertLess(self.settings.index("<h2>On the desk</h2>"),
+                        self.settings.index("<h2>New face</h2>"))
+        self.assertIn('id="body-motion-frames" size="10"', self.settings)
+        self.assertIn("width:96px", self.settings)
+
     def test_two_designs_share_one_markup(self):
         # Quiet (calm paper minimalism) and Atelier (editorial couture) are
         # two complete designs over IDENTICAL markup: Atelier exists purely

@@ -1456,6 +1456,16 @@ class PetMatteTests(unittest.TestCase):
         self.assertLess(int(alpha[175, 35]), 220)
         self.assertGreater(int(alpha[165, 120]), 20)
 
+    def test_chat_placeholder_fits_the_field_it_sits_in(self):
+        # The roam-sized chat bar is far narrower than the docked one, and
+        # the full placeholder clipped mid-sentence (owner screenshot,
+        # 2026-08-01). The placeholder now adapts to the field's width.
+        renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("function fitTxtPlaceholder()", renderer)
+        self.assertIn("'Hold head to talk…'", renderer)
+        self.assertIn("'Type…'", renderer)
+        self.assertIn("fitTxtPlaceholder();", renderer)
+
     def test_roam_and_edge_idle_never_leave_the_screen(self):
         # Owner rule 2026-08-01: the edge idle held at a screen corner must
         # never poke out of the screen - at most the figure fills the work
