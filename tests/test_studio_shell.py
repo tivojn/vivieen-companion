@@ -76,6 +76,24 @@ class SettingsMarkupTest(unittest.TestCase):
         self.assertIn("'rig-show-blend', 'rig-show-mesh'", self.settings)
         self.assertIn('press "Use this face" to see it live', self.settings)
 
+    def test_teeth_control_offers_donor_dropdowns_beside_the_sliders(self):
+        # Owner request 2026-08-01 (carol): the calibration room exposes the
+        # dental lock. Donor dropdowns per row list every candidate frame
+        # with its detected enamel pixel count, "auto" (the election) as
+        # default; the Teeth strength slider renders with the other controls
+        # straight from the schema; preset switches keep dental identity.
+        self.assertIn('id="rig-donor-upper"', self.settings)
+        self.assertIn('id="rig-donor-lower"', self.settings)
+        self.assertIn("function renderRigDental", self.settings)
+        self.assertIn("px enamel", self.settings)
+        self.assertIn("RIG_PROFILE[row + '_teeth_donor'] = select.value",
+                      self.settings)
+        self.assertIn("upper_teeth_donor: RIG_PROFILE.upper_teeth_donor",
+                      self.settings)
+        app = read("server", "app.py")
+        self.assertIn('teeth: float = _rig_control_field("teeth")', app)
+        self.assertIn('dental["candidates"][row]', app)
+
     def test_two_designs_share_one_markup(self):
         # Quiet (calm paper minimalism) and Atelier (editorial couture) are
         # two complete designs over IDENTICAL markup: Atelier exists purely

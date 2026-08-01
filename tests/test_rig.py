@@ -111,6 +111,60 @@ class RigProfileTests(unittest.TestCase):
                       source)
         self.assertIn("_dental_band(donor.shape, donor_lm)", source)
 
+    def test_teeth_lock_gains_strength_and_donor_override_controls(self):
+        # Owner request 2026-08-01 (carol, upper TH 765px / lower TH 478px):
+        # the auto-elected donor carried a minor defect with no recourse.
+        # The dental lock gets a control surface - per-row donor overrides
+        # ("auto" default, validated against the candidate list) and a
+        # strength slider whose 100 is today's exact full paste; below 100
+        # each frame's own render blends back in. All advisory: an override
+        # without detected enamel falls back to the election, never a veto.
+        schema = rig.public_schema()["controls"]
+        self.assertEqual(
+            (schema["teeth"]["minimum"], schema["teeth"]["maximum"]),
+            (0, 100))
+        self.assertEqual(
+            (schema["teeth"]["safe_minimum"], schema["teeth"]["safe_maximum"]),
+            (100, 100))
+        profile = rig.normalize({"teeth": 60, "upper_teeth_donor": "eh"})
+        self.assertEqual(profile["teeth"], 60.0)
+        self.assertEqual(profile["upper_teeth_donor"], "eh")
+        self.assertEqual(profile["lower_teeth_donor"], "auto")
+        self.assertTrue(profile["teeth_lock"])
+        self.assertTrue(profile["upper_teeth_lock"])
+        self.assertEqual(anatomy._experimental_keys(profile), ["teeth"])
+        with self.assertRaisesRegex(ValueError, "upper_teeth_donor"):
+            rig.normalize({"upper_teeth_donor": "blink"})
+        # The candidate lists live in rig (normalize validates overrides and
+        # compose imports rig, not the reverse); compose aliases them.
+        self.assertIs(compose.DENTAL_DONORS, rig.DENTAL_DONORS)
+        source = open(os.path.join(ROOT, "studio", "compose.py"),
+                      encoding="utf-8").read()
+        self.assertIn("work = img.astype(np.float32) * (1.0 - strength) "
+                      "+ work * strength", source)
+        self.assertIn("dental lock released: strength 0", source)
+        self.assertIn("ADVISORY {row} donor override", source)
+        app_source = open(os.path.join(ROOT, "server", "app.py"),
+                          encoding="utf-8").read()
+        self.assertIn('teeth: float = _rig_control_field("teeth")', app_source)
+        self.assertIn('upper_teeth_donor: str = _dental_donor_field("upper")',
+                      app_source)
+
+    def test_donor_override_wins_and_falls_back_without_enamel(self):
+        candidates = [
+            ("SS", "image-SS", "landmarks-SS", "master-SS", 483),
+            ("eh", "image-eh", "landmarks-eh", "master-eh", 865),
+            ("TH", "image-TH", "landmarks-TH", "master-TH", 0),
+        ]
+        self.assertEqual(
+            compose._elect_tooth_donor(candidates, "upper", "auto")[0], "eh")
+        self.assertEqual(
+            compose._elect_tooth_donor(candidates, "upper", "SS")[0], "SS")
+        # A chosen frame with no detected enamel: advisory fallback to the
+        # election, the rebuild proceeds.
+        self.assertEqual(
+            compose._elect_tooth_donor(candidates, "upper", "TH")[0], "eh")
+
     def test_brow_envelope_uses_ascending_smoothstep_edges(self):
         # _smoothstep clamps its denominator to 1e-6, so reversed edges
         # degenerate into a hard step. The brow's vertical envelope shipped

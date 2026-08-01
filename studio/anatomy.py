@@ -179,7 +179,10 @@ def validate(keyframe_path, viseme_dir, profile=None, diag_dir=None):
     if diag_dir is None:
         candidate = os.path.join(os.path.dirname(viseme_dir), "diag")
         diag_dir = candidate if os.path.isdir(candidate) else None
-    selected = compose._select_dental_donors(viseme_dir)
+    # The same donor election the composition used - including an owner's
+    # per-avatar donor override - so the audit never compares frames
+    # against a donor they were told not to wear.
+    selected = compose._select_dental_donors(viseme_dir, profile)
     missing = [row for row in compose.DENTAL_ROWS if row not in selected]
     # Some faces never show a full tooth row in any speech shape, and
     # canonicalize_teeth already degrades gracefully then (the lock is
