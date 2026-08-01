@@ -137,6 +137,18 @@ const keyTapExecutable = () => path.join(
 // real: a synthesized flagsChanged event, down while held, up on release.
 // Requires the Accessibility permission; the failure surfaces once per run.
 let voiceKeyWarned = false;
+
+// Don't make the user NAVIGATE to the permission - take them to it. The
+// deep link lands System Settings on Privacy & Security → Accessibility,
+// where the only remaining step is flipping the switch (owner request
+// 2026-08-01: the old bubble described the path in words and left the
+// user to walk it).
+function openAccessibilitySettings() {
+  shell.openExternal(
+    'x-apple.systempreferences:com.apple.preference.security'
+    + '?Privacy_Accessibility').catch(() => {});
+}
+
 function postVoiceKey(state) {
   const action = state === 'down' ? 'down' : state === 'up' ? 'up' : 'tap';
   execFile(keyTapExecutable(), [action], (error, _stdout, stderr) => {
@@ -145,9 +157,10 @@ function postVoiceKey(state) {
     if (detail.includes('accessibility-permission-missing')) {
       if (voiceKeyWarned) return;
       voiceKeyWarned = true;
+      openAccessibilitySettings();
       showSpeechBubble(
-        'To let a head press reach EnConvo, allow Vivieen under System '
-        + 'Settings → Privacy & Security → Accessibility.');
+        'System Settings is open at Accessibility - flip the switch next '
+        + 'to Vivieen, then hold my head again.');
       return;
     }
     console.error(`[voice-key] ${detail.trim()}`);
@@ -1834,9 +1847,17 @@ function triggerEnconvoVoiceCommand() {
           payload = JSON.parse(lines.at(-1) || '{}');
         } catch {}
         if (error || !payload || payload.ok !== true) {
-          const message = payload?.message
-            || 'Allow Vivieen in Privacy & Security → Accessibility, then choose Talk via EnConvo again.';
           const detail = payload?.code || stderr || error?.message || 'native event failed';
+          const needsAccessibility =
+            /accessibility/i.test(String(payload?.code || ''))
+            || /accessibility/i.test(String(payload?.message || ''));
+          let message = payload?.message
+            || 'Allow Vivieen in Privacy & Security → Accessibility, then choose Talk via EnConvo again.';
+          if (needsAccessibility) {
+            openAccessibilitySettings();
+            message = 'System Settings is open at Accessibility - flip the '
+              + 'switch next to Vivieen, then choose Talk via EnConvo again.';
+          }
           writeBackendLog(`[EnConvo voice trigger failed] ${String(detail).trim()}\n`);
           showSpeechBubble(message);
           resolve({ ok: false, error: String(detail).trim() });
