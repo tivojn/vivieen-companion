@@ -1234,10 +1234,39 @@ let cheek=0,cheekT=-1;
 const JAW_V={sil:0,PP:0,FF:.10,TH:.16,DD:.18,kk:.28,CH:.16,SS:.12,nn:.14,
              RR:.13,aa:1,E:.62,ih:.38,oh:.56,ou:.20};
 let jaw=0,jawT=-1;
+/* ---- idle life -------------------------------------------------------------
+   A standing-by face that only blinks reads as a photograph. Between replies
+   the mouth keeps living at whisper level: a breathing-rate sway in the jaw,
+   and every so often a soft lip press / parting / swallow - one of the real
+   viseme plates washed over the resting mouth at 15-30% alpha. Subtle enough
+   to read as presence, never as speech.                                     */
+let idleShape=null,idleT0=-1e9,idleDur=1,idleAmp=0;
+let nextIdleMouth=performance.now()+4000+Math.random()*4000;
+function idleMouthFor(now){
+  if(speaking||recording){nextIdleMouth=now+3000+Math.random()*4000;return null;}
+  if(now>=nextIdleMouth){
+    const r=Math.random();
+    idleShape=r<0.40?'PP':r<0.70?'ih':r<0.90?'nn':'SS';
+    idleAmp=0.15+Math.random()*0.15;
+    idleDur=700+Math.random()*900;
+    idleT0=now;
+    nextIdleMouth=now+7000+Math.random()*11000;
+  }
+  const t=(now-idleT0)/idleDur;
+  if(t<=0||t>=1||!idleShape||!IMG[idleShape])return null;
+  const env=Math.sin(Math.PI*t);
+  return {img:IMG[idleShape].open,a:idleAmp*env*env};
+}
+function idleJawDrift(now){
+  // sub-pixel breathing sway, plus a touch more while a micro-gesture plays
+  const t=(now-idleT0)/idleDur;
+  const gesture=(t>0&&t<1)?0.10*Math.sin(Math.PI*t):0;
+  return 0.06+0.05*vn(now/1000*0.07,17)+gesture;
+}
 function jawFor(now,mix){
   const a=JAW_V[prevV]||0,b=JAW_V[curV]||0;
   const shape=a+(b-a)*mix;
-  const target=(speaking?shape:0)*(0.70+0.30*Math.min(1,lvl*6));
+  const target=(speaking?shape:idleJawDrift(now))*(0.70+0.30*Math.min(1,lvl*6));
   const dt=jawT<0?16:Math.min(80,now-jawT);jawT=now;
   jaw+=(target-jaw)*(1-Math.exp(-dt/(target>jaw?55:95)));
   return jaw*2.4;
@@ -1422,6 +1451,14 @@ function renderFaceSurface(ref,eyes,mix,h,lids,gv,bv,ck,jawPx,ts,mouthWarp){
     ctx.globalAlpha=mix;
   }
   plate(ref,mouthWarp?mouthWarp.cur:0);ctx.globalAlpha=1;
+  // Idle micro-gesture: the plates are pose-locked, so a low-alpha wash of
+  // another viseme frame only reads where the mouths differ.
+  const idleWash=idleMouthFor(performance.now());
+  if(idleWash&&idleWash.img){
+    ctx.globalAlpha=idleWash.a;
+    plate(idleWash.img,mouthWarp?mouthWarp.cur:0);
+    ctx.globalAlpha=1;
+  }
   if(M.eyes){ctx.translate(0,dy);drawFace(lids,gv,bv,ck);}
   ctx.setTransform(1,0,0,1,0,0);
   if(CUTOUT){
