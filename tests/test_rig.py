@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import tempfile
 import unittest
@@ -71,6 +72,21 @@ class RigProfileTests(unittest.TestCase):
                 with self.subTest(name=name, value=value), \
                      self.assertRaises(ValueError):
                     rig.normalize({name: value})
+
+    def test_inspector_payload_serializes_to_json(self):
+        # The eyebags block shadowed `points` with a raw numpy array and
+        # every calibration open 500'd at FastAPI serialization - the
+        # modal hung at "Reading 478 facial landmarks..." (2026-08-01).
+        # Nothing had ever serialized the payload end to end; now it must
+        # round-trip through json with no numpy anywhere.
+        landmarks = np.column_stack((
+            (np.arange(478, dtype=np.float32) * 7 % 200) + 20,
+            (np.arange(478, dtype=np.float32) * 13 % 200) + 20))
+        payload = rig.inspector_payload(landmarks, (240, 240, 3))
+        decoded = json.loads(json.dumps(payload))
+        self.assertEqual(len(decoded["points"]), 478)
+        self.assertIn("eyebags", decoded["regions"])
+        self.assertEqual(len(decoded["regions"]["eyebags"]), 2)
 
     def test_eyebag_band_animates_and_shows_in_the_landscape(self):
         # Owner, rachel 2026-08-01: the infraorbital "eyebag" triangles were
