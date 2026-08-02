@@ -1648,9 +1648,36 @@ class PetMatteTests(unittest.TestCase):
         # v3 appearance adoption flips it on once for installs where it
         # was off, and it remains a per-user toggle afterwards.
         main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
-        self.assertIn("appearanceDefaultVersion: 3,", main)
         self.assertIn("if (Number(saved.appearanceDefaultVersion || 0) < 3) {", main)
         self.assertIn("next.petClickThrough = true;", main)
+
+    def test_whole_figure_ships_by_default_and_on_recovery(self):
+        # Owner, 2026-08-02 (fresh-Mac report): the 'half' default view
+        # read as "her legs are missing" and hid the feet/leg click
+        # targets. Full body is the default (v4 adoption covers existing
+        # installs), and Cmd+Shift+0 recovery resets to the whole figure
+        # at a zoom that provably fits the display - blind zoom=1
+        # overflowed short screens once enableLargerThanScreen removed
+        # the OS clamp.
+        main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
+        self.assertIn("petView: 'full',", main)
+        self.assertIn("appearanceDefaultVersion: 4,", main)
+        self.assertIn("if (Number(saved.appearanceDefaultVersion || 0) < 4) {", main)
+        self.assertIn("next.petView = 'full';", main)
+        self.assertIn("state.petView = 'full';", main)
+        # startup, buddy startup, AND recovery all fit the zoom to the area
+        self.assertGreaterEqual(main.count("fitPetZoomToArea("), 3)
+        self.assertIn("fitPetZoomToArea(\n      PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom, area, PET_DOCK_MARGIN),\n    PET_ZOOM_RANGE);\n  const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);\n  mainWindow.setBounds(dockedPetBounds(size, area, PET_DOCK_MARGIN));", main)
+
+    def test_motion_clips_always_fit_the_whole_figure(self):
+        # Same report: under a partial view the clip camera scaled for the
+        # crop while the bottom anchor pinned the full-body feet to the
+        # frame - only the legs stayed on screen. Motion takes are whole-
+        # figure by definition, so their fit ignores the chosen view.
+        renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("function viewCrop(meta,width,height,forceView){", renderer)
+        self.assertIn("petCamera({bounds},width,height,'full')", renderer)
+        self.assertIn("petCamera(meta,width,height,'full')", renderer)
 
     def test_canvas_backing_store_is_capped_at_display_size(self):
         # Companion mode made the window ~3000pt tall and the full-res

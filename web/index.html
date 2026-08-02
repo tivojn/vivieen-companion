@@ -507,7 +507,7 @@ let FACE_KEY={w:1024,h:1024},faceScaleHint=1,faceOutScale=1;
 const faceCtx=faceSurface.getContext('2d',{alpha:true}),headCtx=headSurface.getContext('2d',{alpha:true});
 const previewView=new URLSearchParams(location.search).get('view');
 const PET={enabled:true,opacity:.5,
-  view:['full','three-quarter','half','bust','head','face'].includes(previewView)?previewView:'half',
+  view:['full','three-quarter','half','bust','head','face'].includes(previewView)?previewView:'full',
   zoom:1,roamZoom:1,clickThrough:true,locked:false,roam:false,motionReady:false};
 const ROAM={enabled:false,mode:'idle',direction:1,phase:0,edge:null};
 let pointer={x:-1,y:-1},petHit=false,hitConfidence=0,dragging=false,zoomSaveTimer=0,lastHitCheck=0,lastHitSentAt=0;
@@ -1569,11 +1569,11 @@ function clampCrop(crop,width,height){
   crop.y=Math.max(0,Math.min(height-crop.h,crop.y));
   return crop;
 }
-function viewCrop(meta,width,height){
+function viewCrop(meta,width,height,forceView){
   const bounds=meta.bounds||[0,0,width,height],faceBounds=(meta.alignment&&meta.alignment.face_bounds)||
     [width*.22,height*.10,width*.56,height*.42];
   const [bx,by,bw,bh]=bounds,[fx,fy,fw,fh]=faceBounds;
-  const view=PET.roam?'full':(PET.view||'half');
+  const view=forceView||(PET.roam?'full':(PET.view||'half'));
   let crop;
   if(view==='full')crop={x:bx-bw*.05,y:by-bh*.025,w:bw*1.10,h:bh*1.05};
   else if(view==='three-quarter')crop={x:bx-bw*.04,y:by-bh*.025,w:bw*1.08,h:bh*.82};
@@ -1609,8 +1609,8 @@ function petBottomReserve(){
   if(de.classList.contains('listening'))want=Math.max(want,88);
   return want*cvScale();
 }
-function petCamera(meta,width,height){
-  const crop=viewCrop(meta,width,height);
+function petCamera(meta,width,height,forceView){
+  const crop=viewCrop(meta,width,height,forceView);
   petLaneNow+=(petBottomReserve()-petLaneNow)*0.22;
   const lane=petLaneNow<1?0:petLaneNow;
   const avail=Math.max(cv.height*0.35,cv.height-lane);
@@ -1681,7 +1681,9 @@ function drawMotionClip(kind,now,edgeOverride){
     draw=()=>ctx.drawImage(frame.sheet.image,frame.sx,frame.sy,width,height,0,0,width,height);
   }
   const meta={bounds:clip.bounds||[0,0,width,height]};
-  const camera=petCamera(meta,width,height);
+  // Whole-figure fit for motion sheets too - same rule as the DOM-video
+  // path above: a partial view crop must never scale a full-body take.
+  const camera=petCamera(meta,width,height,'full');
   const edge=edgeOverride!==undefined?edgeOverride:ROAM.edge;
   const freeAct=kind==='idle'&&clip.anchor_mode==='free';
   const mirror=kind==='walk'?ROAM.direction<0:(edge==='right'&&!freeAct);
@@ -1712,7 +1714,12 @@ function clipCamera(kind,edgeOverride){
   const clip=MOTION[kind];if(!clip||!clip.video)return null;
   const width=clip.frame_width,height=clip.frame_height;
   const bounds=clip.bounds||[0,0,width,height];
-  const camera=petCamera({bounds},width,height);
+  // Motion clips are whole-figure takes: fit them as 'full' no matter
+  // which view the user chose. Under the default 'half' view the crop
+  // scale outran the window while the bottom anchor below pinned her
+  // feet to the frame - only the legs stayed visible (fresh-install
+  // report, 2026-08-02).
+  const camera=petCamera({bounds},width,height,'full');
   // Feet on the window's bottom edge even when docked (non-roam): the
   // stillness idle now docks into a roam-sized window and a vertically
   // centered fit would hover her above the Dock line.
