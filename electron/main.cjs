@@ -2269,12 +2269,24 @@ function installIpc() {
     if (!mainWindow || event.sender !== mainWindow.webContents) return;
     if (state.petRoam || state.petLocked) return;
     const area = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
-    const size = clampRoamSizeToArea(
-      petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom), area);
-    // Flush against the work area: the idle pose leans on the window's right
-    // edge, so any dock margin becomes a phantom wall floating in air - she
-    // must rest on the actual screen edge, feet just above the Dock.
+    // The idle docks SMALL - roam scale, a colleague stepping aside, not
+    // a full-size cutout parked in the corner (owner, 2026-08-02). The
+    // held bounds come back on undock. Flush against the work area: any
+    // dock margin becomes a phantom wall floating in air - she must rest
+    // on the actual screen edge, feet just above the Dock.
+    if (!preDockBounds) preDockBounds = mainWindow.getBounds();
+    const size = clampRoamSizeToArea(petRoamSize(), area);
     const bounds = dockedPetBounds(size, area, 0);
+    mainWindow.setMinimumSize(size.width, size.height);
+    mainWindow.setBounds(bounds, false);
+  });
+  ipcMain.on('vivieen:pet-undock', (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return;
+    if (!preDockBounds) return;
+    const bounds = preDockBounds;
+    preDockBounds = null;
+    if (state.petRoam || state.petLocked) return;
+    mainWindow.setMinimumSize(PET_NORMAL_MINIMUM.width, PET_NORMAL_MINIMUM.height);
     mainWindow.setBounds(bounds, false);
     state.bounds = { ...bounds };
     saveStateSoon();
