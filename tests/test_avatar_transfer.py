@@ -120,5 +120,42 @@ class AvatarTransferTests(unittest.TestCase):
         self.assertEqual(result["status"], "draft")
 
 
+class AvatarStoreTests(unittest.TestCase):
+    """The in-app store: starter avatars pulled from GitHub releases."""
+
+    def test_store_lists_both_starter_avatars_with_github_urls(self):
+        import asyncio
+        listing = asyncio.run(server_app.api_avatar_store())
+        items = {item["id"]: item for item in listing["items"]}
+        self.assertEqual(set(items), {"vvn", "vivieen"})
+        for item in items.values():
+            self.assertTrue(item["url"].startswith(
+                "https://github.com/tivojn/vivieen-companion/releases/download/"))
+            self.assertGreater(item["bytes"], 100 * 1024 * 1024)
+            self.assertTrue(item["blurb"])
+
+    def test_store_install_rejects_unknown_avatar(self):
+        import asyncio
+        from fastapi import HTTPException
+        with self.assertRaises(HTTPException) as caught:
+            asyncio.run(server_app.api_avatar_store_install(
+                server_app.StoreInstall(id="nobody")))
+        self.assertEqual(caught.exception.status_code, 404)
+
+    def test_second_install_request_does_not_stack_downloads(self):
+        with server_app._store_lock:
+            server_app._store_jobs["vvn"] = {
+                "phase": "downloading", "pct": 40, "error": "", "slug": ""}
+        try:
+            import asyncio
+            result = asyncio.run(server_app.api_avatar_store_install(
+                server_app.StoreInstall(id="vvn")))
+            self.assertFalse(result["started"])
+            self.assertEqual(result["job"]["pct"], 40)
+        finally:
+            with server_app._store_lock:
+                server_app._store_jobs.pop("vvn", None)
+
+
 if __name__ == "__main__":
     unittest.main()
