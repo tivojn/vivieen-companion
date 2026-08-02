@@ -1654,11 +1654,18 @@ class PetMatteTests(unittest.TestCase):
         # drag into the corner, top ~34% of the window on screen.
         self.assertNotIn("state.petView = 'bust';", main)
         self.assertNotIn("state.petZoom = PET_ZOOM_RANGE.max;", main)
-        self.assertIn("area.height - current.height * 0.34", main)
+        self.assertIn("area.height - size.height * 0.34", main)
         # setPosition, not setBounds: setBounds is clamped fully on-screen
         # by macOS, which re-framed her; the drag semantics need the lower
         # window hanging off the display.
-        self.assertIn("mainWindow.setPosition(x, y, false);", main)
+        self.assertIn("mainWindow.setPosition(spot.x, spot.y, false);", main)
+        # While companion mode is active, zooming re-applies the placement
+        # - the head stays pinned at the corner and she grows downward
+        # off-screen (center-anchored resizes cut her head off). A manual
+        # drag takes over and releases the invariant.
+        self.assertIn("function reapplyCompanionPlacement()", main)
+        self.assertEqual(main.count("reapplyCompanionPlacement();"), 2)
+        self.assertIn("companionHold = null;\n    saveStateSoon();", main)
         self.assertIn("if (companionHold) {", main)
         self.assertEqual(
             main.count("applyPetOpacity(1);                    // both shortcuts mean FULLY visible")
