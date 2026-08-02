@@ -51,6 +51,10 @@ DEFAULTS = {
     # xAI is the primary backend - one websocket, one price, Grok included.
     # ElevenLabs runs through a Conversational-AI agent (auto-created on
     # first use and remembered). Keys never leave this server.
+    "image": {"provider": "enconvo", "model": "",
+              "base_url": "", "api_key": "", "size": "1024x1024"},
+    "video": {"provider": "enconvo", "model": "",
+              "base_url": "", "api_key": "", "seconds": 5},
     "live": {"provider": "xai",
              "xai_api_key": "", "xai_voice": "eve",
              "xai_model": "grok-voice-think-fast-1.0",
@@ -75,7 +79,7 @@ def _merge(base, over):
     return out
 
 
-def load():
+def _read_config_file():
     try:
         with open(CONFIG) as f:
             return _merge(DEFAULTS, json.load(f))
@@ -83,32 +87,55 @@ def load():
         return json.loads(json.dumps(DEFAULTS))
 
 
+_migrated = [False]
+
+
+def load():
+    """Secrets live in the vault (macOS Keychain), the file keeps only
+    markers, and load() hands back a config with the real values woven in -
+    memory only, so no call site changed and no key touches disk again."""
+    import credentials
+    cfg = _read_config_file()
+    if not _migrated[0]:
+        _migrated[0] = True
+        if credentials.absorb(cfg):        # first run after the upgrade:
+            _write_config_file(cfg)        # sweep plaintext into the vault
+    return credentials.materialise(cfg)
+
+
+def _write_config_file(cfg):
+    directory = os.path.dirname(CONFIG)
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    descriptor, tmp = tempfile.mkstemp(prefix=".config-", dir=directory)
+    try:
+        with os.fdopen(descriptor, "w") as handle:
+            json.dump(cfg, handle, indent=1)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, CONFIG)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
 def save(cfg):
     """Merge-and-write, so a UI that posts only the TTS block cannot wipe the
-    API key sitting in the STT block."""
+    API key sitting in the STT block. Incoming plaintext keys are swept into
+    the vault before anything is written; the file only ever sees markers."""
+    import credentials
     with _lock:
-        cur = load()
+        cur = _read_config_file()
         new = _merge(cur, cfg)
-        directory = os.path.dirname(CONFIG)
-        os.makedirs(directory, mode=0o700, exist_ok=True)
-        descriptor, tmp = tempfile.mkstemp(prefix=".config-", dir=directory)
-        try:
-            with os.fdopen(descriptor, "w") as handle:
-                json.dump(new, handle, indent=1)
-            os.chmod(tmp, 0o600)
-            os.replace(tmp, CONFIG)
-        finally:
-            if os.path.exists(tmp):
-                os.remove(tmp)
+        credentials.absorb(new)
+        _write_config_file(new)
         if (cur.get("tts") or {}) != (new.get("tts") or {}):
             _cache["tts"] = None         # voice or engine changed, drop the pipeline
-    return new
+    return credentials.materialise(new)
 
 
 def redacted(cfg):
     """Never send a key back to the browser - only whether one is stored."""
     out = json.loads(json.dumps(cfg))
-    for k in ("llm", "tts", "stt"):
+    for k in ("llm", "tts", "stt", "image", "video"):
         block = out.setdefault(k, {})
         if block.get("api_key"):
             block["api_key"] = ""
@@ -141,6 +168,23 @@ PROVIDERS = {
         dict(id="groq", label="Groq", key=True, base="https://api.groq.com/openai/v1"),
         dict(id="deepseek", label="DeepSeek", key=True, base="https://api.deepseek.com/v1"),
         dict(id="openrouter", label="OpenRouter", key=True, base="https://openrouter.ai/api/v1"),
+        # The OpenAI wire shape is the market's lingua franca - one adapter,
+        # the whole fleet. Borrowed leaf: EnConvo's credential manager lists
+        # the market per category; so does this catalogue now.
+        dict(id="mistral", label="Mistral", key=True, base="https://api.mistral.ai/v1"),
+        dict(id="together", label="Together AI", key=True, base="https://api.together.xyz/v1"),
+        dict(id="fireworks", label="Fireworks", key=True,
+             base="https://api.fireworks.ai/inference/v1"),
+        dict(id="perplexity", label="Perplexity", key=True, base="https://api.perplexity.ai"),
+        dict(id="moonshot", label="Moonshot Kimi", key=True, base="https://api.moonshot.ai/v1"),
+        dict(id="qwen", label="Alibaba Qwen", key=True,
+             base="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
+        dict(id="zhipu", label="Zhipu GLM", key=True,
+             base="https://open.bigmodel.cn/api/paas/v4"),
+        dict(id="minimax_llm", label="MiniMax", key=True, base="https://api.minimax.io/v1"),
+        dict(id="cerebras", label="Cerebras", key=True, base="https://api.cerebras.ai/v1"),
+        dict(id="nvidia", label="NVIDIA NIM", key=True,
+             base="https://integrate.api.nvidia.com/v1"),
         dict(id="lmstudio", label="LM Studio", local=True, key=False,
              base="http://localhost:1234/v1", note="Local OpenAI-compatible server."),
         dict(id="custom", label="Custom (OpenAI-compatible)", key=False, base="",
@@ -162,6 +206,12 @@ PROVIDERS = {
         dict(id="gemini", label="Google Gemini", key=True,
              base="https://generativelanguage.googleapis.com/v1beta",
              note="Audio only - mouth timing is estimated from the text."),
+        dict(id="deepgram", label="Deepgram Aura", key=True,
+             base="https://api.deepgram.com/v1",
+             note="Audio only - mouth timing is estimated from the text."),
+        dict(id="cartesia", label="Cartesia Sonic", key=True,
+             base="https://api.cartesia.ai",
+             note="Audio only - mouth timing is estimated from the text."),
         dict(id="system", label="macOS say", local=True, key=False, base="",
              note="Always available, no download."),
     ],
@@ -180,11 +230,49 @@ PROVIDERS = {
              note="Whisper large v3, very fast."),
         dict(id="gemini", label="Google Gemini", key=True,
              base="https://generativelanguage.googleapis.com/v1beta"),
+        dict(id="deepgram", label="Deepgram Nova", key=True,
+             base="https://api.deepgram.com/v1"),
+        dict(id="elevenlabs", label="ElevenLabs Scribe", key=True,
+             base="https://api.elevenlabs.io/v1"),
         dict(id="custom", label="Custom (OpenAI-compatible)", key=False, base=""),
+    ],
+    # Media generation: EnConvo's global default first (its credentials
+    # stay inside EnConvo), then the market on your own keys.
+    "image": [
+        dict(id="enconvo", label="EnConvo Global Default", managed=True, key=False,
+             base="", note="Inherits Global Providers Settings → Image Generation. "
+                            "Credentials remain inside EnConvo."),
+        dict(id="openai", label="OpenAI Images", key=True,
+             base="https://api.openai.com/v1"),
+        dict(id="gemini", label="Google Imagen", key=True,
+             base="https://generativelanguage.googleapis.com/v1beta"),
+        dict(id="xai", label="xAI Grok Image", key=True, base="https://api.x.ai/v1"),
+        dict(id="stability", label="Stability AI", key=True,
+             base="https://api.stability.ai"),
+        dict(id="bfl", label="Black Forest Labs FLUX", key=True,
+             base="https://api.bfl.ai"),
+        dict(id="together_image", label="Together AI (FLUX)", key=True,
+             base="https://api.together.xyz/v1"),
+        dict(id="recraft", label="Recraft", key=True,
+             base="https://external.api.recraft.ai/v1"),
+    ],
+    "video": [
+        dict(id="enconvo", label="EnConvo Global Default", managed=True, key=False,
+             base="", note="Inherits Global Providers Settings → Video Generation. "
+                            "Credentials remain inside EnConvo."),
+        dict(id="openai", label="OpenAI Sora", key=True,
+             base="https://api.openai.com/v1"),
+        dict(id="gemini", label="Google Veo", key=True,
+             base="https://generativelanguage.googleapis.com/v1beta"),
+        dict(id="luma", label="Luma Dream Machine", key=True,
+             base="https://api.lumalabs.ai/dream-machine/v1"),
+        dict(id="runway", label="Runway", key=True, base="https://api.dev.runwayml.com/v1"),
     ],
 }
 
-OPENAI_SHAPE = {"openai", "xai", "groq", "deepseek", "openrouter", "lmstudio", "custom"}
+OPENAI_SHAPE = {"openai", "xai", "groq", "deepseek", "openrouter", "lmstudio", "custom",
+                "mistral", "together", "fireworks", "perplexity", "moonshot",
+                "qwen", "zhipu", "minimax_llm", "cerebras", "nvidia"}
 
 
 def spec(kind, pid):
@@ -974,6 +1062,34 @@ async def _speak_direct(text, c):
         # Gemini returns headerless 24k mono PCM, which is already our rate
         return pcm, None
 
+    if p == "deepgram":
+        async with httpx.AsyncClient(timeout=180) as x:
+            r = await x.post(
+                f"{base}/speak",
+                params={"model": model or voice or "aura-2-thalia-en",
+                        "encoding": "linear16", "sample_rate": str(SR)},
+                headers={"Authorization": f"Token {key}",
+                         "Content-Type": "application/json"},
+                json={"text": text})
+            r.raise_for_status()
+            return np.frombuffer(r.content, "<i2").astype(np.float32) / 32768.0, None
+
+    if p == "cartesia":
+        async with httpx.AsyncClient(timeout=180) as x:
+            r = await x.post(
+                f"{base}/tts/bytes",
+                headers={"Authorization": f"Bearer {key}",
+                         "Cartesia-Version": "2025-04-16"},
+                json={"model_id": model or "sonic-3",
+                      "transcript": text,
+                      "voice": {"mode": "id",
+                                "id": voice or "694f9389-aac1-45b6-b726-9d9369183238"},
+                      "output_format": {"container": "raw",
+                                        "encoding": "pcm_s16le",
+                                        "sample_rate": SR}})
+            r.raise_for_status()
+            return np.frombuffer(r.content, "<i2").astype(np.float32) / 32768.0, None
+
     # OpenAI /v1/audio/speech (and anything that copies it)
     async with httpx.AsyncClient(timeout=180) as x:
         r = await x.post(f"{base}/audio/speech",
@@ -1139,6 +1255,29 @@ async def _hear_direct(raw, filename, c):
         return "".join(q.get("text", "") for q in parts).strip()
 
     # OpenAI-compatible multipart
+    if p == "deepgram":
+        params = {"model": model or "nova-3", "smart_format": "true"}
+        if lang and lang != "auto":
+            params["language"] = lang
+        async with httpx.AsyncClient(timeout=120) as x:
+            r = await x.post(f"{base}/listen", params=params,
+                             headers={"Authorization": f"Token {key}",
+                                      "Content-Type": "application/octet-stream"},
+                             content=raw)
+            r.raise_for_status()
+            alternatives = (((r.json().get("results") or {}).get("channels")
+                             or [{}])[0].get("alternatives") or [{}])
+            return (alternatives[0].get("transcript") or "").strip()
+
+    if p == "elevenlabs":
+        async with httpx.AsyncClient(timeout=120) as x:
+            r = await x.post(f"{base}/speech-to-text",
+                             headers={"xi-api-key": key},
+                             files={"file": (filename or "audio.webm", raw)},
+                             data={"model_id": model or "scribe_v1"})
+            r.raise_for_status()
+            return (r.json().get("text") or "").strip()
+
     files = {"file": (filename or "audio.webm", raw, "application/octet-stream")}
     data = {"model": model or "whisper-1"}
     if lang and lang != "auto":
@@ -1169,6 +1308,42 @@ async def test(kind, c):
             return dict(ok=True, detail="reachable (speak to test properly)") \
                 if c.get("provider") == "mlx_whisper" else \
                 dict(ok=bool(await list_models("stt", c)), detail="credentials accepted")
+        if kind == "image":
+            # A real (tiny) render: the only test that proves the whole path.
+            import media_gen
+            path = await media_gen.generate_image(
+                "a single small blue circle on white, minimal test pattern", c)
+            return dict(ok=os.path.isfile(path),
+                        detail=f"rendered {os.path.getsize(path) // 1024} KB")
+        if kind == "video":
+            # Credentials only - a real render costs real money.
+            import media_gen
+            p = c.get("provider")
+            if p == "enconvo":
+                name = await media_gen._enconvo_default_feature("video_create")
+                return dict(ok=True, detail=f"EnConvo default: {name}")
+            if not (c.get("api_key") or ""):
+                return dict(ok=False, detail="no API key stored")
+            checks = {
+                "openai": ("https://api.openai.com/v1/models",
+                           {"Authorization": f"Bearer {c.get('api_key')}"}),
+                "gemini": ("https://generativelanguage.googleapis.com/v1beta/"
+                           f"models?key={c.get('api_key')}", {}),
+                "luma": ("https://api.lumalabs.ai/dream-machine/v1/generations"
+                         "?limit=1",
+                         {"Authorization": f"Bearer {c.get('api_key')}"}),
+                "runway": ("https://api.dev.runwayml.com/v1/organization",
+                           {"Authorization": f"Bearer {c.get('api_key')}",
+                            "X-Runway-Version": "2024-11-06"}),
+            }
+            url, headers = checks.get(p, (None, None))
+            if not url:
+                return dict(ok=False, detail=f"unknown provider {p}")
+            async with httpx.AsyncClient(timeout=30) as x:
+                r = await x.get(url, headers=headers)
+                return dict(ok=r.status_code < 400,
+                            detail="credentials accepted" if r.status_code < 400
+                            else f"provider said {r.status_code}")
     except Exception as e:
         return dict(ok=False, detail=safe_error(e))
     return dict(ok=False, detail="unknown check")

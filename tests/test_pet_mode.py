@@ -1931,8 +1931,11 @@ class PocketBarAndToolsTests(unittest.TestCase):
         # a brain with no hands through every route - which is exactly why
         # the lane looked toolless. "agent" is where the tool belt lives.
         self.assertIn('"run_mode": "agent"', source)
-        # And no coaching: the old shim taught the agent its own tools.
-        self.assertNotIn("<<viv:", source)
+        # And no coaching: the coupled agent gets the owner's message
+        # VERBATIM - its tool belt is EnConvo's business. (Uncoupled
+        # Vivieen has her own directives; that brain is ours.)
+        self.assertIn("key, session, request.message, safe_files", source)
+        self.assertNotIn("request.message + _", source)
 
     def test_a_command_key_is_understood_however_it_is_written(self):
         import sys
@@ -2130,6 +2133,83 @@ class PocketBarAndToolsTests(unittest.TestCase):
         # The engine only ever starts it behind the opt-in file.
         app_source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
         self.assertIn("import relay_agent", app_source)
+
+    def test_secrets_live_in_the_vault_never_on_disk(self):
+        # EnConvo's leaf, the Mac's machinery: keys go to the Keychain
+        # (a JSON vault file under test), config.json keeps only the
+        # marker, load() weaves the real value back in memory, and
+        # __clear__ deletes the vault entry - not just the marker.
+        import importlib
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        with tempfile.TemporaryDirectory() as work:
+            environ = {"VIVIEEN_DATA_DIR": work,
+                       "VIVIEEN_CONFIG": os.path.join(work, "config.json"),
+                       "VIVIEEN_VAULT_FILE": os.path.join(work, "vault.json")}
+            with mock.patch.dict(os.environ, environ):
+                with open(environ["VIVIEEN_CONFIG"], "w") as handle:
+                    json.dump({"llm": {"provider": "openai",
+                                       "api_key": "sk-plain-42"}}, handle)
+                import credentials
+                import providers
+                importlib.reload(credentials)
+                importlib.reload(providers)
+                cfg = providers.load()
+                self.assertEqual(cfg["llm"]["api_key"], "sk-plain-42")
+                disk = json.load(open(environ["VIVIEEN_CONFIG"]))
+                self.assertEqual(disk["llm"]["api_key"], "@keychain")
+                providers.save({"llm": {"api_key": "__clear__"}})
+                self.assertEqual(providers.load()["llm"]["api_key"], "")
+                self.assertEqual(json.load(open(
+                    environ["VIVIEEN_VAULT_FILE"])), {})
+        importlib.reload(credentials)
+        importlib.reload(providers)
+
+    def test_the_catalogue_covers_the_market_in_every_slot(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        import providers
+
+        ids = {kind: {p["id"] for p in options}
+               for kind, options in providers.PROVIDERS.items()}
+        # Every slot leads with EnConvo Global Default...
+        for kind in ("llm", "tts", "stt", "image", "video"):
+            self.assertEqual(providers.PROVIDERS[kind][0]["id"], "enconvo",
+                             kind)
+        # ...and the market follows, on your own keys.
+        self.assertLessEqual({"mistral", "together", "fireworks", "perplexity",
+                              "moonshot", "qwen", "zhipu", "cerebras",
+                              "nvidia"}, ids["llm"])
+        self.assertLessEqual({"deepgram", "cartesia"}, ids["tts"])
+        self.assertLessEqual({"deepgram", "elevenlabs"}, ids["stt"])
+        self.assertLessEqual({"openai", "gemini", "xai", "stability", "bfl"},
+                             ids["image"])
+        self.assertLessEqual({"openai", "gemini", "luma", "runway"},
+                             ids["video"])
+        # The OpenAI-shape fleet actually routes through the one adapter.
+        for pid in ("mistral", "together", "qwen", "cerebras"):
+            self.assertIn(pid, providers.OPENAI_SHAPE)
+        # And the new slots exist in the defaults with EnConvo first.
+        self.assertEqual(providers.DEFAULTS["image"]["provider"], "enconvo")
+        self.assertEqual(providers.DEFAULTS["video"]["provider"], "enconvo")
+
+    def test_uncoupled_vivieen_has_her_own_hands(self):
+        # The directive-in-prompt design is legitimate HERE: this brain is
+        # ours, so its tool belt is ours to strap on.
+        source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("<<viv:image", source)
+        self.assertIn("<<viv:video", source)
+        self.assertIn('cfg["persona"]["system"] + _OWN_TOOLS', source)
+        self.assertIn("media_gen.generate_image", source)
+        self.assertIn("media_gen.generate_video", source)
+        # The result is a card, and a failure is a sentence - never silence.
+        self.assertIn('result["media"] = cards', source)
+        self.assertIn("but the provider said", source)
+        self.assertIn("threadAttachments(r.media);", self.renderer)
+        # EnConvo default naming quirk stays fixed: gemini-enconvo creates
+        # through features/gemini/create.
+        media = (ROOT / "server" / "media_gen.py").read_text(encoding="utf-8")
+        self.assertIn('name.replace("-enconvo", "")', media)
 
     def test_media_tools_never_inherit_the_engines_stdin(self):
         # ffmpeg and ffprobe read stdin; the engine's is a pipe nobody

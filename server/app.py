@@ -2036,7 +2036,7 @@ async def api_config_set(body: dict):
     # An empty api_key from the UI means "unchanged", never "erase" - the browser
     # is never sent the stored key, so it cannot echo one back.
     cur = P.load()
-    for k in ("llm", "tts", "stt"):
+    for k in ("llm", "tts", "stt", "image", "video"):
         blk = body.get(k)
         if not isinstance(blk, dict):
             continue
@@ -2046,7 +2046,9 @@ async def api_config_set(body: dict):
         requested_key = blk.get("api_key")
         if blk.get("provider") == "enconvo" or requested_key == "__clear__" or \
            (provider_changed and not requested_key):
-            blk["api_key"] = ""
+            # "__clear__" rides through to the vault, which deletes the
+            # Keychain entry - not just the marker in the file.
+            blk["api_key"] = "__clear__"
         elif not requested_key:
             blk.pop("api_key", None)
     live = body.get("live")
@@ -2054,7 +2056,6 @@ async def api_config_set(body: dict):
         for field in ("xai_api_key", "eleven_api_key"):
             live.pop("has_" + field, None)
             if live.get(field) == "__clear__":
-                live[field] = ""
                 if field == "eleven_api_key":
                     live["eleven_agent_id"] = ""
             elif not live.get(field):
@@ -2712,11 +2713,26 @@ class Turn(BaseModel):
     history: list
 
 
+# Uncoupled Vivieen's own hands. The directive-in-prompt design is
+# legitimate HERE, unlike in the coupled lane: this brain is ours, so its
+# tool belt is ours to strap on. One directive per turn, on its own line.
+_OWN_TOOLS = (
+    "\n\nYou can create media. To do it, put ONE of these on its own line "
+    "and end your reply there - the result is attached for you:\n"
+    "<<viv:image detailed description of the picture>>\n"
+    "<<viv:video detailed description of the clip>>\n"
+    "Use them only when the user asks for a picture/image/photo or a "
+    "video/clip. Never mention the directive syntax.")
+_OWN_TOOL_CALL = re.compile(r"<<viv:(image|video)\s+(.+?)>>", re.S)
+
+
 @app.post("/reply")
 async def reply(t: Turn):
+    import media_gen
     cfg = P.load()
     try:
-        text = await P.chat(t.history[-12:], cfg["llm"], system=cfg["persona"]["system"])
+        text = await P.chat(t.history[-12:], cfg["llm"],
+                            system=cfg["persona"]["system"] + _OWN_TOOLS)
     except Exception as e:
         print("[viv] llm failed:", P.safe_error(e), flush=True)
         hint = P.failure_hint(e)
@@ -2725,7 +2741,29 @@ async def reply(t: Turn):
                 "My model is not answering. Check the provider in Settings.")
     if not text:
         text = "I lost that thread for a second. Say it again?"
+    cards = []
+    call = _OWN_TOOL_CALL.search(text)
+    if call:
+        kind, prompt = call.group(1), call.group(2).strip()
+        text = _OWN_TOOL_CALL.sub("", text).strip()
+        try:
+            if kind == "image":
+                made = await media_gen.generate_image(prompt, cfg["image"])
+            else:
+                made = await media_gen.generate_video(prompt, cfg["video"])
+            url = await asyncio.to_thread(_enconvo_share, made)
+            if url:
+                cards.append({"url": url, "name": prompt[:60]})
+            if not text:
+                text = "Here it is." if kind == "image" else \
+                       "Here's the clip."
+        except Exception as error:
+            detail = P.safe_error(error, 140)
+            print("[viv] media generation failed:", detail, flush=True)
+            text = (text + " " if text else "") + \
+                f"(I tried to make the {kind}, but the provider said: {detail})"
     result = await _say(text, cfg)
+    result["media"] = cards
     result["llm_route"] = P.last_route("llm")
     return result
 

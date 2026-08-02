@@ -2834,6 +2834,9 @@ async function turn(text,spoken=false){
     if(monitorEnabled&&!spoken){renderMonitorStatus();return;}
     setCaption(r.text);
     threadPush('her',r.text);
+    // Her own hands, uncoupled: an image or clip she made this turn
+    // arrives as a playable card, same as the coupled lane.
+    threadAttachments(r.media);
     setStatus('speaking','on');
     await speak(r.audio,r.track);
   }catch(e){setCaption('(something broke: '+e.message+')');
