@@ -1582,8 +1582,8 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("const scale = area.height / size.height;", main)
         self.assertEqual(main.count("clampRoamSizeToArea("), 5)
         self.assertIn("clampRoamSizeToArea(petRoamSize(zoom), area)", main)
-        self.assertIn(
-            "clampRoamSizeToArea(\n      petZoomSize(PET_BASE_SIZE", main)
+        # (the stillness dock later moved to roam scale - see
+        # test_stillness_idle_docks_small_and_restores_on_wake)
 
     def test_accessibility_failures_open_the_settings_pane_directly(self):
         # Owner request 2026-08-01: the old bubble described the System
