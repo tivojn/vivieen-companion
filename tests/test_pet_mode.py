@@ -1829,5 +1829,124 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("def masked_blur", source)
 
 
+class PocketBarAndToolsTests(unittest.TestCase):
+    """The phone's messenger bar and the coupled lane's hands."""
+
+    def setUp(self):
+        self.renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.settings = (ROOT / "web" / "settings.html").read_text(encoding="utf-8")
+
+    def test_the_emoji_panel_is_a_panel_not_a_squeezed_flex_sibling(self):
+        # Inside #row (display:flex) the strip was just another child,
+        # crushed to a sliver beside the buttons. It belongs under the bar,
+        # the way WeChat and Telegram put it.
+        photo = self.renderer.index('id="chatPhoto"')
+        panel = self.renderer.index('<div id="emojirow">')
+        # #manual and #row both close before the panel opens.
+        # #manual and #row both close before the panel opens, and the panel
+        # is the last thing in #bar.
+        self.assertEqual(self.renderer[photo:panel].count("</div>"), 2)
+        self.assertIn('<div id="emojirow"></div>\n</div>', self.renderer)
+
+    def test_the_file_input_stays_rendered_so_the_plus_can_click_it(self):
+        # WebKit refuses a programmatic .click() on a display:none input,
+        # which is why attaching a photo did nothing on the phone.
+        self.assertIn('<input type="file" id="chatPhoto" accept="image/*">',
+                      self.renderer)
+        self.assertIn("#chatPhoto{position:fixed;left:-9999px", self.renderer)
+
+    def test_the_rail_steps_aside_for_the_emoji_panel(self):
+        # A raised bar put the rail's lowest button on top of the plus -
+        # every attempt to attach opened the zoom sliders instead.
+        self.assertIn("html.ios.emoji-open #rail{opacity:0;pointer-events:none}",
+                      self.renderer)
+
+    def test_settings_knows_it_is_on_a_phone(self):
+        # Without the flag the tabs fell off the right edge and the sticky
+        # header scrolled away on the first swipe (height:100% caps the
+        # sticky containing block at one viewport).
+        self.assertIn("link.href='/settings?ios=1'", self.renderer)
+        self.assertIn("html.ios,html.ios body{height:auto;min-height:100%",
+                      self.settings)
+        # Fixed, not sticky: body needs overflow containment on a narrow
+        # screen, and that makes body its own scrollport - a sticky header
+        # then scrolls away on the first swipe and strands the tabs.
+        self.assertIn("html.ios header{position:fixed;top:0", self.settings)
+        self.assertIn("html.ios main{padding:calc(112px", self.settings)
+        self.assertIn("html.ios nav{", self.settings)
+        self.assertIn("html.ios input,html.ios textarea,html.ios select{font-size:16px}",
+                      self.settings)
+
+    def test_a_produced_file_becomes_a_card_the_thread_can_play(self):
+        self.assertIn("function threadAttachments(list)", self.renderer)
+        self.assertIn("threadAttachments(r.media);", self.renderer)
+
+    def test_only_media_under_known_roots_is_ever_served(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        import app
+
+        with tempfile.TemporaryDirectory() as home:
+            downloads = os.path.join(home, "Downloads")
+            os.makedirs(downloads)
+            good = os.path.join(downloads, "clip.mp4")
+            script = os.path.join(downloads, "run.sh")
+            for path in (good, script):
+                with open(path, "wb") as handle:
+                    handle.write(b"x")
+            with mock.patch.object(app, "_enconvo_roots",
+                                   return_value=[os.path.realpath(downloads)]):
+                self.assertTrue(app._enconvo_share(good))
+                # Not media: never served, whatever the agent claims.
+                self.assertIsNone(app._enconvo_share(script))
+                # Outside the roots, and files that do not exist.
+                self.assertIsNone(app._enconvo_share("/etc/passwd"))
+                self.assertIsNone(
+                    app._enconvo_share(os.path.join(downloads, "ghost.mp4")))
+
+                text, cards = app._enconvo_media(f"Saved to {good} for you.")
+                self.assertEqual(len(cards), 1)
+                self.assertIn(f"[clip.mp4]({cards[0]['url']})", text)
+                # An existing markdown link keeps its label, swaps its target.
+                linked, _ = app._enconvo_media(f"Here: [the clip]({good})")
+                self.assertIn(f"[the clip](api/enconvo/file/", linked)
+                self.assertNotIn("[clip.mp4](api", linked)
+
+    def test_the_coupled_lane_lends_the_agent_hands(self):
+        # EnConvo's HTTP gateway runs an agent's brain without its tool
+        # belt, so the phone lends its own - driven by the agent's choice.
+        source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("<<viv:image", source)
+        self.assertIn("<<viv:download", source)
+        self.assertIn("image_create/features/gemini/create", source)
+        self.assertIn("request.message + _TOOL_BRIEF", source)
+        # Bounded: one tool per turn, twice at most.
+        self.assertIn("for _ in range(2):", source)
+        # The directive is never spoken or shown back to the owner.
+        self.assertIn("_TOOL_CALL.sub(\"\", text)", source)
+
+    def test_a_download_target_must_be_a_web_address(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        import app
+
+        with self.assertRaises(RuntimeError):
+            app._tool_download("file:///etc/passwd")
+        with self.assertRaises(RuntimeError):
+            app._tool_download("; rm -rf ~")
+        # A phone keyboard capitalises the first word of a message, and
+        # schemes are case-insensitive - "HTTPS://" must still be a URL.
+        with mock.patch.object(app.subprocess, "run") as run:
+            with self.assertRaises(RuntimeError) as caught:
+                app._tool_download("HTTPS://example.com/v")
+            self.assertIn("nothing came down", str(caught.exception))
+            self.assertTrue(run.called)
+
+    def test_served_files_answer_range_requests(self):
+        # Safari refuses to scrub a video whose source ignores ranges.
+        source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('"Accept-Ranges": "bytes"', source)
+
+
 if __name__ == "__main__":
     unittest.main()

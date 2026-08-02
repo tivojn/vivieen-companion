@@ -675,7 +675,46 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 :root[data-design=atelier] .body-visual{border-right:0;border-left:1px solid var(--line)}
 :root[data-design=atelier] .rig-visual{border-right:0;border-left:1px solid var(--line)}
 :root[data-design=atelier] .body-visual:before{border-radius:0;opacity:.45}
+
+/* ---- Pocket Mirror: settings on a 402pt screen -------------------------
+   The desk layout overflowed sideways (the design chip fell off the right
+   edge) and the "sticky" header scrolled away on the first swipe, stranding
+   the tabs - html,body{height:100%} caps the sticky containing block at one
+   viewport, the same trap the Atelier rail fell into above. */
+html.ios,html.ios body{height:auto;min-height:100%}
+html.ios body{overflow-x:clip}
+/* Fixed, not sticky: body needs overflow containment on a narrow screen,
+   and any overflow value makes body its own scrollport - the "sticky"
+   header then scrolls away on the first swipe and strands the tabs. */
+html.ios header{position:fixed;top:0;left:0;right:0;
+  flex-wrap:wrap;gap:8px;padding:10px 14px;
+  padding-top:calc(10px + env(safe-area-inset-top,0px))}
+html.ios header h1{font-size:14px}
+html.ios nav{margin-left:0;order:3;width:100%;gap:6px;
+  overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+html.ios nav::-webkit-scrollbar{display:none}
+html.ios nav button{flex:none;padding:7px 14px;font-size:14px}
+html.ios .grow{flex:1}
+/* The app's own gear owns the top-right corner; keep clear of it. */
+html.ios .back{font-size:12px;padding:6px 4px;margin-right:34px}
+/* Clear of the fixed header above and the save bar below. */
+html.ios main{padding:calc(112px + env(safe-area-inset-top,0px)) 14px
+  calc(96px + env(safe-area-inset-bottom,0px))}
+html.ios .savebar{padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));
+  gap:8px;flex-wrap:wrap}
+html.ios .savebar .msg{font-size:12px;flex-basis:100%;margin:0 0 2px}
+/* 16px floor everywhere, or focusing a field makes iOS zoom the page and
+   the layout never comes back (the ghost that faked three chat bugs). */
+html.ios input,html.ios textarea,html.ios select{font-size:16px}
+html.ios .grid{grid-template-columns:1fr}
 </style>
+<script>if(new URLSearchParams(location.search).get('ios')==='1'){
+  document.documentElement.classList.add('ios');
+  addEventListener('DOMContentLoaded',()=>{
+    const back=document.querySelector('.back');
+    if(back)back.href='/?view=full&ios=1';
+  });
+}</script>
 <script>document.documentElement.dataset.theme=localStorage.getItem('vivieen-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
 document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==='atelier'?'atelier':'quiet';</script>
 

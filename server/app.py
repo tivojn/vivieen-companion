@@ -11,7 +11,7 @@ active slug on every request. Activating a face is therefore one atomic write
 to active.json, and no file is ever copied over another.
 """
 import os, sys, io, json, base64, tempfile, threading, time, shutil, subprocess, secrets, asyncio
-import datetime, re, zipfile
+import datetime, re, zipfile, hashlib, urllib.parse
 from contextlib import asynccontextmanager
 from posixpath import normpath as posix_normpath
 os.environ["PATH"] = os.pathsep.join(filter(None, (
@@ -2725,6 +2725,103 @@ def _enconvo_call(path, params, timeout=120):
         return json.loads(feed.read().decode() or "{}")
 
 
+# Ask Mavis to fetch a video and she answers with a PATH on the Mac's disk -
+# useless to a phone. Every path she names that points at real media becomes
+# a served URL, so the reply lands in the thread as a card you can play
+# (owner: "I expect mavis download it and send the video in the thread").
+# Handles are opaque and minted only here: the phone can never name a file
+# the agent did not already hand it.
+_ENCONVO_FILES = {}
+_ENCONVO_MEDIA = {
+    ".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime",
+    ".webm": "video/webm", ".png": "image/png", ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
+    ".heic": "image/heic", ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
+    ".wav": "audio/wav", ".aac": "audio/aac", ".ogg": "audio/ogg",
+    ".pdf": "application/pdf",
+}
+# The folder every home lives in - "/Users" on a Mac - taken from this
+# machine rather than spelled out, so the pattern travels.
+_HOME_ROOT = os.path.dirname(os.path.expanduser("~")) or "/home"
+_PATH_IN_TEXT = re.compile(
+    r"(?:file://)?(?:~|" + re.escape(_HOME_ROOT) + r"/[^/\s]+"
+    r"|/private/var/folders|/tmp|/var/folders)"
+    r"(?:/[^\s()\[\]<>\"'`|]+)+")
+
+
+def _enconvo_roots():
+    home = os.path.expanduser("~")
+    roots = [os.path.join(home, part) for part in
+             (".enconvo", "Downloads", "Movies", "Pictures", "Documents",
+              "Desktop")]
+    roots.append(os.path.realpath(tempfile.gettempdir()))
+    roots.append(os.path.realpath(os.path.join(reg().AVATARS, "..")))
+    return [os.path.realpath(root) for root in roots]
+
+
+def _enconvo_share(path):
+    """Mint a handle for one on-disk file, or None if it is not ours to
+    serve. Returns the URL the renderer should link to."""
+    try:
+        real = os.path.realpath(os.path.expanduser(path))
+    except Exception:
+        return None
+    if not os.path.isfile(real):
+        return None
+    if os.path.splitext(real)[1].lower() not in _ENCONVO_MEDIA:
+        return None
+    if not any(real == root or real.startswith(root + os.sep)
+               for root in _enconvo_roots()):
+        return None
+    handle = hashlib.sha256(real.encode()).hexdigest()[:20]
+    _ENCONVO_FILES[handle] = real
+    name = urllib.parse.quote(os.path.basename(real))
+    return f"api/enconvo/file/{handle}/{name}"
+
+
+def _enconvo_media(text):
+    """Rewrite every servable path in her reply into a link, and report the
+    cards alongside so the phone can render them even if the prose does
+    not read like a link."""
+    cards = []
+    seen = {}
+
+    def swap(match):
+        raw = match.group(0)
+        # Trailing punctuation belongs to the sentence, not the filename.
+        trimmed = raw.rstrip(".,;:!?)")
+        target = trimmed[7:] if trimmed.startswith("file://") else trimmed
+        url = seen.get(target)
+        if url is None:
+            url = _enconvo_share(target) or ""
+            seen[target] = url
+            if url:
+                cards.append({"url": url, "name": os.path.basename(target)})
+        if not url:
+            return raw
+        # Already inside a markdown link - swap the destination, or the
+        # result nests brackets and renders as literal junk.
+        if match.string[max(0, match.start() - 2):match.start()] == "](":
+            return url + raw[len(trimmed):]
+        return f"[{os.path.basename(target)}]({url})" + raw[len(trimmed):]
+
+    return _PATH_IN_TEXT.sub(swap, text or ""), cards
+
+
+@app.get("/api/enconvo/file/{handle}/{name}")
+async def api_enconvo_file(handle: str, name: str):
+    path = _ENCONVO_FILES.get(handle)
+    if not path or not os.path.isfile(path):
+        raise HTTPException(404, "no such file")
+    media = _ENCONVO_MEDIA.get(os.path.splitext(path)[1].lower(),
+                               "application/octet-stream")
+    # Video needs ranges or iOS will not scrub, and Safari refuses to play
+    # a source that answers a range request with the whole file.
+    return FileResponse(path, media_type=media,
+                        headers={"Accept-Ranges": "bytes",
+                                 "Cache-Control": "private, max-age=600"})
+
+
 @app.get("/api/enconvo/agents")
 async def api_enconvo_agents():
     try:
@@ -2786,6 +2883,107 @@ async def api_enconvo_photo(photo: UploadFile = File(...)):
     return {"path": destination}
 
 
+# EnConvo's HTTP gateway runs an agent's BRAIN but not its hands: sessions
+# opened through agent/messages come back with no tool belt (verified against
+# Mavis, 2026-08-02 - it says so itself and a shell probe never runs). So the
+# pocket lane lends her hands of its own, driven by the same EnConvo
+# installation's media extensions. She decides; this executes; the result
+# lands in the thread as a card. Nothing on the EnConvo side changes.
+_TOOL_BRIEF = (
+    "\n\n---\nYou are answering through Vivieen on a phone, which can run two "
+    "tools for you. To use one, put the directive on its own line and stop "
+    "there - it will run and you will get the result to comment on:\n"
+    "<<viv:image A full description of the picture to make>>\n"
+    "<<viv:download https://a-url-to-fetch>>\n"
+    "Use them only when the request actually needs them. Otherwise answer "
+    "normally and never mention this.")
+_TOOL_CALL = re.compile(r"<<viv:(image|download)\s+(.+?)>>", re.S)
+_DOWNLOAD_DIR = os.path.expanduser("~/Downloads/Vivieen")
+
+
+def _tool_image(prompt):
+    answer = _enconvo_call("image_create/features/gemini/create",
+                           {"prompt": prompt[:900]}, 180)
+    paths = [p for p in (answer.get("paths") or []) if os.path.isfile(p)]
+    if not paths:
+        raise RuntimeError("the image provider returned nothing")
+    return paths
+
+
+def _tool_download(url):
+    url = url.strip().split()[0] if url.strip() else ""
+    # Schemes are case-insensitive, and a phone keyboard capitalises the
+    # first word of a message - "HTTPS://…" is the same address.
+    if not url.lower().startswith(("http://", "https://")):
+        raise RuntimeError("that is not a web address")
+    os.makedirs(_DOWNLOAD_DIR, exist_ok=True)
+    started = time.time() - 1
+    done = subprocess.run(
+        [shutil.which("yt-dlp") or "yt-dlp", "--no-playlist", "--no-warnings",
+         # Let yt-dlp name the file it landed on: asking the folder what is
+         # new fails the moment the same video is fetched twice, and it
+         # answers "nothing came down" for a file already sitting there.
+         "--no-simulate", "--print", "after_move:filepath",
+         # A phone has to PLAY this. YouTube's best small streams are AV1
+         # and Opus, which WebKit renders as a crossed-out play button -
+         # ask for H.264 and AAC first and fall back only if there is none.
+         "-f", "bv*[vcodec^=avc1][height<=720]+ba[acodec^=mp4a]/"
+               "b[vcodec^=avc1][height<=720]/bv*[height<=720]+ba/b",
+         "--merge-output-format", "mp4",
+         "-o", os.path.join(_DOWNLOAD_DIR, "%(title).70s.%(ext)s"), url],
+        capture_output=True, text=True, timeout=600, check=True)
+    landed = [line.strip() for line in (done.stdout or "").splitlines()
+              if line.strip() and os.path.isfile(line.strip())]
+    if not landed:
+        # Older yt-dlp builds may not print it; fall back to what appeared.
+        landed = [path for path in
+                  (os.path.join(_DOWNLOAD_DIR, name)
+                   for name in os.listdir(_DOWNLOAD_DIR))
+                  if os.path.isfile(path) and os.path.getmtime(path) >= started]
+    if not landed:
+        raise RuntimeError("nothing came down")
+    return [_phone_playable(sorted(landed, key=os.path.getmtime)[-1])]
+
+
+def _phone_playable(path):
+    """Whatever came down, hand back something WebKit will actually play -
+    transcoding only when the codecs leave it no choice."""
+    probe, ffmpeg = shutil.which("ffprobe"), shutil.which("ffmpeg")
+    if not probe or not ffmpeg or not path.lower().endswith(
+            (".mp4", ".m4v", ".mov", ".webm", ".mkv")):
+        return path
+    try:
+        found = subprocess.run(
+            [probe, "-v", "error", "-show_entries", "stream=codec_name",
+             "-of", "csv=p=0", path],
+            capture_output=True, text=True, timeout=60).stdout.split()
+    except Exception:
+        return path
+    if all(name in ("h264", "aac", "mp3") for name in found) \
+            and path.lower().endswith((".mp4", ".m4v", ".mov")):
+        return path
+    safe = os.path.splitext(path)[0] + ".phone.mp4"
+    try:
+        subprocess.run(
+            [ffmpeg, "-y", "-i", path, "-c:v", "h264_videotoolbox",
+             "-b:v", "2M", "-c:a", "aac", "-movflags", "+faststart", safe],
+            capture_output=True, timeout=900, check=True)
+    except Exception:
+        return path
+    return safe if os.path.isfile(safe) else path
+
+
+def _run_tool(kind, argument):
+    """Returns (note for the agent, produced paths). Never raises - a tool
+    that fails is something she should be able to talk about."""
+    try:
+        paths = _tool_image(argument) if kind == "image" \
+            else _tool_download(argument)
+        return "Tool result: done. Files: " + ", ".join(paths), paths
+    except Exception as error:
+        return f"Tool result: failed - {P.safe_error(error, 200)}", []
+
+
 class EnconvoChat(BaseModel):
     agent: str
     message: str
@@ -2807,30 +3005,53 @@ async def api_enconvo_chat(request: EnconvoChat):
             fresh = _enconvo_call("agent/session/new",
                                   {"agentId": request.agent}, 20)
             session = fresh.get("sessionId") or fresh.get("id") or ""
-        params = {
-            "agentId": request.agent, "sessionId": session,
-            "message": request.message}
-        if safe_files:
-            params["context_files"] = safe_files
-        answer = _enconvo_call("agent/messages", params, 180)
-        parts = []
-        for message in (answer.get("messages") or []):
-            if message.get("role") != "assistant":
-                continue
-            for chunk in (message.get("content") or []):
-                if chunk.get("type") == "text" and chunk.get("text"):
-                    parts.append(chunk["text"])
-        return session, "\n\n".join(parts).strip()
+
+        def turn(message, files=None):
+            params = {"agentId": request.agent, "sessionId": session,
+                      "message": message}
+            if files:
+                params["context_files"] = files
+            answer = _enconvo_call("agent/messages", params, 180)
+            parts = []
+            for entry in (answer.get("messages") or []):
+                if entry.get("role") != "assistant":
+                    continue
+                for chunk in (entry.get("content") or []):
+                    if chunk.get("type") == "text" and chunk.get("text"):
+                        parts.append(chunk["text"])
+            return "\n\n".join(parts).strip()
+
+        text = turn(request.message + _TOOL_BRIEF, safe_files)
+        made = []
+        # One tool per turn, twice at most - enough for "fetch it, then tell
+        # me about it" without ever looping on a stubborn agent.
+        for _ in range(2):
+            call = _TOOL_CALL.search(text)
+            if not call:
+                break
+            note, paths = _run_tool(call.group(1), call.group(2))
+            made += paths
+            text = turn(note)
+        return session, _TOOL_CALL.sub("", text).strip(), made
 
     try:
-        session, text = await asyncio.to_thread(run)
+        session, text, made = await asyncio.to_thread(run)
     except Exception as error:
         raise HTTPException(
             502, f"EnConvo did not answer ({P.safe_error(error, 160)})")
     if not text:
         text = "…the agent finished without saying anything."
-    spoken = await _say(text, P.load())
-    return {"session_id": session, "text": text,
+    shown, cards = _enconvo_media(text)
+    # Whatever a tool produced is a card even if her prose never named it.
+    seen = {card["url"] for card in cards}
+    for path in made:
+        url = _enconvo_share(path)
+        if url and url not in seen:
+            seen.add(url)
+            cards.append({"url": url, "name": os.path.basename(path)})
+    # She SAYS the prose, not the URLs - a spoken file path is noise.
+    spoken = await _say(_PATH_IN_TEXT.sub("that file", text), P.load())
+    return {"session_id": session, "text": shown, "media": cards,
             "audio": spoken.get("audio", ""), "track": spoken.get("track", [])}
 
 

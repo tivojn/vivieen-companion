@@ -245,7 +245,9 @@ html[data-design=atelier] #petBubble{border-radius:0;
    during speech and brightens for re-reading, and the WeChat-style talk
    bar replaces head-holding as the advertised way to speak. */
 html.ios #bar{padding:10px 18px calc(24px + env(safe-area-inset-bottom,0px));
-  background:none;bottom:var(--kb,0px)}
+  background:none;bottom:var(--kb,0px);
+  /* Above the thread (z-index 4) - the bar always owns its own space. */
+  z-index:6}
 html.ios #log,html.ios #row{width:100%}
 html.ios #her{--caption-expanded-height:30vh;font-size:15px;
   background:rgba(8,10,13,.55);transition:max-height 400ms cubic-bezier(.22,1,.36,1),opacity 300ms ease}
@@ -261,12 +263,20 @@ html.ios #emojiBtn,html.ios #plusBtn{display:flex;flex:none;width:40px;height:40
   border-radius:50%;align-items:center;justify-content:center;padding:0;
   border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#cfd3da}
 html.ios #emojiBtn svg,html.ios #plusBtn svg{width:20px;height:20px;fill:currentColor}
+/* Never display:none - WebKit refuses a programmatic .click() on an
+   unrendered file input, which is why the plus button did nothing on the
+   phone. Rendered, one pixel, invisible, out of the way. */
+#chatPhoto{position:fixed;left:-9999px;bottom:0;width:1px;height:1px;opacity:0}
 #emojirow{display:none}
 html.ios.emoji-open #emojirow{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;
   width:100%;margin-top:8px;padding:10px;border-radius:14px;
   background:rgba(20,22,26,.7);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
   border:1px solid rgba(255,255,255,.14)}
 html.ios #emojirow button{font-size:24px;line-height:1.5;background:none;border:none;padding:4px}
+/* A held finger on a control is a press, not a text selection - the long
+   press meant for Paste was selecting the emoji glyph instead. */
+html.ios #emojirow button,html.ios #rail button,html.ios #gear{
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 html.ios.talk-mode #micmode{background:rgba(124,116,226,.28);border-color:rgba(124,116,226,.6)}
 #talkbar{display:none}
 html.ios.talk-mode #txt{display:none}
@@ -284,6 +294,15 @@ html.ios #rail{display:flex;flex-direction:column;gap:14px;position:fixed;
   right:10px;top:50%;transform:translateY(-58%);z-index:5;
   opacity:1;transition:opacity 500ms ease}
 html.ios #rail.dim{opacity:.26}
+/* The rail's lowest button sat right on top of the plus once a panel
+   raised the bar - every attempt to attach a photo opened the zoom
+   sliders instead. When a panel is up, the rail steps aside. */
+html.ios.emoji-open #rail{opacity:0;pointer-events:none}
+/* The gear's word "SETTINGS" is a desk affordance; on the phone it lands
+   across the status line. The icon says it alone - and it stands clear of
+   the app's own gear in the very corner. */
+html.ios #gearWord{display:none}
+html.ios #gear{top:calc(8px + env(safe-area-inset-top,0px));right:52px;padding:8px}
 html.ios #rail button{width:44px;height:44px;border-radius:50%;padding:0;
   display:flex;align-items:center;justify-content:center;
   border:1px solid rgba(255,255,255,.14);background:rgba(20,22,26,.55);
@@ -304,7 +323,7 @@ html.ios #rail #rail-live.on{background:rgba(212,76,71,.5);
 html.ios #thread{display:flex;flex-direction:column;justify-content:flex-end;
   gap:8px;position:fixed;left:12px;right:12px;
   top:calc(env(safe-area-inset-top,0px) + 40px);
-  bottom:calc(88px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:4;
+  bottom:calc(var(--bar-h,88px) + 12px + var(--kb,0px));z-index:4;
   overflow-y:auto;overflow-x:hidden;pointer-events:none;
   transition:opacity 350ms ease;
   -webkit-mask-image:linear-gradient(to bottom,transparent,#000 8%);
@@ -321,6 +340,10 @@ html.ios #thread .msg.user{background:rgba(63,60,112,.55);
 html.ios #thread .msg img,html.ios #thread .msg video{display:block;
   width:100%;max-width:100%;height:29vh;object-fit:contain;
   background:#0a0c10;border-radius:9px;margin:4px 0}
+/* A file card is the file - no prose padding around it. */
+html.ios #thread .msg.media{padding:5px}
+html.ios #thread .msg.media img,html.ios #thread .msg.media video{margin:0}
+html.ios #thread .msg audio{display:block;width:100%;margin:4px 0}
 html.ios #thread .msg pre{overflow-x:auto;padding:8px 10px;border-radius:8px;
   background:#171a20;border:1px solid #262b33}
 html.ios #thread .msg a{color:#aeb7ff}
@@ -421,7 +444,7 @@ html.ios #zoombox input{width:100%;flex:1}
 <div id="vz"></div>
 <a id="gear" href="/settings" title="Avatar, models and voice">
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 15a1.6 1.6 0 0 0 .32 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-.97 1.47V21a2 2 0 1 1-4 0v-.11a1.6 1.6 0 0 0-1.05-1.46 1.6 1.6 0 0 0-1.77.32l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.6 1.6 0 0 0 .32-1.77 1.6 1.6 0 0 0-1.47-.97H3a2 2 0 1 1 0-4h.11a1.6 1.6 0 0 0 1.46-1.05 1.6 1.6 0 0 0-.32-1.77l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.6 1.6 0 0 0 1.77.32H9a1.6 1.6 0 0 0 .97-1.47V3a2 2 0 1 1 4 0v.11a1.6 1.6 0 0 0 .97 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.6 1.6 0 0 0-.32 1.77V9a1.6 1.6 0 0 0 1.47.97H21a2 2 0 1 1 0 4h-.11a1.6 1.6 0 0 0-1.47.97z"/></svg>
-Settings</a>
+<span id="gearWord">Settings</span></a>
 <div id="bar">
   <div id="log"><div id="you"></div><div id="her" tabindex="0" role="log" aria-live="polite" aria-expanded="false" aria-label="Assistant response; hover to expand"></div></div>
   <div id="row">
@@ -438,10 +461,13 @@ Settings</a>
       <textarea id="txt" rows="1" placeholder="Hold her head to talk, or type…" autocomplete="off" enterkeyhint="send"></textarea>
       <button id="emojiBtn" type="button" aria-label="Emoji"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zM8.6 9.2a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6zm6.8 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6zM7.6 14.2h8.8a4.6 4.6 0 0 1-8.8 0z"/></svg></button>
       <button id="plusBtn" type="button" aria-label="Attach photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z"/></svg></button>
-      <input type="file" id="chatPhoto" accept="image/*" style="display:none">
+      <input type="file" id="chatPhoto" accept="image/*">
     </div>
-    <div id="emojirow"></div>
   </div>
+  <!-- The emoji panel is a PANEL, under the bar the way WeChat and
+       Telegram put it - inside #row it was just another flex sibling,
+       squeezed to a sliver beside the buttons. -->
+  <div id="emojirow"></div>
 </div>
 <script>
 // The chosen design (Quiet / Atelier) is shared with Settings through
@@ -469,6 +495,12 @@ if(IS_IOS){
   const viewportMeta=document.querySelector('meta[name="viewport"]');
   if(viewportMeta)viewportMeta.content=
     'width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no';
+  // Settings has its own phone layout, but only if it knows it is on a
+  // phone - without the flag the tabs fell off the right edge and the
+  // sticky header scrolled away on the first swipe.
+  document.querySelectorAll('a[href="/settings"]').forEach(link=>{
+    link.href='/settings?ios=1';
+  });
 }
 // A second on-desk avatar loads this same page at /c/<slug>/?side=left: it
 // idles against the LEFT screen edge while the active avatar keeps the right.
@@ -2503,6 +2535,9 @@ async function turn(text,spoken=false){
       if(r.session_id)ENCONVO.sessions[ENCONVO.agent]=r.session_id;
       setCaption(r.text);
       threadPush('her',r.text);
+      // Anything she made or fetched arrives as a card you can play right
+      // here - the prose may never have read like a link.
+      threadAttachments(r.media);
       if(r.audio){setStatus('speaking','on');await speak(r.audio,r.track);}
       setStatus('coupled · '+(ENCONVO.title||ENCONVO.agent),'on');
     }catch(e){
@@ -2715,6 +2750,11 @@ function autoSizeTxt(){
   txt.style.height=Math.min(txt.scrollHeight+2,132)+'px';
   // The listening chip floats just above the field, however tall it grows.
   document.documentElement.style.setProperty('--txt-h',txt.offsetHeight+'px');
+  // ...and so does the thread's floor. A pasted URL grew the field to
+  // three lines and the top two were drawn behind the newest card.
+  const bar=document.getElementById('bar');
+  if(bar)document.documentElement.style.setProperty(
+    '--bar-h',Math.round(bar.getBoundingClientRect().height)+'px');
 }
 txt.addEventListener('input',autoSizeTxt);
 let promptFlashTimer=0;
@@ -3205,12 +3245,49 @@ function threadMedia(card){
     if(/\.(mp4|mov|m4v|webm)([?#]|$)/i.test(href)){
       const video=document.createElement('video');
       video.controls=true;video.playsInline=true;video.preload='metadata';
-      video.src=href;anchor.replaceWith(video);
+      video.src=href;video.dataset.src=href;anchor.replaceWith(video);
     }else if(/\.(png|jpe?g|gif|webp)([?#]|$)/i.test(href)){
       const image=document.createElement('img');
-      image.loading='lazy';image.src=href;anchor.replaceWith(image);
+      image.loading='lazy';image.src=href;image.dataset.src=href;
+      anchor.replaceWith(image);
     }
   });
+}
+// A file the agent produced - a downloaded video, a rendered image - gets
+// its own card at the end of her reply: playable in place, never a path.
+function threadAttachments(list){
+  if(!IS_IOS||!Array.isArray(list)||!list.length)return;
+  const container=document.getElementById('thread');
+  const stick=threadNearBottom(container);
+  list.forEach(item=>{
+    if(!item||!item.url)return;
+    const url=String(item.url);
+    if(container.querySelector('[data-src="'+CSS.escape(url)+'"]'))return;
+    const card=document.createElement('div');
+    card.className='msg her media';
+    let node;
+    if(/\.(mp4|mov|m4v|webm)$/i.test(url)){
+      node=document.createElement('video');
+      node.controls=true;node.playsInline=true;node.preload='metadata';
+    }else if(/\.(png|jpe?g|gif|webp|heic)$/i.test(url)){
+      node=document.createElement('img');node.loading='lazy';
+    }else if(/\.(mp3|m4a|wav|aac|ogg)$/i.test(url)){
+      node=document.createElement('audio');node.controls=true;
+    }else{
+      node=document.createElement('a');
+      node.textContent='⤓ '+(item.name||'file');
+      node.download=item.name||'';
+    }
+    node.src=url;node.dataset.src=url;
+    if(node.tagName==='A')node.href=url;
+    card.append(node);
+    const settle=()=>{if(threadNearBottom(container)||stick)threadToBottom(false);};
+    node.addEventListener('load',settle);
+    node.addEventListener('loadedmetadata',settle);
+    container.append(card);
+  });
+  while(container.children.length>40)container.firstChild.remove();
+  threadToBottom(false);
 }
 function threadNearBottom(container){
   return container.scrollHeight-container.scrollTop-container.clientHeight<70;
@@ -3472,11 +3549,23 @@ if(IS_IOS){
     .forEach(ch=>{
       const b=document.createElement('button');
       b.type='button';b.textContent=ch;
-      b.addEventListener('click',()=>{txt.value+=ch;autoSizeTxt();});
+      b.addEventListener('click',()=>{
+        // Tapping an emoji is a decision to TYPE: leave hold-to-talk so
+        // the field is there to receive it.
+        document.documentElement.classList.remove('talk-mode');
+        txt.value+=ch;autoSizeTxt();
+      });
       emojiRow.append(b);
     });
   emojiBtn.addEventListener('click',()=>{
+    document.documentElement.classList.remove('zoom-open');
     document.documentElement.classList.toggle('emoji-open');
+    autoSizeTxt();
+  });
+  // Attaching is a choice about THIS message: close the emoji grid so the
+  // plus is never buried, and shed any panel the rail left open.
+  plusBtn.addEventListener('pointerdown',()=>{
+    document.documentElement.classList.remove('emoji-open','zoom-open');
   });
   plusBtn.addEventListener('click',()=>chatPhoto.click());
   chatPhoto.addEventListener('change',async()=>{
@@ -3540,6 +3629,7 @@ if(IS_IOS){
   [txt,micmode,emojiBtn,plusBtn,talkbar].forEach(control=>{
     control.addEventListener('pointerdown',exitStage);
   });
+  autoSizeTxt();
   txt.addEventListener('focus',exitStage);
   // Jump-to-newest: the pill appears whenever you scroll away from the
   // freshest reply.
@@ -3650,6 +3740,9 @@ if(IS_IOS){
     if(IOS_HEAD_ANCHOR)setZoom(1,false);else setZoom(faceCloseupZoom(),true);
   });
   railZoom.addEventListener('click',()=>{
+    // One panel at a time - sliders drawn over the emoji grid was two
+    // controls fighting for the same corner.
+    document.documentElement.classList.remove('emoji-open');
     document.documentElement.classList.toggle('zoom-open');
   });
   zoomRange.addEventListener('input',()=>setZoom(Number(zoomRange.value)/100,
