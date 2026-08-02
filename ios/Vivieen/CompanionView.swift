@@ -7,8 +7,11 @@ struct CompanionView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
+            // Keep the page below the camera cutout - her head lives at the
+            // top edge and must never hide under the island. The bottom is
+            // hers: the chat bar sits flush with the home indicator.
             CompanionWebView(address: serverAddress, token: pairingToken)
-                .ignoresSafeArea()
+                .ignoresSafeArea(edges: .bottom)
             Button {
                 showUnpair = true
             } label: {
@@ -25,7 +28,7 @@ struct CompanionView: View {
                 Button("Cancel", role: .cancel) {}
             }
         }
-        .background(Color(.systemBackground))
+        .background(Color.black.ignoresSafeArea())
         .persistentSystemOverlays(.hidden)
     }
 }

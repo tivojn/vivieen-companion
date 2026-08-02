@@ -6,7 +6,10 @@
 html,body{height:100%;background:#0b0d10;color:#f2efe9;
   font:400 15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,sans-serif;overflow:hidden}
 #stage{position:fixed;inset:0}
-canvas{width:100%;height:100%;display:block}
+canvas{width:100%;height:100%;display:block;
+  /* Touch: a held finger must be a gesture, never a text-selection loupe
+     or a scroll - the head-hold talk dies otherwise (iOS, 2026-08-02). */
+  touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 #vignette{position:fixed;inset:0;pointer-events:none;
   background:radial-gradient(120% 90% at 50% 35%,transparent 45%,rgba(0,0,0,.55) 100%)}
 #bar{position:fixed;left:0;right:0;bottom:0;padding:20px 24px 26px;
@@ -278,6 +281,11 @@ addEventListener('storage',event=>{
 const SHELL=window.vivieen;
 const HAS_GLOBAL_PET_POINTER=Boolean(SHELL&&SHELL.onPetPointer);
 const PET_PREVIEW=new URLSearchParams(location.search).has('pet-preview');
+// The iOS shell (Pocket Mirror): no Electron SHELL, but her body gestures
+// - hold the head to talk, tap for a nod, double-tap the hair to dance -
+// must work from a finger. Window-level verbs (drag, roam, opacity) stay
+// desk-only.
+const IS_IOS=new URLSearchParams(location.search).has('ios');
 // A second on-desk avatar loads this same page at /c/<slug>/?side=left: it
 // idles against the LEFT screen edge while the active avatar keeps the right.
 const PET_SIDE=new URLSearchParams(location.search).get('side')==='left'?'left':'right';
@@ -2464,7 +2472,8 @@ function reportControlRects(){
   SHELL.setPetControlRects(rects);
 }
 function updatePetHit(force=false){
-  if(!SHELL||!SHELL.isElectron||!PET.enabled)return;
+  if((!SHELL||!SHELL.isElectron)&&!IS_IOS)return;
+  if(!PET.enabled)return;
   const now=performance.now();if(!force&&now-lastHitCheck<34)return;lastHitCheck=now;
   // `recording` pins the claim: mid-hold the cursor may slip off the body,
   // and losing interactivity there loses the release that ends the take.
@@ -2500,12 +2509,14 @@ function updatePetHit(force=false){
     // change" and stays silent - which once left the input field dead until
     // a drag jolted things. Re-sending the unchanged flag is free (the
     // shell ignores no-ops) and heals any desync within half a second.
-    if(now-lastHitSentAt>500){lastHitSentAt=now;SHELL.setPetHit(petHit);}
+    if(now-lastHitSentAt>500){lastHitSentAt=now;
+      if(SHELL&&typeof SHELL.setPetHit==='function')SHELL.setPetHit(petHit);}
     return;
   }
   petHit=hit;if(hit)petHoverUntil=now+1400;
   lastHitSentAt=now;
-  SHELL.setPetHit(hit);syncPetEngagement(now);
+  if(SHELL&&typeof SHELL.setPetHit==='function')SHELL.setPetHit(hit);
+  syncPetEngagement(now);
   // Hovering her mid-walk brings her home to the standing avatar: a short
   // dwell so a cursor merely passing through does not end the stroll.
   clearTimeout(roamHoverStop);
@@ -2546,7 +2557,7 @@ addEventListener('pointermove',event=>{
 },{passive:true});
 cv.addEventListener('pointermove',event=>{
   if(!HAS_GLOBAL_PET_POINTER)pointer={x:event.clientX,y:event.clientY};
-  if(gesture&&!dragging&&!gesture.ptt&&
+  if(SHELL&&gesture&&!dragging&&!gesture.ptt&&
      Math.hypot(event.clientX-gesture.x0,event.clientY-gesture.y0)>TAP_SLOP_PX){
     if(gesture.timer){clearTimeout(gesture.timer);gesture.timer=0;}
     dragging=true;document.documentElement.classList.add('dragging');
@@ -2610,6 +2621,9 @@ function pointerOnHead(x,y){
    and the chat bar (Hold to talk + a text field) opens under her feet for
    typed follow-ups. */
 function canPetTalk(){
+  // On the phone her head is the talk button too - dictation runs through
+  // the same server bridge, no shell needed.
+  if(IS_IOS&&!monitorEnabled)return true;
   if(!SHELL||!SHELL.isElectron)return false;
   return monitorEnabled?typeof SHELL.petVoiceKey==='function':true;
 }
@@ -2777,7 +2791,7 @@ function startPetTalk(){
   // hidden chat button's disabled flag stays latched in pet mode until a
   // health poll lands - the head must not wait for it.
   document.documentElement.classList.add('chat-open');
-  if(typeof SHELL.setPetHit==='function')SHELL.setPetHit(true);
+  if(SHELL&&typeof SHELL.setPetHit==='function')SHELL.setPetHit(true);
   // Optimistic wave: microphone acquisition can take a beat (or fail), and
   // the hold needs feedback NOW; startRec's failure paths take it back down.
   document.documentElement.classList.add('listening');
@@ -2810,7 +2824,7 @@ function clearGesture(){
   gesture=null;
 }
 cv.addEventListener('pointerdown',event=>{
-  if(!SHELL||!PET.enabled||event.button!==0||PET.locked||PET.roam||!confirmPetEventHit(event))return;
+  if((!SHELL&&!IS_IOS)||!PET.enabled||event.button!==0||PET.locked||PET.roam||!confirmPetEventHit(event))return;
   clearGesture();
   const part=petBodyPart(event.clientX,event.clientY);
   gesture={x0:event.clientX,y0:event.clientY,

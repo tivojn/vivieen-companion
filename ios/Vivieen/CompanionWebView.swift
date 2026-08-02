@@ -53,8 +53,11 @@ struct CompanionWebView: UIViewRepresentable {
     private func load(into webView: WKWebView) {
         guard var components = URLComponents(string: address),
               let host = components.host else { return }
+        // The decoupled web view, not the pet overlay: chat, hold-to-talk,
+        // and spoken replies are all self-contained there, while the pet
+        // page's gestures ride on Electron IPC the phone does not have.
         components.path = "/"
-        components.query = "pet-preview&view=full&ios=1"
+        components.query = "view=full&ios=1"
         guard let page = components.url else { return }
         let cookie = HTTPCookie(properties: [
             .domain: host,
