@@ -446,7 +446,7 @@ function defaultState() {
     // and 60% keeps the 720p-capped animation frames near 1:1 on screen.
     petZoom: 0.6,
     petRoamZoom: 0.6,
-    appearanceDefaultVersion: 2,
+    appearanceDefaultVersion: 3,
     petClickThrough: true,
     petLocked: false,
     petRoam: false,
@@ -470,6 +470,13 @@ function loadState() {
     if (Number(saved.appearanceDefaultVersion || 0) < 2) {
       next.petZoom = 0.6;
       next.appearanceDefaultVersion = 2;
+    }
+    // v3 (2026-08-02): click-through-the-gaps ships ON for everyone -
+    // clicks land on her silhouette and pass through everywhere else.
+    // Still a per-user toggle afterwards.
+    if (Number(saved.appearanceDefaultVersion || 0) < 3) {
+      next.petClickThrough = true;
+      next.appearanceDefaultVersion = 3;
     }
     next.petOpacity = Math.max(0, Math.min(1, Number(next.petOpacity) || 0));
     next.petZoom = clampPetZoom(next.petZoom, PET_ZOOM_RANGE);

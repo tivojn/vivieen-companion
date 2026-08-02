@@ -1629,6 +1629,15 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("h.y+=attend*cursorDir.y*0.6;", renderer)
         self.assertIn("h.r+=attend*cursorDir.x*0.12;", renderer)
 
+    def test_click_through_ships_enabled_for_existing_installs(self):
+        # Owner, 2026-08-02: click-through-the-gaps is the default - the
+        # v3 appearance adoption flips it on once for installs where it
+        # was off, and it remains a per-user toggle afterwards.
+        main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
+        self.assertIn("appearanceDefaultVersion: 3,", main)
+        self.assertIn("if (Number(saved.appearanceDefaultVersion || 0) < 3) {", main)
+        self.assertIn("next.petClickThrough = true;", main)
+
     def test_cmd_shift_9_is_desk_companion_mode(self):
         # Owner, 2026-08-02: Cmd+Shift+9 puts her at the largest screen-
         # fitting zoom, resting in the bottom-right corner above the Dock;
