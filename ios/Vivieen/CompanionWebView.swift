@@ -1,5 +1,33 @@
 import SwiftUI
 import WebKit
+import ObjectiveC.runtime
+
+/// WKWebView glues iOS's "form assistant" accessory bar (field arrows +
+/// Done) onto every focused input - a dead pill that sat on top of the
+/// chat field (owner: "what's the point of this layer with a check").
+/// The single-input app has no fields to navigate; remove the bar by
+/// giving WKContentView an inputAccessoryView of nil.
+private func removeInputAccessory(from webView: WKWebView) {
+    guard let target = webView.scrollView.subviews.first(where: {
+        String(describing: type(of: $0)).hasPrefix("WKContent")
+    }) else { return }
+    let subclassName = "VivieenNoAccessoryContentView"
+    let subclass: AnyClass
+    if let existing = NSClassFromString(subclassName) {
+        subclass = existing
+    } else {
+        guard let superclass = object_getClass(target),
+              let created = objc_allocateClassPair(superclass, subclassName, 0)
+        else { return }
+        let selector = #selector(getter: UIResponder.inputAccessoryView)
+        let block: @convention(block) (AnyObject) -> UIView? = { _ in nil }
+        class_addMethod(created, selector,
+                        imp_implementationWithBlock(block), "@@:")
+        objc_registerClassPair(created)
+        subclass = created
+    }
+    object_setClass(target, subclass)
+}
 
 /// The Mac's renderer, unchanged, inside WKWebView. Auth rides on a
 /// cookie (the server accepts it as an equal of the Electron header)
@@ -118,7 +146,10 @@ struct CompanionWebView: UIViewRepresentable {
         webView.scrollView.bouncesZoom = false
         webView.scrollView.pinchGestureRecognizer?.isEnabled = false
         context.coordinator.pip.webView = webView
-        DispatchQueue.main.async { context.coordinator.pip.attach(to: webView) }
+        DispatchQueue.main.async {
+            context.coordinator.pip.attach(to: webView)
+            removeInputAccessory(from: webView)
+        }
         load(into: webView, coordinator: context.coordinator)
         return webView
     }

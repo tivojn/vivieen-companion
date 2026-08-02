@@ -244,7 +244,7 @@ html[data-design=atelier] #petBubble{border-radius:0;
    (her face and lip-sync stay visible while she speaks), the caption dims
    during speech and brightens for re-reading, and the WeChat-style talk
    bar replaces head-holding as the advertised way to speak. */
-html.ios #bar{padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));
+html.ios #bar{padding:10px 18px calc(24px + env(safe-area-inset-bottom,0px));
   background:none;bottom:var(--kb,0px)}
 html.ios #log,html.ios #row{width:100%}
 html.ios #her{--caption-expanded-height:30vh;font-size:15px;
@@ -295,6 +295,7 @@ html.ios #thread{display:flex;flex-direction:column;justify-content:flex-end;
   top:calc(env(safe-area-inset-top,0px) + 40px);
   bottom:calc(88px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:4;
   overflow-y:auto;overflow-x:hidden;pointer-events:none;
+  transition:opacity 350ms ease;
   -webkit-mask-image:linear-gradient(to bottom,transparent,#000 8%);
   mask-image:linear-gradient(to bottom,transparent,#000 8%)}
 html.ios #thread .msg{pointer-events:auto;align-self:stretch;
@@ -312,7 +313,15 @@ html.ios #thread .msg img,html.ios #thread .msg video{display:block;
 html.ios #thread .msg pre{overflow-x:auto;padding:8px 10px;border-radius:8px;
   background:#171a20;border:1px solid #262b33}
 html.ios #thread .msg a{color:#aeb7ff}
+/* Stage mode: a rail performance (dance, rest, closeup, zoom) brings HER
+   to the front - the thread bows out and returns when the show ends. */
+html.ios.stage-mode #thread{opacity:0}
+html.ios.stage-mode #thread .msg{pointer-events:none}
 html.ios #log{display:none}
+/* Desk chrome that has no business on the phone: the zoom badge and the
+   roaming speech bubble (the thread IS her voice there). */
+html.ios #vz{display:none}
+html.ios #petBubble{display:none}
 html.ios #txt{font-size:16px}
 #toast{display:none}
 html.ios #toast{display:block;position:fixed;left:16px;right:16px;
@@ -3458,6 +3467,10 @@ if(IS_IOS){
     // body plate lands (its face box sets the ceiling per avatar).
     const ceiling=String(Math.round(faceCloseupZoom()*100));
     if(zoomRange.max!==ceiling)zoomRange.max=ceiling;
+    document.documentElement.classList.toggle('stage-mode',
+      moveShowActive(now)||idleShowActive(now)||walkShowActive(now)||
+      IOS_HEAD_ANCHOR||IOS_ZOOM>1.05||
+      document.documentElement.classList.contains('zoom-open'));
     railLive.classList.toggle('on',Boolean(LIVE));
     railMove.classList.toggle('on',moveShowActive(now));
     railIdle.classList.toggle('on',idleShowActive(now));
