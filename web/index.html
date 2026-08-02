@@ -244,7 +244,8 @@ html[data-design=atelier] #petBubble{border-radius:0;
    (her face and lip-sync stay visible while she speaks), the caption dims
    during speech and brightens for re-reading, and the WeChat-style talk
    bar replaces head-holding as the advertised way to speak. */
-html.ios #bar{padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));background:none}
+html.ios #bar{padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));
+  background:none;bottom:var(--kb,0px)}
 html.ios #log,html.ios #row{width:100%}
 html.ios #her{--caption-expanded-height:30vh;font-size:15px;
   background:rgba(8,10,13,.55);transition:max-height 400ms cubic-bezier(.22,1,.36,1),opacity 300ms ease}
@@ -269,7 +270,9 @@ html.ios.talk-mode #talkbar.cancel{background:rgba(212,76,71,.4);border-color:rg
    those verbs there). */
 #rail{display:none}
 html.ios #rail{display:flex;flex-direction:column;gap:14px;position:fixed;
-  right:10px;top:50%;transform:translateY(-58%);z-index:5}
+  right:10px;top:50%;transform:translateY(-58%);z-index:5;
+  opacity:1;transition:opacity 500ms ease}
+html.ios #rail.dim{opacity:.26}
 html.ios #rail button{width:44px;height:44px;border-radius:50%;padding:0;
   display:flex;align-items:center;justify-content:center;
   border:1px solid rgba(255,255,255,.14);background:rgba(20,22,26,.55);
@@ -288,9 +291,9 @@ html.ios #rail #rail-live.on{background:rgba(212,76,71,.5);
    from any card. */
 #thread{display:none}
 html.ios #thread{display:flex;flex-direction:column;justify-content:flex-end;
-  gap:8px;position:fixed;left:12px;right:64px;
+  gap:8px;position:fixed;left:12px;right:12px;
   top:calc(env(safe-area-inset-top,0px) + 40px);
-  bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:4;
+  bottom:calc(88px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:4;
   overflow-y:auto;overflow-x:hidden;pointer-events:none;
   -webkit-mask-image:linear-gradient(to bottom,transparent,#000 8%);
   mask-image:linear-gradient(to bottom,transparent,#000 8%)}
@@ -313,7 +316,7 @@ html.ios #log{display:none}
 html.ios #txt{font-size:16px}
 #toast{display:none}
 html.ios #toast{display:block;position:fixed;left:16px;right:16px;
-  bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:8;
+  bottom:calc(96px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:8;
   padding:11px 14px;border-radius:13px;font-size:14px;line-height:1.4;
   color:#e9ecf1;text-align:center;background:rgba(18,20,24,.86);
   -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
@@ -324,7 +327,7 @@ html.ios #toast.on{opacity:1;transform:none}
 #zoombox{display:none}
 html.ios.zoom-open #zoombox{display:flex;flex-direction:column;gap:10px;
   position:fixed;left:16px;right:70px;
-  bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:6;padding:12px 14px;
+  bottom:calc(96px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:6;padding:12px 14px;
   background:rgba(20,22,26,.6);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
   border:1px solid rgba(255,255,255,.14);border-radius:14px}
 html.ios #zoombox .zrow{display:flex;align-items:center;gap:10px}
@@ -3341,6 +3344,18 @@ if(IS_IOS){
   };
   talkbar.addEventListener('pointerup',endHold);
   talkbar.addEventListener('pointercancel',endHold);
+  // The rail whispers: it fades to a quarter after a few idle seconds so
+  // the thread owns the full width, and any touch wakes it (owner,
+  // 2026-08-02).
+  const railBox=document.getElementById('rail');
+  let railDimTimer=0;
+  const wakeRail=()=>{
+    railBox.classList.remove('dim');
+    clearTimeout(railDimTimer);
+    railDimTimer=setTimeout(()=>railBox.classList.add('dim'),3800);
+  };
+  addEventListener('pointerdown',wakeRail,true);
+  wakeRail();
   // Action rail: live call, dance, walk, rest - one tap each, states lit.
   const railLive=document.getElementById('rail-live');
   const railMove=document.getElementById('rail-move');
@@ -3457,7 +3472,15 @@ if(IS_IOS){
   addEventListener('scroll',()=>{if(scrollY||scrollX)scrollTo(0,0);});
   document.addEventListener('focusout',()=>setTimeout(()=>scrollTo(0,0),60));
   if(window.visualViewport){
-    visualViewport.addEventListener('resize',()=>{scrollTo(0,0);fitTxtPlaceholder();});
+    const keyboardLane=()=>{
+      // The keyboard (and its accessory bar) shrinks the visual viewport;
+      // the bar, thread, and toast all climb above it instead of hiding
+      // underneath (owner: 'got too close, and overlapped').
+      const lift=Math.max(0,innerHeight-visualViewport.height-visualViewport.offsetTop);
+      document.documentElement.style.setProperty('--kb',lift+'px');
+    };
+    visualViewport.addEventListener('resize',()=>{scrollTo(0,0);fitTxtPlaceholder();keyboardLane();});
+    keyboardLane();
     // The keyboard also pans the VISUAL viewport, which slid the bar and
     // rail sideways off the glass; snap the layout scroll back each time.
     visualViewport.addEventListener('scroll',()=>{if(scrollX||scrollY)scrollTo(0,0);});
