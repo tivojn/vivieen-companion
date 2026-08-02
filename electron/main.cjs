@@ -1962,15 +1962,14 @@ function deskCompanionMode() {
   // the upper body keeps you company and the rest hangs below the
   // screen. Drag her up and she is all still there.
   const current = mainWindow.getBounds();
-  const bounds = {
-    x: Math.round(Math.min(area.x + area.width - current.width * 0.55,
-                           area.x + area.width * 0.80 - current.width / 2)),
-    y: Math.round(area.y + area.height - current.height * 0.34),
-    width: current.width,
-    height: current.height,
-  };
-  mainWindow.setBounds(bounds, false);
-  state.bounds = { ...bounds };
+  const x = Math.round(Math.min(area.x + area.width - current.width * 0.55,
+                                area.x + area.width * 0.80 - current.width / 2));
+  const y = Math.round(area.y + area.height - current.height * 0.34);
+  // setPosition, NOT setBounds: setBounds gets clamped fully on-screen by
+  // macOS, which is exactly what a manual drag does not do - the drag
+  // moves the window with its lower two-thirds hanging off the display.
+  mainWindow.setPosition(x, y, false);
+  state.bounds = { x, y, width: current.width, height: current.height };
   if (state.petOpacity > 0.001) mainWindow.showInactive();
   saveStateSoon();
   broadcastState();
