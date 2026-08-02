@@ -2159,6 +2159,14 @@ def _start():
             print("[viv] runtime bundle missing:", e, flush=True)
     threading.Thread(target=_warm, daemon=True).start()
     threading.Thread(target=_warm_media_tools, daemon=True).start()
+    # Internet reach, opt-in: the relay agent only exists while
+    # ~/Library/Application Support/Vivieen/relay-url does. Delete the
+    # file and restart to roll the whole feature back.
+    try:
+        import relay_agent
+        relay_agent.start(os.environ.get("VIVIEEN_PORT", "8777"))
+    except Exception as error:
+        print("[viv] relay agent skipped:", P.safe_error(error, 120), flush=True)
 
 
 def _warm_media_tools():

@@ -2107,6 +2107,30 @@ class PocketBarAndToolsTests(unittest.TestCase):
         # A swipe, not a tap: face play keeps taps, the deck takes drags.
         self.assertIn("Math.abs(dx)>70&&Math.abs(dy)<48", self.renderer)
 
+    def test_the_relay_is_opt_in_allow_listed_and_blind(self):
+        # Internet reach, the OpenClaw way: both ends dial out to a dumb
+        # mailbox. Nothing starts unless the relay-url file exists, the
+        # Mac agent replays only an allow-list, and the relay never sees
+        # the pairing token - only a hash of it.
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        import relay_agent
+
+        with tempfile.TemporaryDirectory() as empty:
+            with mock.patch.object(relay_agent, "SUPPORT", empty):
+                self.assertIsNone(relay_agent.start("8777"))
+        self.assertIn("/api/enconvo/", relay_agent._ALLOWED_PREFIXES)
+        self.assertNotIn("/api/settings", str(relay_agent._ALLOWED_PREFIXES))
+        source = (ROOT / "server" / "relay_agent.py").read_text()
+        self.assertIn('hashlib.sha256(b"viv-relay:" + token.encode())', source)
+        relay = (ROOT / "relay" / "api" / "relay.js").read_text()
+        # Trust-on-first-use pinning, and boxes that expire.
+        self.assertIn("channel claimed by another key", relay)
+        self.assertIn('"EXPIRE", key, "900"', relay)
+        # The engine only ever starts it behind the opt-in file.
+        app_source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("import relay_agent", app_source)
+
     def test_media_tools_never_inherit_the_engines_stdin(self):
         # ffmpeg and ffprobe read stdin; the engine's is a pipe nobody
         # closes, and an inherited one hangs the probe until it times out.
