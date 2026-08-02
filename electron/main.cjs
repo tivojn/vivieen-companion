@@ -2452,19 +2452,30 @@ function installIpc() {
       bounds: mainWindow.getBounds(),
     };
   });
+  // A malformed drag frame once reached setPosition and threw a native
+  // "conversion failure" dialog in the main process (owner screenshot,
+  // 2026-08-02). Coordinates are validated to safe int32 or dropped.
+  const dragCoord = (base, screen, origin) => {
+    const value = Math.round(Number(base) + (Number(screen) - Number(origin)));
+    return Number.isFinite(value) && Math.abs(value) <= 0x7fffff ? value : null;
+  };
   ipcMain.on('vivieen:drag-move', (event, point) => {
     if (isBuddySender(event)) {
       if (!buddyDrag || state.petLocked || buddyRoam) return;
-      const x = Math.round(buddyDrag.bounds.x + (Number(point && point.screenX) - buddyDrag.x));
-      const y = Math.round(buddyDrag.bounds.y + (Number(point && point.screenY) - buddyDrag.y));
-      if (Number.isFinite(x) && Number.isFinite(y)) buddyWindow.setPosition(x, y, false);
+      const x = dragCoord(buddyDrag.bounds.x, point && point.screenX, buddyDrag.x);
+      const y = dragCoord(buddyDrag.bounds.y, point && point.screenY, buddyDrag.y);
+      if (x !== null && y !== null) {
+        try { buddyWindow.setPosition(x, y, false); } catch {}
+      }
       return;
     }
     if (!petDrag || !mainWindow || event.sender !== mainWindow.webContents
         || state.petLocked || state.petRoam) return;
-    const x = Math.round(petDrag.bounds.x + (Number(point && point.screenX) - petDrag.x));
-    const y = Math.round(petDrag.bounds.y + (Number(point && point.screenY) - petDrag.y));
-    if (Number.isFinite(x) && Number.isFinite(y)) mainWindow.setPosition(x, y, false);
+    const x = dragCoord(petDrag.bounds.x, point && point.screenX, petDrag.x);
+    const y = dragCoord(petDrag.bounds.y, point && point.screenY, petDrag.y);
+    if (x !== null && y !== null) {
+      try { mainWindow.setPosition(x, y, false); } catch {}
+    }
   });
   ipcMain.on('vivieen:drag-end', (event) => {
     if (isBuddySender(event)) { buddyDrag = null; return; }

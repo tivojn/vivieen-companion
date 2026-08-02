@@ -698,15 +698,29 @@ function routedStatus(route,fallback=''){
     i.src=`${src}${src.includes('?')?'&':'?'}v=${assetRev}`;});
   const loadMotion=async kind=>{
     const clip=M.motion&&M.motion[kind];if(!clip)return;
-    if(clip.alpha_stream){
-      // GPU-decoded VP9-alpha video instead of a decoded PNG atlas.
+    // Two encodings of the same take: VP9-alpha webm (Chromium) and
+    // HEVC-alpha mov (WebKit/iOS). Pick by what the engine claims to
+    // decode; a probe that stalls silently - iOS fires NEITHER canplay
+    // nor error on an unsupported webm - times out instead of hanging
+    // the whole boot at "booting" (Pocket Mirror, 2026-08-02).
+    const caps=document.createElement('video');
+    const streams=[];
+    if(clip.alpha_stream&&caps.canPlayType('video/webm; codecs="vp9"'))
+      streams.push(clip.alpha_stream);
+    if(clip.alpha_stream_hevc&&(caps.canPlayType('video/mp4; codecs="hvc1"')
+       ||caps.canPlayType('video/quicktime')))
+      streams.push(clip.alpha_stream_hevc);
+    if(!streams.length&&clip.alpha_stream)streams.push(clip.alpha_stream);
+    for(const src of streams){
+      // GPU-decoded alpha video instead of a decoded PNG atlas.
       const video=document.createElement('video');
       video.muted=true;video.loop=true;video.playsInline=true;
       video.preload='auto';
       const okay=await new Promise(res=>{
-        video.oncanplaythrough=()=>res(true);
-        video.onerror=()=>res(false);
-        video.src=`${clip.alpha_stream}?v=${assetRev}`;
+        const bail=setTimeout(()=>res(false),6000);
+        video.oncanplaythrough=()=>{clearTimeout(bail);res(true);};
+        video.onerror=()=>{clearTimeout(bail);res(false);};
+        video.src=`${src}?v=${assetRev}`;
         video.load();
       });
       if(okay&&video.videoWidth){MOTION[kind]={...clip,video};return;}

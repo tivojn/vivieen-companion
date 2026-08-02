@@ -183,6 +183,8 @@ def _validate_runtime_bundle(directory, expect_motion=None):
                 raise ValueError(f"runtime {kind} clip assets are missing")
             if clip.get("alpha_stream"):
                 _runtime_asset(directory, clip["alpha_stream"])
+            if clip.get("alpha_stream_hevc"):
+                _runtime_asset(directory, clip["alpha_stream_hevc"])
             for sheet in clip.get("sheets") or []:
                 _runtime_asset(directory, sheet.get("image"))
             if clip.get("poster"):
@@ -209,7 +211,7 @@ def active_slug():
         return None
 
 
-RUNTIME_VERSION = 12  # bundles below this are rebaked on activation
+RUNTIME_VERSION = 13  # v13: HEVC-alpha .mov twins ride along for WebKit/iOS
 
 
 def ensure_runtime(slug, log=print):

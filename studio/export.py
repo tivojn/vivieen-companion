@@ -132,7 +132,7 @@ def _publish_motion(directory, destination, log):
     runtime = {"v": source.get("v", 1)}
     published = False
     for name in os.listdir(destination):
-        if name.startswith("motion-") and name.endswith(".webm"):
+        if name.startswith("motion-") and name.endswith((".webm", ".mov")):
             os.remove(os.path.join(destination, name))
     for kind in ("walk", "idle", "move"):
         clip = dict(source.get(kind) or {})
@@ -148,6 +148,17 @@ def _publish_motion(directory, destination, log):
             stream_name = f"motion-{kind}.webm"
             shutil.copy2(stream_path, os.path.join(destination, stream_name))
             clip["alpha_stream"] = f"assets/{stream_name}"
+            # WebKit cannot decode VP9-alpha webm; the HEVC-alpha .mov twin
+            # rides along so the same runtime bundle plays on an iPhone
+            # (Pocket Mirror, 2026-08-02).
+            hevc = clip.get("alpha_video")
+            hevc_path = os.path.join(motion_dir, str(hevc or ""))
+            if hevc and os.path.isfile(hevc_path):
+                hevc_name = f"motion-{kind}.mov"
+                shutil.copy2(hevc_path, os.path.join(destination, hevc_name))
+                clip["alpha_stream_hevc"] = f"assets/{hevc_name}"
+            else:
+                clip.pop("alpha_stream_hevc", None)
             clip["sheets"] = []
         else:
             clip.pop("alpha_stream", None)
@@ -319,7 +330,7 @@ def export(slug, dest, quality=92, states=blink.N_STATES, log=print,
 
     timing = dict(close=blink.CLOSE, hold=blink.HOLD, open=blink.OPEN,
                   settle=blink.SETTLE, creep=blink.CREEP)
-    manifest = dict(v=12, w=W, h=H, avatar=dict(slug=slug, name=m["name"]),
+    manifest = dict(v=13, w=W, h=H, avatar=dict(slug=slug, name=m["name"]),
                     visemes=names, frames=frames, eyes=eyes, gaze=gaze, brow=brow,
                     cheek=cheek, eyebag=eyebag,
                     neck=expression.neck(klm), cutout=cutout_meta,

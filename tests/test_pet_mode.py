@@ -255,9 +255,9 @@ class PetInputBridgeTests(unittest.TestCase):
             expression.GAZE_DX, expression.GAZE_DX[1:])])
         self.assertGreaterEqual(max(expression.GAZE_DY), 2.0)
         server = (ROOT / "server" / "app.py").read_text()
-        self.assertIn("RUNTIME_VERSION = 12", server)
+        self.assertIn("RUNTIME_VERSION = 13", server)
         export_source = (ROOT / "studio" / "export.py").read_text()
-        self.assertIn("dict(v=12,", export_source)
+        self.assertIn("dict(v=13,", export_source)
 
     def test_body_parts_are_classified_and_react(self):
         # Clicks resolve to the nearest baked bone segment (head stays
@@ -438,7 +438,7 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn(
             'clip.get("sheets") or clip.get("alpha_stream")',
             (ROOT / "server" / "app.py").read_text())
-        self.assertIn("if(clip.alpha_stream){", renderer)
+        self.assertIn("for(const src of streams){", renderer)
         self.assertIn("if(clip.video){", renderer)
         self.assertIn("backgroundThrottling: false", main)
         self.assertNotIn("stride*direction*width", renderer)
@@ -1685,6 +1685,22 @@ class PetMatteTests(unittest.TestCase):
         server = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
         self.assertEqual(server.count("_client_token(client)"), 2)
         self.assertIn("_client_token(request)", server)
+
+    def test_motion_video_ships_hevc_twin_and_never_hangs_boot(self):
+        # iOS WebKit cannot decode VP9-alpha webm, and an unsupported webm
+        # fires NEITHER canplaythrough nor error - boot hung at "booting"
+        # on the iPhone (Pocket Mirror, 2026-08-02). The runtime bundle
+        # carries the HEVC-alpha .mov twin, the renderer picks by
+        # canPlayType, and the probe times out instead of hanging.
+        export = (ROOT / "studio" / "export.py").read_text(encoding="utf-8")
+        self.assertIn('clip["alpha_stream_hevc"] = f"assets/{hevc_name}"',
+                      export)
+        server = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('clip.get("alpha_stream_hevc")', server)
+        self.assertIn("RUNTIME_VERSION = 13", server)
+        renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("canPlayType('video/mp4; codecs=\"hvc1\"')", renderer)
+        self.assertIn("const bail=setTimeout(()=>res(false),6000);", renderer)
 
     def test_motion_clips_always_fit_the_whole_figure(self):
         # Same report: under a partial view the clip camera scaled for the
