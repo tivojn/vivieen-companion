@@ -20,6 +20,8 @@
   </array>
   <key>NSMicrophoneUsageDescription</key>
   <string>Vivieen listens only while you hold her head to talk, or during a live call.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Take a selfie to build a new avatar face. The photo goes only to your own Mac.</string>
   <key>NSLocalNetworkUsageDescription</key>
   <string>Vivieen connects to the companion app running on your Mac.</string>
   <key>NSAppTransportSecurity</key>

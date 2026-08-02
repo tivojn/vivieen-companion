@@ -715,11 +715,16 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
       </div>
     </div>
     <input type="file" id="file" accept="image/*" class="hidden">
+    <!-- iPhone: the front camera IS the portrait studio - capture=user
+         opens it directly for a selfie; the plain input still offers the
+         photo library through the same sheet. -->
+    <input type="file" id="selfie" accept="image/*" capture="user" class="hidden">
     <input type="file" id="avtrFile" accept=".avtr" class="hidden">
     <div class="row" style="margin-top:14px">
       <div class="f"><label>Name</label><input id="newname" placeholder="Vivieen"></div>
       <div class="f" style="flex:none;align-self:flex-end;display:flex;gap:8px">
         <button class="btn pri hidden" id="createAvatar" type="button" title="Add the chosen portrait with this name">Add portrait</button>
+        <button class="btn hidden" id="takeSelfie" type="button" title="Open the front camera and shoot the source portrait right here">📷 Take a selfie</button>
         <button class="btn" id="importAvtr" type="button" title="Import a complete avatar (.avtr) — face, body, walk, and edge idle arrive ready to use">Import .avtr…</button>
       </div>
     </div>
@@ -3532,6 +3537,14 @@ async function importAvatarFile(file) {
 $('#importAvtr').onclick = () => $('#avtrFile').click();
 $('#avtrFile').addEventListener('change', () => importAvatarFile($('#avtrFile').files[0]));
 file.onchange = () => stageUpload(file.files[0]);
+// iPhone: the camera is the handiest portrait source there is. The button
+// only appears on iOS - desktop browsers turn capture inputs into a plain
+// picker, which the drop zone already covers.
+if (/iPhone|iPad/.test(navigator.userAgent)) {
+  $('#takeSelfie').classList.remove('hidden');
+  $('#takeSelfie').addEventListener('click', () => $('#selfie').click());
+  $('#selfie').addEventListener('change', () => stageUpload($('#selfie').files[0]));
+}
 
 /* The naming step: a raw file name ("IMG_4032") is a bad avatar name, so a
    picked portrait is STAGED first - the name field gets a cleaned suggestion,

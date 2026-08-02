@@ -291,12 +291,11 @@ html.ios #zoombox input{width:100%}
 <div id="rail">
   <button id="rail-live" type="button" aria-label="Live talk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.5 2.9 3.7 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z"/></svg></button>
   <button id="rail-move" type="button" aria-label="Dance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.6c-.6-.4-1.3-.6-2-.6-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4V7h4V3h-6z"/></svg></button>
-  <button id="rail-walk" type="button" aria-label="Walk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 5.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM9.8 8.9 7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5 0-.8.1L6 8.3V13h2V9.6l1.8-.7z"/></svg></button>
   <button id="rail-idle" type="button" aria-label="Rest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-1-.1-1.4A7 7 0 0 1 12.6 3.1L12 3z"/></svg></button>
   <button id="rail-close" type="button" aria-label="Closeup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6h-2V6.4l-4.3 4.3-1.4-1.4L17.6 5H15V3zM3 15h2v2.6l4.3-4.3 1.4 1.4L6.4 19H9v2H3v-6z"/></svg></button>
   <button id="rail-zoom" type="button" aria-label="Zoom"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12zm-1 3h2v2h2v2h-2v2H9v-2H7V9h2V7z"/></svg></button>
 </div>
-<div id="zoombox"><input id="zoomrange" type="range" min="60" max="260" step="5" value="100" aria-label="Avatar zoom"></div>
+<div id="zoombox"><input id="zoomrange" type="range" min="60" max="600" step="5" value="100" aria-label="Avatar zoom"></div>
 <div id="petBubble" role="status" aria-live="polite"></div>
 <div id="listenWave" aria-hidden="true"><span id="listenWaveDot"></span><span id="listenWaveBars"><span></span><span></span><span></span><span></span><span></span></span><span id="listenWaveText">Listening…</span></div>
 <div id="emptyState" hidden><div id="emptyCard">
@@ -3145,10 +3144,8 @@ if(IS_IOS){
   // Action rail: live call, dance, walk, rest - one tap each, states lit.
   const railLive=document.getElementById('rail-live');
   const railMove=document.getElementById('rail-move');
-  const railWalk=document.getElementById('rail-walk');
   const railIdle=document.getElementById('rail-idle');
   railMove.addEventListener('click',()=>toggleMoveShow());
-  railWalk.addEventListener('click',()=>toggleWalkShow());
   railIdle.addEventListener('click',()=>toggleIdleShow());
   railLive.addEventListener('click',()=>{
     if(LIVE)stopLiveTalk('ended');else void startLiveTalk();
@@ -3160,7 +3157,7 @@ if(IS_IOS){
   const railZoom=document.getElementById('rail-zoom');
   const zoomRange=document.getElementById('zoomrange');
   const setZoom=(value,headAnchor)=>{
-    IOS_ZOOM=Math.max(.6,Math.min(2.6,value));
+    IOS_ZOOM=Math.max(.6,Math.min(6,value));
     IOS_HEAD_ANCHOR=Boolean(headAnchor)&&IOS_ZOOM>1.01;
     zoomRange.value=String(Math.round(IOS_ZOOM*100));
   };
@@ -3176,7 +3173,6 @@ if(IS_IOS){
     const now=performance.now();
     railLive.classList.toggle('on',Boolean(LIVE));
     railMove.classList.toggle('on',moveShowActive(now));
-    railWalk.classList.toggle('on',walkShowActive(now));
     railIdle.classList.toggle('on',idleShowActive(now));
     railClose.classList.toggle('on',IOS_HEAD_ANCHOR);
     railZoom.classList.toggle('on',
