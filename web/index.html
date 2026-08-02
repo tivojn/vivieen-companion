@@ -256,6 +256,17 @@ html.ios #micmode{display:flex;flex:none;width:40px;height:40px;border-radius:50
   align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.16);
   background:rgba(255,255,255,.06);color:#cfd3da;padding:0}
 html.ios #micmode svg{width:19px;height:19px;fill:currentColor}
+#emojiBtn,#plusBtn{display:none}
+html.ios #emojiBtn,html.ios #plusBtn{display:flex;flex:none;width:40px;height:40px;
+  border-radius:50%;align-items:center;justify-content:center;padding:0;
+  border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#cfd3da}
+html.ios #emojiBtn svg,html.ios #plusBtn svg{width:20px;height:20px;fill:currentColor}
+#emojirow{display:none}
+html.ios.emoji-open #emojirow{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;
+  width:100%;margin-top:8px;padding:10px;border-radius:14px;
+  background:rgba(20,22,26,.7);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,.14)}
+html.ios #emojirow button{font-size:24px;line-height:1.5;background:none;border:none;padding:4px}
 html.ios.talk-mode #micmode{background:rgba(124,116,226,.28);border-color:rgba(124,116,226,.6)}
 #talkbar{display:none}
 html.ios.talk-mode #txt{display:none}
@@ -333,6 +344,27 @@ html.ios #toast{display:block;position:fixed;left:16px;right:16px;
   opacity:0;transform:translateY(8px);pointer-events:none;
   transition:opacity 220ms ease,transform 220ms ease}
 html.ios #toast.on{opacity:1;transform:none}
+/* EnConvo agent sheet: every agent is a contact - portrait, name, blurb.
+   Pick one and the thread talks to that brain through the Mac's gateway,
+   spoken with her voice. */
+#agentsheet{display:none}
+html.ios.agents-open #agentsheet{display:block;position:fixed;left:16px;right:16px;
+  bottom:calc(96px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:7;
+  max-height:52vh;overflow-y:auto;border-radius:16px;padding:8px;
+  background:rgba(16,18,22,.82);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,.14)}
+#agentsheet .agent{display:flex;align-items:center;gap:12px;width:100%;
+  padding:10px;border:none;background:none;border-radius:12px;color:#e9ecf1;
+  text-align:left;font-size:15px}
+#agentsheet .agent.on{background:rgba(124,116,226,.28)}
+#agentsheet .agent img{width:44px;height:44px;border-radius:50%;object-fit:cover;
+  background:#20242b;flex:none}
+#agentsheet .agent .who{min-width:0}
+#agentsheet .agent .who b{display:block;font-weight:600}
+#agentsheet .agent .who span{display:block;font-size:12.5px;color:#9aa1ab;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html.ios #rail #rail-enconvo.on{background:rgba(29,158,117,.4);
+  border-color:rgba(93,202,165,.7);color:#dff6ec}
 #zoombox{display:none}
 html.ios.zoom-open #zoombox{display:flex;flex-direction:column;gap:10px;
   position:fixed;left:16px;right:70px;
@@ -355,9 +387,11 @@ html.ios #zoombox input{width:100%;flex:1}
   <button id="rail-idle" type="button" aria-label="Rest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-1-.1-1.4A7 7 0 0 1 12.6 3.1L12 3z"/></svg></button>
   <button id="rail-close" type="button" aria-label="Closeup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6h-2V6.4l-4.3 4.3-1.4-1.4L17.6 5H15V3zM3 15h2v2.6l4.3-4.3 1.4 1.4L6.4 19H9v2H3v-6z"/></svg></button>
   <button id="rail-pip" type="button" aria-label="Picture in picture"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3V5zm2 2v10h14V7H5zm7 4h5v4h-5v-4z"/></svg></button>
+  <button id="rail-enconvo" type="button" aria-label="EnConvo agents"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3 4 14h6l-1 7 9-11h-6l1-7z"/></svg></button>
   <button id="rail-zoom" type="button" aria-label="Zoom"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12zm-1 3h2v2h2v2h-2v2H9v-2H7V9h2V7z"/></svg></button>
 </div>
 <div id="thread"></div>
+<div id="agentsheet"><div id="agentlist"></div></div>
 <div id="zoombox">
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12z"/></svg><input id="zoomrange" type="range" min="60" max="600" step="5" value="100" aria-label="Avatar zoom"></div>
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2s6 7.1 6 12a6 6 0 0 1-12 0c0-4.9 6-12 6-12zm0 16a4 4 0 0 0 4-4c0-.6-.1-1.2-.4-1.9L8.4 15.3A4 4 0 0 0 12 18z"/></svg><input id="alpharange" type="range" min="25" max="100" step="5" value="100" aria-label="Avatar opacity"></div>
@@ -388,7 +422,11 @@ Settings</a>
       <button id="micmode" type="button" aria-label="Switch between typing and talking" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg></button>
       <button id="talkbar" type="button">Hold to talk</button>
       <textarea id="txt" rows="1" placeholder="Hold her head to talk, or type…" autocomplete="off" enterkeyhint="send"></textarea>
+      <button id="emojiBtn" type="button" aria-label="Emoji"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zM8.6 9.2a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6zm6.8 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6zM7.6 14.2h8.8a4.6 4.6 0 0 1-8.8 0z"/></svg></button>
+      <button id="plusBtn" type="button" aria-label="Attach photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z"/></svg></button>
+      <input type="file" id="chatPhoto" accept="image/*" style="display:none">
     </div>
+    <div id="emojirow"></div>
   </div>
 </div>
 <script>
@@ -2427,6 +2465,29 @@ async function turn(text,spoken=false){
   ptt.disabled=true;elYou.textContent=text;setCaption('');
   threadPush('user',text);
   setStatus('thinking','busy');
+  // Coupled to an EnConvo agent: the message goes to that brain through
+  // the Mac's gateway, and the reply comes home in HER voice.
+  if(window.ENCONVO&&ENCONVO.agent){
+    try{
+      setStatus('asking '+(ENCONVO.title||'the agent'),'busy');
+      const r=await(await fetch('api/enconvo/chat',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({agent:ENCONVO.agent,message:text,
+          session_id:ENCONVO.sessions[ENCONVO.agent]||''})})).json();
+      if(r.detail)throw new Error(r.detail);
+      if(r.session_id)ENCONVO.sessions[ENCONVO.agent]=r.session_id;
+      setCaption(r.text);
+      threadPush('her',r.text);
+      if(r.audio){setStatus('speaking','on');await speak(r.audio,r.track);}
+      setStatus('coupled · '+(ENCONVO.title||ENCONVO.agent),'on');
+    }catch(e){
+      setCaption('(agent trouble: '+e.message+')');
+      threadPush('her','(agent trouble: '+e.message+')');
+      setStatus('ready','on');
+    }
+    ptt.disabled=monitorEnabled;
+    return;
+  }
   history.push({role:'user',content:text});
   let llmRoute=null;
   try{
@@ -3353,6 +3414,38 @@ if(IS_IOS){
   };
   talkbar.addEventListener('pointerup',endHold);
   talkbar.addEventListener('pointercancel',endHold);
+  // Messenger bar, the standard grammar: mic, field, emoji, plus. The
+  // emoji strip inserts into the field; plus attaches a photo into the
+  // thread (owner: replicate WeChat/Telegram, don't invent).
+  const emojiBtn=document.getElementById('emojiBtn');
+  const emojiRow=document.getElementById('emojirow');
+  const plusBtn=document.getElementById('plusBtn');
+  const chatPhoto=document.getElementById('chatPhoto');
+  '😀 😄 😊 😉 😍 😘 🤗 🤔 😅 😂 🥰 😎 👍 🙏 👏 💪 ❤️ ✨ 🎉 🔥 🌸 ☕️ 🍜 🐱'.split(' ')
+    .forEach(ch=>{
+      const b=document.createElement('button');
+      b.type='button';b.textContent=ch;
+      b.addEventListener('click',()=>{txt.value+=ch;autoSizeTxt();});
+      emojiRow.append(b);
+    });
+  emojiBtn.addEventListener('click',()=>{
+    document.documentElement.classList.toggle('emoji-open');
+  });
+  plusBtn.addEventListener('click',()=>chatPhoto.click());
+  chatPhoto.addEventListener('change',()=>{
+    const chosen=chatPhoto.files[0];
+    if(!chosen)return;
+    const container=document.getElementById('thread');
+    const card=document.createElement('div');
+    card.className='msg user';
+    const image=document.createElement('img');
+    image.src=URL.createObjectURL(chosen);
+    card.append(image);
+    container.append(card);
+    while(container.children.length>40)container.firstChild.remove();
+    container.scrollTop=container.scrollHeight;
+    chatPhoto.value='';
+  });
   // The rail whispers: it fades to a quarter after a few idle seconds so
   // the thread owns the full width, and any touch wakes it (owner,
   // 2026-08-02).
@@ -3373,6 +3466,51 @@ if(IS_IOS){
   railIdle.addEventListener('click',()=>toggleIdleShow());
   railLive.addEventListener('click',()=>{
     if(LIVE)stopLiveTalk('ended');else void startLiveTalk();
+  });
+  // EnConvo lane: the rail's bolt opens the agent sheet - every EnConvo
+  // agent is a contact. Coupled, the thread routes to that agent through
+  // the Mac's gateway and the reply leaves through HER voice.
+  const railEnconvo=document.getElementById('rail-enconvo');
+  const agentSheet=document.getElementById('agentsheet');
+  const agentList=document.getElementById('agentlist');
+  window.ENCONVO={agent:'',title:'',sessions:{}};
+  const closeAgents=()=>document.documentElement.classList.remove('agents-open');
+  railEnconvo.addEventListener('click',async()=>{
+    if(document.documentElement.classList.contains('agents-open')){closeAgents();return;}
+    document.documentElement.classList.add('agents-open');
+    agentList.innerHTML='<div class="agent"><div class="who"><b>Looking for EnConvo…</b></div></div>';
+    try{
+      const r=await(await fetch('api/enconvo/agents')).json();
+      if(!r.agents)throw new Error(r.detail||'no agents');
+      agentList.replaceChildren();
+      const off=document.createElement('button');
+      off.type='button';off.className='agent'+(ENCONVO.agent?'':' on');
+      off.innerHTML='<div class="who"><b>Vivieen herself</b><span>her own model - uncoupled</span></div>';
+      off.addEventListener('click',()=>{ENCONVO.agent='';ENCONVO.title='';closeAgents();
+        flashPrompt('Talking to Vivieen herself');});
+      agentList.append(off);
+      r.agents.forEach(agent=>{
+        const row=document.createElement('button');
+        row.type='button';
+        row.className='agent'+(ENCONVO.agent===agent.name?' on':'');
+        const face=agent.portrait?'<img src="api/enconvo/portrait?name='+
+          encodeURIComponent(agent.name)+'" alt="">':'<img alt="">';
+        row.innerHTML=face+'<div class="who"><b></b><span></span></div>';
+        row.querySelector('b').textContent=agent.title;
+        row.querySelector('span').textContent=agent.description||'EnConvo agent';
+        row.addEventListener('click',()=>{
+          ENCONVO.agent=agent.name;ENCONVO.title=agent.title;closeAgents();
+          flashPrompt('Coupled to '+agent.title+' · she speaks for the agent now');
+        });
+        agentList.append(row);
+      });
+    }catch(error){
+      agentList.innerHTML='';
+      const sad=document.createElement('div');sad.className='agent';
+      sad.innerHTML='<div class="who"><b>EnConvo not reachable</b><span></span></div>';
+      sad.querySelector('span').textContent=String(error.message||error).slice(0,120);
+      agentList.append(sad);
+    }
   });
   // Zoom: the slider tops out AT the face closeup, and the closeup button
   // jumps straight there - one calibrated destination, computed from this
@@ -3476,6 +3614,8 @@ if(IS_IOS){
     railIdle.classList.toggle('on',idleShowActive(now));
     railClose.classList.toggle('on',IOS_HEAD_ANCHOR);
     railPip.classList.toggle('on',pipActive());
+    railEnconvo.classList.toggle('on',Boolean(ENCONVO.agent)||
+      document.documentElement.classList.contains('agents-open'));
     railZoom.classList.toggle('on',
       document.documentElement.classList.contains('zoom-open'));
   },400);

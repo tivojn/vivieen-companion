@@ -2703,6 +2703,99 @@ async def say(s: Say):
     return await _say(s.text, P.load())
 
 
+# ------------------------------------------------------------ enconvo lane
+# EnConvo's local REST gateway (port 54535) routes into every extension.
+# The pocket app couples to any EnConvo agent through here: Mavis's brain,
+# her face. Sessions persist per agent; replies come back synchronously
+# and leave through her own voice so the avatar lip-syncs them.
+ENCONVO_API = "http://127.0.0.1:54535/api"
+
+
+def _enconvo_call(path, params, timeout=120):
+    import urllib.request
+    request = urllib.request.Request(
+        f"{ENCONVO_API}/{path}", method="POST",
+        data=json.dumps(params or {}).encode(),
+        headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=timeout) as feed:
+        return json.loads(feed.read().decode() or "{}")
+
+
+@app.get("/api/enconvo/agents")
+async def api_enconvo_agents():
+    try:
+        agents = await asyncio.to_thread(
+            _enconvo_call, "agent/list", {}, 15)
+    except Exception as error:
+        raise HTTPException(
+            503, f"EnConvo is not reachable - is it running? ({P.safe_error(error, 120)})")
+    out = []
+    for agent in agents if isinstance(agents, list) else []:
+        out.append({
+            "name": agent.get("name") or "",
+            "title": agent.get("title") or agent.get("name") or "",
+            "description": agent.get("description") or "",
+            "portrait": bool(str(agent.get("icon") or "").startswith("file:")),
+        })
+    return {"agents": out}
+
+
+@app.get("/api/enconvo/portrait")
+async def api_enconvo_portrait(name: str = Query(...)):
+    agents = await asyncio.to_thread(_enconvo_call, "agent/list", {}, 15)
+    for agent in agents if isinstance(agents, list) else []:
+        if agent.get("name") == name:
+            icon = str(agent.get("icon") or "")
+            if icon.startswith("file:"):
+                path = icon[len("file:"):]
+                base = os.path.expanduser("~/.enconvo/workspace")
+                real = os.path.realpath(path)
+                if real.startswith(os.path.realpath(base)) and os.path.isfile(real):
+                    media = "image/png" if real.endswith(".png") else "image/jpeg"
+                    with open(real, "rb") as handle:
+                        return Response(handle.read(), media_type=media,
+                                        headers={"Cache-Control": "max-age=3600"})
+    raise HTTPException(404, "no portrait")
+
+
+class EnconvoChat(BaseModel):
+    agent: str
+    message: str
+    session_id: str = ""
+
+
+@app.post("/api/enconvo/chat")
+async def api_enconvo_chat(request: EnconvoChat):
+    def run():
+        session = request.session_id
+        if not session:
+            fresh = _enconvo_call("agent/session/new",
+                                  {"agentId": request.agent}, 20)
+            session = fresh.get("sessionId") or fresh.get("id") or ""
+        answer = _enconvo_call("agent/messages", {
+            "agentId": request.agent, "sessionId": session,
+            "message": request.message}, 180)
+        parts = []
+        for message in (answer.get("messages") or []):
+            if message.get("role") != "assistant":
+                continue
+            for chunk in (message.get("content") or []):
+                if chunk.get("type") == "text" and chunk.get("text"):
+                    parts.append(chunk["text"])
+        return session, "\n\n".join(parts).strip()
+
+    try:
+        session, text = await asyncio.to_thread(run)
+    except Exception as error:
+        raise HTTPException(
+            502, f"EnConvo did not answer ({P.safe_error(error, 160)})")
+    if not text:
+        text = "…the agent finished without saying anything."
+    spoken = await _say(text, P.load())
+    return {"session_id": session, "text": text,
+            "audio": spoken.get("audio", ""), "track": spoken.get("track", [])}
+
+
 async def _say(text, cfg):
     try:
         y, al = await P.speak(text, cfg["tts"])
