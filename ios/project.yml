@@ -1,0 +1,20 @@
+name: Vivieen
+options:
+  bundleIdPrefix: com.vivieen
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  Vivieen:
+    type: application
+    platform: iOS
+    sources: [Vivieen]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vivieen.pocket
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Vivieen/Info.plist
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO

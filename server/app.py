@@ -68,11 +68,24 @@ def _security_headers(response):
     return response
 
 
+def _client_token(source):
+    """The auth token from either the Electron-injected header or the
+    pairing cookie - iOS runs the renderer in a WKWebView, which cannot
+    add a header to every subresource and socket, but a cookie rides
+    along on all of them."""
+    supplied = source.headers.get("x-vivieen-token", "")
+    if not supplied:
+        try:
+            supplied = source.cookies.get("vivieen-token", "") or ""
+        except Exception:
+            supplied = ""
+    return supplied
+
+
 @app.middleware("http")
 async def security_headers(request, call_next):
     if AUTH_TOKEN:
-        supplied = request.headers.get("x-vivieen-token", "")
-        if not secrets.compare_digest(supplied, AUTH_TOKEN):
+        if not secrets.compare_digest(_client_token(request), AUTH_TOKEN):
             return _security_headers(JSONResponse({"error": "forbidden"}, status_code=403))
     origin = request.headers.get("origin", "")
     if request.method not in {"GET", "HEAD", "OPTIONS"} and origin:
@@ -2213,8 +2226,7 @@ async def stt_stream(client: WebSocket):
     # The http auth middleware does not run for websocket scopes, so the
     # token check happens here; Electron injects the header on the upgrade.
     if AUTH_TOKEN:
-        supplied = client.headers.get("x-vivieen-token", "")
-        if not secrets.compare_digest(supplied, AUTH_TOKEN):
+        if not secrets.compare_digest(_client_token(client), AUTH_TOKEN):
             await client.close(code=4403)
             return
     await client.accept()
@@ -2455,8 +2467,7 @@ def _ensure_eleven_agent(settings):
 @app.websocket("/live/voice")
 async def live_voice(client: WebSocket):
     if AUTH_TOKEN:
-        supplied = client.headers.get("x-vivieen-token", "")
-        if not secrets.compare_digest(supplied, AUTH_TOKEN):
+        if not secrets.compare_digest(_client_token(client), AUTH_TOKEN):
             await client.close(code=4403)
             return
     await client.accept()

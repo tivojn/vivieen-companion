@@ -373,6 +373,23 @@ class LiveVoiceTests(unittest.TestCase):
         self.assertTrue(masked["live"]["has_xai_api_key"])
         self.assertFalse(masked["live"]["has_eleven_api_key"])
 
+    def test_auth_token_accepted_from_header_or_pairing_cookie(self):
+        """iOS pairing: WKWebView cannot add a header to every request,
+        so the cookie is an equal citizen. Header wins when both exist."""
+        token = self.app_module._client_token
+
+        class Source:
+            def __init__(self, headers, cookies):
+                self.headers = headers
+                self.cookies = cookies
+
+        self.assertEqual(token(Source({"x-vivieen-token": "aa"}, {})), "aa")
+        self.assertEqual(token(Source({}, {"vivieen-token": "bb"})), "bb")
+        self.assertEqual(
+            token(Source({"x-vivieen-token": "aa"}, {"vivieen-token": "bb"})),
+            "aa")
+        self.assertEqual(token(Source({}, {})), "")
+
     def test_live_hot_fields_flag_only_live_talk_changes(self):
         fields = self.app_module._live_hot_fields
         base = {"live": {"provider": "xai", "xai_voice": "eve"}}

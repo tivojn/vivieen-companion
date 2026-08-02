@@ -1669,6 +1669,23 @@ class PetMatteTests(unittest.TestCase):
         self.assertGreaterEqual(main.count("fitPetZoomToArea("), 3)
         self.assertIn("fitPetZoomToArea(\n      PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom, area, PET_DOCK_MARGIN),\n    PET_ZOOM_RANGE);\n  const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);\n  mainWindow.setBounds(dockedPetBounds(size, area, PET_DOCK_MARGIN));", main)
 
+    def test_iphone_pairing_is_off_by_default_and_token_persists(self):
+        # Pocket Mirror (2026-08-02): the iOS app reaches the same server
+        # over the LAN. Remote access is opt-in (loopback-only otherwise),
+        # the auth token persists across launches so pairing survives a
+        # restart (0600 file, delete to revoke), and both websocket auth
+        # gates accept the pairing cookie alongside the Electron header.
+        main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
+        self.assertIn("remoteAccess: false,", main)
+        self.assertIn("state && state.remoteAccess ? '0.0.0.0' : HOST", main)
+        self.assertIn("function persistentBackendToken()", main)
+        self.assertIn("{ mode: 0o600 }", main)
+        self.assertIn("'iPhone on This Network'", main)
+        self.assertIn("'Pair iPhone…'", main)
+        server = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertEqual(server.count("_client_token(client)"), 2)
+        self.assertIn("_client_token(request)", server)
+
     def test_motion_clips_always_fit_the_whole_figure(self):
         # Same report: under a partial view the clip camera scaled for the
         # crop while the bottom anchor pinned the full-body feet to the

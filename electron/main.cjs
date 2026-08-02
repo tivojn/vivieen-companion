@@ -5,6 +5,7 @@ const {
   BrowserWindow,
   Menu,
   Tray,
+  clipboard,
   dialog,
   globalShortcut,
   ipcMain,
@@ -39,7 +40,23 @@ const HOST = '127.0.0.1';
 const DEFAULT_PORT = 8777;
 const START_TIMEOUT_MS = 120_000;
 const APP_ID = 'com.vivieen.companion';
-const backendToken = randomBytes(32).toString('hex');
+// The auth token persists across launches (0600 file) so a paired iPhone
+// keeps working after the Mac app restarts. Delete the file to revoke
+// every paired device at once.
+function persistentBackendToken() {
+  const tokenPath = path.join(app.getPath('userData'), 'remote-token');
+  try {
+    const existing = fs.readFileSync(tokenPath, 'utf8').trim();
+    if (/^[0-9a-f]{64}$/.test(existing)) return existing;
+  } catch {}
+  const fresh = randomBytes(32).toString('hex');
+  try {
+    fs.mkdirSync(path.dirname(tokenPath), { recursive: true });
+    fs.writeFileSync(tokenPath, fresh, { mode: 0o600 });
+  } catch {}
+  return fresh;
+}
+const backendToken = persistentBackendToken();
 
 let port = Number(process.env.VIVIEEN_PORT || DEFAULT_PORT);
 let backend = null;
@@ -402,9 +419,12 @@ async function startBackend() {
   await choosePort();
 
   const python = resolvePython();
+  // Remote access binds the LAN so a paired iPhone can reach her; token
+  // auth stays mandatory either way, and the toggle defaults off.
+  const bindHost = state && state.remoteAccess ? '0.0.0.0' : HOST;
   const args = [
     '-B', '-W', 'ignore', '-m', 'uvicorn', 'server.app:app',
-    '--host', HOST, '--port', String(port),
+    '--host', bindHost, '--port', String(port),
   ];
   writeBackendLog(`\n\n[Electron ${new Date().toISOString()}] ${python} ${args.join(' ')}\n`);
   backend = spawn(python, args, {
@@ -454,6 +474,7 @@ function defaultState() {
     petLocked: false,
     petRoam: false,
     petHomeBounds: null,
+    remoteAccess: false,
     bounds: { width: 560, height: 760 },
   };
 }
@@ -2136,6 +2157,12 @@ function showPetMenu() {
     { name: 'Always on Top', type: 'checkbox', checked: state.alwaysOnTop,
       click: () => applyAlwaysOnTop(!state.alwaysOnTop) },
     { type: 'separator' },
+    { name: 'iPhone on This Network', type: 'checkbox',
+      checked: Boolean(state.remoteAccess), hint: 'pocket companion',
+      click: () => { void applyRemoteAccess(!state.remoteAccess); } },
+    { name: 'Pair iPhone…', enabled: Boolean(state.remoteAccess),
+      click: () => { void showPairingInfo(); } },
+    { type: 'separator' },
     { name: 'Character Studio…', click: openSettings },
     { name: 'Check for Updates…', click: () => { void checkForUpdates(true); } },
     { name: 'Hide Companion', click: () => mainWindow.hide() },
@@ -2160,6 +2187,45 @@ function createTray() {
     if (mainWindow && mainWindow.isVisible()) mainWindow.hide(); else showMain();
   });
   buildTrayMenu();
+}
+
+// ---------------------------------------------------------- iPhone pairing
+function lanAddresses() {
+  const found = [];
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const entry of interfaces[name] || []) {
+      if (entry.family === 'IPv4' && !entry.internal) found.push(entry.address);
+    }
+  }
+  return found;
+}
+
+async function applyRemoteAccess(value) {
+  state.remoteAccess = Boolean(value);
+  saveStateSoon();
+  // The bind address is fixed at spawn, so flipping the toggle restarts
+  // the engine on the new one (loopback-only when off).
+  if (ownsBackend) await restartBackend();
+  if (state.remoteAccess) await showPairingInfo();
+}
+
+async function showPairingInfo() {
+  const addresses = lanAddresses();
+  const address = addresses.length
+    ? `http://${addresses[0]}:${port}`
+    : 'No network address found - join Wi-Fi first.';
+  const { response } = await dialog.showMessageBox({
+    type: 'info',
+    message: 'Pair your iPhone',
+    detail: `In the Vivieen iOS app, enter:\n\nAddress: ${address}\n`
+      + `Pairing code: ${backendToken}\n\nBoth devices must be on the same `
+      + 'network. The code stays valid across restarts; turn "iPhone on '
+      + 'This Network" off to shut the door.',
+    buttons: ['Copy Address & Code', 'Done'],
+    defaultId: 0,
+  });
+  if (response === 0) clipboard.writeText(`${address}\n${backendToken}`);
 }
 
 async function restartBackend() {
