@@ -1638,7 +1638,14 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("globalShortcut.register(companion, deskCompanionMode)", main)
         self.assertIn("PET_BASE_SIZE, PET_NORMAL_MINIMUM, PET_ZOOM_RANGE.max, area", main)
         self.assertIn("'CommandOrControl+Shift+0';", main)
-        self.assertIn("globalShortcut.register(accelerator, recoverCompanion)", main)
+        # The close-up framing (head, neck, a hint of shoulder), a second
+        # press restores what she was, and BOTH shortcuts force 100%
+        # opacity (owner: 'not half as current set').
+        self.assertIn("state.petView = 'bust';", main)
+        self.assertIn("if (companionHold) {", main)
+        self.assertEqual(
+            main.count("applyPetOpacity(1);                    // both shortcuts mean FULLY visible")
+            + main.count("applyPetOpacity(1);                      // both shortcuts mean FULLY visible"), 2)
 
     def test_stillness_idle_docks_small_and_restores_on_wake(self):
         # Owner, 2026-08-02: the standing stillness idle used the full
