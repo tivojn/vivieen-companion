@@ -359,6 +359,8 @@ html.ios #thread .msg.working .step{margin-top:7px;padding-left:15px;
 html.ios #thread .msg.working .step:before{content:'';position:absolute;
   left:3px;top:7px;width:5px;height:5px;border-radius:50%;
   background:rgba(124,116,226,.85)}
+html.ios #thread .msg.working .live{margin-top:8px;font-size:14.5px;
+  line-height:1.5;color:#e9ecf1;white-space:pre-wrap}
 html.ios #thread .msg.media img,html.ios #thread .msg.media video{margin:0}
 html.ios #thread .msg audio{display:block;width:100%;margin:4px 0}
 html.ios #thread .msg pre{overflow-x:auto;padding:8px 10px;border-radius:8px;
@@ -2553,6 +2555,22 @@ function threadWorking(){
     card.append(line);
     if(threadNearBottom(container))threadToBottom(false);
   };
+  // Her sentence as she writes it - a channel sends the reply in pieces,
+  // it does not sit silent and then paste a wall.
+  let live=null,written='';
+  card.addText=piece=>{
+    // A step after some prose starts a NEW paragraph; she is narrating in
+    // order, so the card has to read in order too.
+    if(live&&live!==card.lastElementChild){live=null;written='';}
+    written+=piece;
+    if(!live){
+      live=document.createElement('div');
+      live.className='live';card.append(live);
+      dots.remove();
+    }
+    live.textContent=written;
+    if(threadNearBottom(container))threadToBottom(false);
+  };
   return card;
 }
 async function enconvoStream(body,work){
@@ -2572,6 +2590,7 @@ async function enconvoStream(body,work){
       if(!frame.startsWith('data:'))continue;
       let event;try{event=JSON.parse(frame.slice(5).trim());}catch(x){continue;}
       if(event.type==='step')work.addStep(event.text);
+      else if(event.type==='say')work.addText(event.text);
       else if(event.type==='error')throw new Error(event.detail||'agent failed');
       else if(event.type==='done')result=event;
     }

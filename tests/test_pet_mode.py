@@ -2019,6 +2019,11 @@ class PocketBarAndToolsTests(unittest.TestCase):
         self.assertIn('"im_verbose": True', source)
         self.assertIn('media_type="text/event-stream"', source)
         self.assertIn('{"type": "typing"}', source)
+        # Her sentence as she writes it, not one silent blob at the end.
+        self.assertIn('{"type": "say", "text": piece}', source)
+        self.assertIn("work.addText(event.text)", self.renderer)
+        # And a turn nobody is listening to gets cancelled, not orphaned.
+        self.assertIn("turn.cancel()", source)
 
     def test_the_channel_takes_the_same_slash_commands(self):
         # /new /stop /audio /verbose /status, exactly EnConvo's set.

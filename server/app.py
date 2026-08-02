@@ -2920,7 +2920,7 @@ def _enconvo_command_key(agent):
 
 
 def _enconvo_agent_run(agent, session, message, files=None, source="vivieen",
-                       on_step=None):
+                       on_step=None, on_text=None):
     """One turn through EnConvo's real flow. Returns (final text, steps)."""
     import urllib.request
     extension, _, command = _enconvo_command_key(agent).partition("|")
@@ -2948,7 +2948,7 @@ def _enconvo_agent_run(agent, session, message, files=None, source="vivieen",
                  "Accept": "text/event-stream"})
     # An agent that fetches a video or renders an image works for minutes.
     with urllib.request.urlopen(request, timeout=900) as feed:
-        return _enconvo_read_stream(feed, on_step)
+        return _enconvo_read_stream(feed, on_step, on_text)
 
 
 def _enconvo_step_note(step):
@@ -2982,7 +2982,7 @@ def _enconvo_step_note(step):
     return None
 
 
-def _enconvo_read_stream(feed, on_step=None):
+def _enconvo_read_stream(feed, on_step=None, on_text=None):
     """EnConvo streams the message as it is written: text arrives as deltas
     under 'append_...' actions, and every so often a frame carries the whole
     thing again. Rebuild per content id so either shape lands the same."""
@@ -3018,11 +3018,17 @@ def _enconvo_read_stream(feed, on_step=None):
                 if key not in chunks:
                     order.append(key)
                     chunks[key] = ""
+                before = chunks[key]
                 if action.startswith("append"):
                     chunks[key] += text
                 elif len(text) >= len(chunks[key]):
                     # A whole-message frame supersedes what we assembled.
                     chunks[key] = text
+                # Her sentence as she writes it, the way a channel sends the
+                # reply in pieces instead of one silent blob at the end.
+                if on_text and chunks[key] != before:
+                    on_text(chunks[key][len(before):]
+                            if chunks[key].startswith(before) else chunks[key])
     return "\n\n".join(chunks[key] for key in order if chunks[key]).strip(), steps
 
 
@@ -3158,8 +3164,11 @@ async def api_enconvo_chat(request: EnconvoChat):
     # The agent sees where it is answering from, the way an IM channel
     # names itself - Telegram's handler passes "telegram-<chat>".
     source = "vivieen-pocket"
-    steps_out = asyncio.Queue()
+    events = asyncio.Queue()
     loop = asyncio.get_running_loop()
+
+    def emit(payload):
+        loop.call_soon_threadsafe(events.put_nowait, payload)
 
     def run():
         key = _enconvo_command_key(request.agent)
@@ -3171,35 +3180,41 @@ async def api_enconvo_chat(request: EnconvoChat):
             session = fresh.get("sessionId") or fresh.get("id") or ""
         text, steps = _enconvo_agent_run(
             key, session, request.message, safe_files, source,
-            on_step=lambda note: loop.call_soon_threadsafe(
-                steps_out.put_nowait, note))
+            on_step=lambda note: emit({"type": "step", **note}),
+            on_text=lambda piece: emit({"type": "say", "text": piece}))
         return session, text, _enconvo_step_files(steps)
 
     async def feed():
         turn = asyncio.create_task(asyncio.to_thread(run))
-        yield _sse({"type": "typing"})
-        while True:
-            drain = asyncio.create_task(steps_out.get())
-            done, _ = await asyncio.wait(
-                {drain, turn}, return_when=asyncio.FIRST_COMPLETED, timeout=20)
-            if drain in done:
-                yield _sse({"type": "step", **drain.result()})
-                continue
-            drain.cancel()
-            if turn in done:
-                break
-            # Nothing to report and still working: keep the pipe warm so a
-            # long job never looks like a dropped connection.
-            yield _sse({"type": "typing"})
-        while not steps_out.empty():
-            yield _sse({"type": "step", **steps_out.get_nowait()})
         try:
-            payload = await _enconvo_finish(*turn.result())
-        except Exception as error:
-            payload = {"type": "error",
-                       "detail": f"EnConvo did not answer "
-                                 f"({P.safe_error(error, 160)})"}
-        yield _sse(payload)
+            yield _sse({"type": "typing"})
+            while True:
+                drain = asyncio.create_task(events.get())
+                done, _ = await asyncio.wait(
+                    {drain, turn}, return_when=asyncio.FIRST_COMPLETED,
+                    timeout=20)
+                if drain in done:
+                    yield _sse(drain.result())
+                    continue
+                drain.cancel()
+                if turn in done:
+                    break
+                # Nothing to report and still working: keep the pipe warm so
+                # a long job never looks like a dropped connection.
+                yield _sse({"type": "typing"})
+            while not events.empty():
+                yield _sse(events.get_nowait())
+            try:
+                payload = await _enconvo_finish(*turn.result())
+            except Exception as error:
+                payload = {"type": "error",
+                           "detail": f"EnConvo did not answer "
+                                     f"({P.safe_error(error, 160)})"}
+            yield _sse(payload)
+        finally:
+            # /stop, or the phone simply walked away: do not leave a turn
+            # running against an audience that has gone home.
+            turn.cancel()
 
     return StreamingResponse(feed(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-store",
