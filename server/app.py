@@ -59,6 +59,11 @@ CSP = ("default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; 
 
 
 def _security_headers(response):
+    # Pages are never cached: WKWebView happily served a stale renderer
+    # across three debugging rounds (2026-08-02). Assets carry their own
+    # cache-busting revs; the HTML must always be current.
+    if str(response.headers.get("content-type", "")).startswith("text/html"):
+        response.headers["Cache-Control"] = "no-store"
     response.headers["Content-Security-Policy"] = CSP
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"

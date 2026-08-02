@@ -276,11 +276,14 @@ html.ios #rail button.on{background:rgba(124,116,226,.42);
 html.ios #rail #rail-live.on{background:rgba(212,76,71,.5);
   border-color:rgba(212,76,71,.9);color:#ffe9e8}
 #zoombox{display:none}
-html.ios.zoom-open #zoombox{display:flex;position:fixed;left:16px;right:70px;
-  bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:6;padding:10px 14px;
+html.ios.zoom-open #zoombox{display:flex;flex-direction:column;gap:10px;
+  position:fixed;left:16px;right:70px;
+  bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:6;padding:12px 14px;
   background:rgba(20,22,26,.6);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
   border:1px solid rgba(255,255,255,.14);border-radius:14px}
-html.ios #zoombox input{width:100%}
+html.ios #zoombox .zrow{display:flex;align-items:center;gap:10px}
+html.ios #zoombox svg{flex:none;width:16px;height:16px;fill:#aeb3bc}
+html.ios #zoombox input{width:100%;flex:1}
 </style></head><body>
 <div id="shell"><div id="drag"></div><div id="shellBtns">
   <button class="shellBtn" id="shellPin" title="Always on top">◇</button>
@@ -295,7 +298,10 @@ html.ios #zoombox input{width:100%}
   <button id="rail-close" type="button" aria-label="Closeup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6h-2V6.4l-4.3 4.3-1.4-1.4L17.6 5H15V3zM3 15h2v2.6l4.3-4.3 1.4 1.4L6.4 19H9v2H3v-6z"/></svg></button>
   <button id="rail-zoom" type="button" aria-label="Zoom"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12zm-1 3h2v2h2v2h-2v2H9v-2H7V9h2V7z"/></svg></button>
 </div>
-<div id="zoombox"><input id="zoomrange" type="range" min="60" max="600" step="5" value="100" aria-label="Avatar zoom"></div>
+<div id="zoombox">
+  <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12z"/></svg><input id="zoomrange" type="range" min="60" max="600" step="5" value="100" aria-label="Avatar zoom"></div>
+  <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2s6 7.1 6 12a6 6 0 0 1-12 0c0-4.9 6-12 6-12zm0 16a4 4 0 0 0 4-4c0-.6-.1-1.2-.4-1.9L8.4 15.3A4 4 0 0 0 12 18z"/></svg><input id="alpharange" type="range" min="25" max="100" step="5" value="100" aria-label="Avatar opacity"></div>
+</div>
 <div id="petBubble" role="status" aria-live="polite"></div>
 <div id="listenWave" aria-hidden="true"><span id="listenWaveDot"></span><span id="listenWaveBars"><span></span><span></span><span></span><span></span><span></span></span><span id="listenWaveText">Listening…</span></div>
 <div id="emptyState" hidden><div id="emptyCard">
@@ -1629,6 +1635,15 @@ function renderFaceSurface(ref,eyes,mix,h,lids,gv,bv,ck,jawPx,ts,mouthWarp){
     plate(idleWash.img,mouthWarp?mouthWarp.cur:0);
     ctx.globalAlpha=1;
   }
+  // Face play: a mouth tap breaks into a quick smile through the same
+  // wash mechanism - the parted 'E' plate at higher opacity than idle
+  // life ever runs it, so it reads as a real grin, then melts away.
+  const fpNow=performance.now();
+  if(FACEPLAY.smileUntil>fpNow&&!speaking&&IMG.E&&IMG.E.open){
+    ctx.globalAlpha=0.8*Math.sin(Math.PI*(1-(FACEPLAY.smileUntil-fpNow)/950));
+    plate(IMG.E.open,mouthWarp?mouthWarp.cur:0);
+    ctx.globalAlpha=1;
+  }
   if(M.eyes){ctx.translate(0,dy);drawFace(lids,gv,bv,ck);}
   ctx.setTransform(1,0,0,1,0,0);
   if(CUTOUT){
@@ -1701,7 +1716,7 @@ function petBottomReserve(){
   if(!IS_IOS&&de.classList.contains('listening'))want=Math.max(want,88);
   return want*cvScale();
 }
-let IOS_ZOOM=1,IOS_HEAD_ANCHOR=false;
+let IOS_ZOOM=1,IOS_HEAD_ANCHOR=false,IOS_ALPHA=1;
 function petCamera(meta,width,height,forceView){
   const crop=viewCrop(meta,width,height,forceView);
   petLaneNow+=(petBottomReserve()-petLaneNow)*0.22;
@@ -1847,6 +1862,7 @@ function showDomVideo(kind,edgeOverride){
     hideDomVideo();
     video.style.position='fixed';video.style.left='0';video.style.top='0';
     video.style.pointerEvents='none';video.style.transformOrigin='top left';
+    if(IS_IOS)video.style.opacity=String(IOS_ALPHA);
     video.style.zIndex='1';
     document.body.appendChild(video);
     domVideo.el=video;domVideo.kind=kind;
@@ -2044,6 +2060,24 @@ function loop(now){
   foreheadFor(bv);
   const c0=cheekFor(now,(lids.l+lids.r)/2,mix);
   const ck={l:c0*CHEEK_ASYM,r:c0};
+  // Face play: tap-triggered pulses ride the same channels the idle life
+  // owns - a sine envelope in, back out, nothing to clean up.
+  if(FACEPLAY.winkUntil>now){
+    const p=Math.sin(Math.PI*Math.min(1,1-(FACEPLAY.winkUntil-now)/560));
+    lids[FACEPLAY.winkSide]=Math.max(lids[FACEPLAY.winkSide],p);
+  }
+  if(FACEPLAY.browUntil>now){
+    const e=Math.sin(Math.PI*(1-(FACEPLAY.browUntil-now)/750));
+    bv.l=Math.min(1,bv.l+0.6*e);bv.r=Math.min(1,bv.r+0.6*e);
+  }
+  if(FACEPLAY.scrunchUntil>now){
+    const e=Math.sin(Math.PI*(1-(FACEPLAY.scrunchUntil-now)/520));
+    bv.l=Math.max(0,bv.l-0.5*e);bv.r=Math.max(0,bv.r-0.5*e);
+  }
+  if(FACEPLAY.cheekUntil>now){
+    const e=Math.sin(Math.PI*(1-(FACEPLAY.cheekUntil-now)/750));
+    ck.l=Math.min(1.5,ck.l+0.65*e);ck.r=Math.min(1.5,ck.r+0.65*e);
+  }
   const jawPx=jawFor(now,mix);
   /* Aperture-aligned dissolve: both plates warp to one shared lip gap, and
      the current plate breathes with loudness on held vowels so a long "aa"
@@ -2718,9 +2752,7 @@ function pointerOnHead(x,y){
    and the chat bar (Hold to talk + a text field) opens under her feet for
    typed follow-ups. */
 function canPetTalk(){
-  // On the phone her head is the talk button too - dictation runs through
-  // the same server bridge, no shell needed.
-  if(IS_IOS&&!monitorEnabled)return true;
+  // Phone voice lives in the talk bar; head push-to-talk is desk-only.
   if(!SHELL||!SHELL.isElectron)return false;
   return monitorEnabled?typeof SHELL.petVoiceKey==='function':true;
 }
@@ -2870,8 +2902,10 @@ function toggleIdleShow(){
   return true;
 }
 function petDoubleTap(part){
+  // Phone: the rail owns dance/walk/rest and opacity is a desk concept -
+  // double-taps do nothing there, single taps stay reactive.
+  if(IS_IOS)return false;
   if(part==='hair'&&toggleMoveShow())return true;
-  if((part==='leg_l'||part==='leg_r')&&IS_IOS&&toggleWalkShow())return true;
   if((part==='leg_l'||part==='leg_r')&&MOTION.walk&&
      SHELL&&typeof SHELL.setPetRoam==='function'){
     Promise.resolve(SHELL.setPetRoam(true))
@@ -2933,14 +2967,52 @@ function stopPetTalk(){
   stopRec();
   updatePetHit(true);
 }
+/* ---- face play --------------------------------------------------------
+   Tap her face and it answers in kind (owner, 2026-08-02): an eye winks,
+   the brows flash, a cheek pops, the nose scrunches with a tiny double
+   nod, the mouth breaks into a quick smile. Pure fun, both platforms -
+   the overrides ride the SAME lid/brow/cheek/wash channels the idle life
+   uses, so nothing new is drawn, just asked for. */
+const FACEPLAY={winkUntil:0,winkSide:'l',browUntil:0,scrunchUntil:0,
+  cheekUntil:0,smileUntil:0};
+function faceRegionAt(clientX,clientY){
+  const body=canvasToBody(clientX,clientY);
+  if(!body||!(M.body&&M.body.alignment))return null;
+  const face=M.body.alignment.face_bounds;
+  if(!face||!(face[2]>0&&face[3]>0))return null;
+  const u=(body.x-face[0])/face[2],v=(body.y-face[1])/face[3];
+  if(u<-0.15||u>1.15||v<-0.35||v>1.3)return null;
+  if(v<0.42)return 'brow';
+  if(v<0.62)return u<0.5?'eye_l':'eye_r';
+  if(v<0.8)return (u>0.34&&u<0.66)?'nose':(u<=0.34?'cheek_l':'cheek_r');
+  return (u>0.3&&u<0.7)?'mouth':(u<=0.3?'cheek_l':'cheek_r');
+}
+function facePlayAt(clientX,clientY){
+  const region=faceRegionAt(clientX,clientY);
+  if(!region)return false;
+  const now=performance.now();
+  if(region==='brow')FACEPLAY.browUntil=now+750;
+  else if(region==='eye_l'||region==='eye_r'){
+    FACEPLAY.winkSide=region==='eye_l'?'l':'r';
+    FACEPLAY.winkUntil=now+560;
+  }else if(region==='cheek_l'||region==='cheek_r')FACEPLAY.cheekUntil=now+750;
+  else if(region==='nose'){
+    FACEPLAY.scrunchUntil=now+520;
+    nods.push({t0:now,a:3.2,d:210,n:2});
+  }else if(region==='mouth')FACEPLAY.smileUntil=now+950;
+  return true;
+}
 function petTapReaction(part){
   const now=performance.now();
   if(now-lastTapAt<700)return;
   lastTapAt=now;
-  // Every tap gets an acknowledging nod; arms raise their hand and the torso
-  // shrugs. Legs and feet only nod on a single tap - their whole-body tilt
-  // was cancelled by taste - and answer properly on a double tap instead.
+  // A tap on the face answers with that part - wink, brow flash, cheek
+  // pop, scrunch, smile - and skips the generic nod. Everywhere else:
+  // every tap gets an acknowledging nod; arms raise their hand and the
+  // torso shrugs. Legs and feet only nod on a single tap - their
+  // whole-body tilt was cancelled by taste.
   const headTap=part==='head'||part==='hair';
+  if(headTap&&pointer.x>=0&&facePlayAt(pointer.x,pointer.y))return;
   nods.push({t0:now,a:headTap?7.6:5.6,d:headTap?460:400,n:1});
   nextNod=now+2400+Math.random()*2000;
   if(part==='arm_l'||part==='arm_r'){
@@ -2962,7 +3034,9 @@ cv.addEventListener('pointerdown',event=>{
     t0:performance.now(),ptt:false,
     part,head:part==='head'||part==='hair'};
   cv.setPointerCapture(event.pointerId);
-  if(gesture.head&&canPetTalk()){
+  // Phone: the talk bar owns voice - a held finger on her face would only
+  // hide her, so the head is pure face play there (owner, 2026-08-02).
+  if(gesture.head&&!IS_IOS&&canPetTalk()){
     gesture.timer=setTimeout(()=>{
       if(!gesture||dragging)return;
       gesture.timer=0;gesture.ptt=true;
@@ -3166,7 +3240,11 @@ if(IS_IOS){
     const s0=Math.min(cv.width/crop.w,avail/crop.h)*0.94;
     const face=(M.body.alignment&&M.body.alignment.face_bounds)||
       [width*.22,height*.10,width*.56,height*.42];
-    return Math.max(2,Math.min(8,(cv.height*0.62)/(Math.max(1,face[3])*s0)));
+    // Owner-calibrated (screenshot, 2026-08-02): the ceiling is the WHOLE
+    // head with its hair - the face box lands near 40% of the screen
+    // height - not an eyes-only crop. Scales itself to any avatar's face
+    // box and any phone's glass.
+    return Math.max(1.6,Math.min(8,(cv.height*0.40)/(Math.max(1,face[3])*s0)));
   };
   const setZoom=(value,headAnchor)=>{
     IOS_ZOOM=Math.max(.6,Math.min(faceCloseupZoom(),value));
@@ -3181,6 +3259,14 @@ if(IS_IOS){
   });
   zoomRange.addEventListener('input',()=>setZoom(Number(zoomRange.value)/100,
     Number(zoomRange.value)>140));
+  // Opacity: her whole stage fades - handy when she sits over your reading.
+  const alphaRange=document.getElementById('alpharange');
+  const stage=document.getElementById('stage');
+  alphaRange.addEventListener('input',()=>{
+    IOS_ALPHA=Number(alphaRange.value)/100;
+    stage.style.opacity=String(IOS_ALPHA);
+    if(domVideo.el)domVideo.el.style.opacity=String(IOS_ALPHA);
+  });
   setInterval(()=>{
     const now=performance.now();
     // The slider's right edge IS the face closeup - recalibrated once the

@@ -1704,7 +1704,7 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("DOUBLE_TAP_MS=IS_IOS?650:450;", renderer)
         self.assertIn("if(IS_IOS&&part==='head')part='hair';", renderer)
         self.assertIn("function toggleWalkShow()", renderer)
-        self.assertIn("(part==='leg_l'||part==='leg_r')&&IS_IOS&&toggleWalkShow()",
+        self.assertIn("if(IS_IOS)return false;",
                       renderer)
         self.assertIn("--caption-expanded-height:30vh", renderer)
         self.assertIn("html.ios.her-speaking #her{opacity:.72}", renderer)
