@@ -375,6 +375,8 @@ html.ios.agents-open #agentsheet{display:block;position:fixed;left:16px;right:16
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 html.ios #rail #rail-enconvo.on{background:rgba(29,158,117,.4);
   border-color:rgba(93,202,165,.7);color:#dff6ec}
+html.ios #rail #rail-mute.on{background:rgba(212,76,71,.42);
+  border-color:rgba(212,76,71,.8);color:#ffe9e8}
 #zoombox{display:none}
 html.ios.zoom-open #zoombox{display:flex;flex-direction:column;gap:10px;
   position:fixed;left:16px;right:70px;
@@ -398,6 +400,7 @@ html.ios #zoombox input{width:100%;flex:1}
   <button id="rail-close" type="button" aria-label="Closeup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6h-2V6.4l-4.3 4.3-1.4-1.4L17.6 5H15V3zM3 15h2v2.6l4.3-4.3 1.4 1.4L6.4 19H9v2H3v-6z"/></svg></button>
   <button id="rail-pip" type="button" aria-label="Picture in picture"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3V5zm2 2v10h14V7H5zm7 4h5v4h-5v-4z"/></svg></button>
   <button id="rail-enconvo" type="button" aria-label="EnConvo agents"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3 4 14h6l-1 7 9-11h-6l1-7z"/></svg></button>
+  <button id="rail-mute" type="button" aria-label="Mute her voice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 5V4L8 9H4zm12.5 3a3.5 3.5 0 0 0-2-3.15v6.3a3.5 3.5 0 0 0 2-3.15z"/></svg></button>
   <button id="rail-zoom" type="button" aria-label="Zoom"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12zm-1 3h2v2h2v2h-2v2H9v-2H7V9h2V7z"/></svg></button>
 </div>
 <div id="thread"></div>
@@ -2405,7 +2408,7 @@ function livePlay(session,b64,rate){
   actx=actx||new AudioContext();
   if(actx.state==='suspended')actx.resume();
   if(!analyser){analyser=actx.createAnalyser();analyser.fftSize=2048;
-    analyser.smoothingTimeConstant=0.6;analyser.connect(actx.destination);}
+    analyser.smoothingTimeConstant=0.6;analyser.connect(audioSink());}
   const bin=atob(b64),n=bin.length>>1;
   if(!n)return;
   const pcm=new Int16Array(n);
@@ -2451,6 +2454,15 @@ addEventListener('keydown',event=>{
 });
 
 /* ================= conversation ================= */
+// One master tap for her voice: mute keeps the lips moving (captions and
+// lip-sync live on the analyser BEFORE this gain) but the room goes quiet.
+let masterGain=null;
+window.IOS_MUTED=false;
+function audioSink(){
+  if(!masterGain){masterGain=actx.createGain();masterGain.connect(actx.destination);}
+  masterGain.gain.value=window.IOS_MUTED?0:1;
+  return masterGain;
+}
 const history=[];
 let localSource=null;
 
@@ -2462,7 +2474,7 @@ async function speak(b64,tr){
   const buf=await actx.decodeAudioData(u8.buffer);
   const src=actx.createBufferSource();src.buffer=buf;localSource=src;
   analyser=actx.createAnalyser();analyser.fftSize=2048;analyser.smoothingTimeConstant=0.6;
-  src.connect(analyser);analyser.connect(actx.destination);
+  src.connect(analyser);analyser.connect(audioSink());
   track=stabiliseTrack(tr,buf.duration);tIdx=0;
   // Schedule slightly ahead so the audio clock and the first shape agree.
   audioT0=actx.currentTime+0.06;
@@ -3510,6 +3522,25 @@ if(IS_IOS){
       else if(bootSeen!==h.boot)location.reload();
     }catch(e){}
   },15000);
+  // Mute: her voice, one tap. Lips keep moving - a muted TV, not a
+  // frozen one.
+  const railMute=document.getElementById('rail-mute');
+  railMute.addEventListener('click',()=>{
+    window.IOS_MUTED=!window.IOS_MUTED;
+    if(masterGain)masterGain.gain.value=window.IOS_MUTED?0:1;
+  });
+  // The bar is the way home: touching input, mic, emoji, or plus ends any
+  // performance and brings the thread back (owner, 2026-08-02).
+  const exitStage=()=>{
+    moveShowUntil=0;walkShowUntil=0;
+    if(idleShowUntil){idleShowUntil=0;hideDomVideo();}
+    if(IOS_HEAD_ANCHOR||IOS_ZOOM>1.05)setZoom(1,false);
+    document.documentElement.classList.remove('zoom-open');
+  };
+  [txt,micmode,emojiBtn,plusBtn,talkbar].forEach(control=>{
+    control.addEventListener('pointerdown',exitStage);
+  });
+  txt.addEventListener('focus',exitStage);
   // Jump-to-newest: the pill appears whenever you scroll away from the
   // freshest reply.
   const threadBox=document.getElementById('thread');
@@ -3692,6 +3723,7 @@ if(IS_IOS){
     railPip.classList.toggle('on',pipActive());
     railEnconvo.classList.toggle('on',Boolean(ENCONVO.agent)||
       document.documentElement.classList.contains('agents-open'));
+    railMute.classList.toggle('on',Boolean(window.IOS_MUTED));
     railZoom.classList.toggle('on',
       document.documentElement.classList.contains('zoom-open'));
   },400);
