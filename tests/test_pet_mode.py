@@ -1629,6 +1629,19 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("h.y+=attend*cursorDir.y*0.6;", renderer)
         self.assertIn("h.r+=attend*cursorDir.x*0.12;", renderer)
 
+    def test_facial_rebuild_keeps_the_full_body_set(self):
+        # vvn, 2026-08-02: a calibration rebuild published a runtime with
+        # NO body and NO motion. export() resolved body/ and motion/
+        # against `d` - which during a recompose is the temporary rig
+        # stage holding only keyframe+visemes - so every facial rebuild
+        # silently stripped the full-body set (carol's 'body no longer
+        # attached' included). Persistent assets now resolve against the
+        # avatar's HOME dir regardless of the export source.
+        source = (ROOT / "studio" / "export.py").read_text(encoding="utf-8")
+        self.assertIn("home = reg.adir(slug)", source)
+        self.assertIn('body_dir = os.path.join(home, "body")', source)
+        self.assertIn("_publish_motion(home, dest, log)", source)
+
     def test_missing_runtime_layers_heal_themselves(self):
         # A publish swaps the runtime directory under a reloading pet: one
         # fetch lands in the gap, resolves null, and the avatar silently
