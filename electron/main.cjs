@@ -1955,14 +1955,19 @@ function deskCompanionMode() {
                     bounds: mainWindow.getBounds() };
   applyPetOpacity(1);                      // both shortcuts mean FULLY visible
   const area = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
-  // The close-up: head, neck, a hint of shoulder - her resting at the
-  // right side of the desk, not the full figure (owner screenshot,
-  // 2026-08-02).
-  state.petView = 'bust';
-  state.petZoom = fitPetZoomToArea(
-    PET_BASE_SIZE, PET_NORMAL_MINIMUM, PET_ZOOM_RANGE.max, area);
+  // FULL BODY at max zoom, positioned so only head, neck and a hint of
+  // shoulder remain on screen - the lower body hangs off the bottom
+  // edge, exactly like dragging her down into the corner (owner,
+  // 2026-08-02: never a cropped bust frame; drag her up and the rest of
+  // her is still there).
+  state.petZoom = PET_ZOOM_RANGE.max;
   const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);
-  const bounds = dockedPetBounds(size, area, 0);
+  const bounds = {
+    x: Math.round(area.x + area.width * 0.72 - size.width / 2),
+    y: Math.round(area.y + area.height * 0.08),
+    width: size.width,
+    height: size.height,
+  };
   mainWindow.setMinimumSize(PET_NORMAL_MINIMUM.width, PET_NORMAL_MINIMUM.height);
   mainWindow.setBounds(bounds, false);
   state.bounds = { ...bounds };
