@@ -28,6 +28,14 @@ struct CompanionWebView: UIViewRepresentable {
               try {
                 var id = e.target.closest('button') ? e.target.closest('button').id : e.target.tagName;
                 window.webkit.messageHandlers.viv.postMessage('CLICK ' + id);
+                if (id === 'rail-close' || id === 'rail-zoom') setTimeout(function() {
+                  try {
+                    window.webkit.messageHandlers.viv.postMessage('ZOOMSTATE ios_zoom=' + IOS_ZOOM +
+                      ' anchor=' + IOS_HEAD_ANCHOR +
+                      ' cls=' + document.documentElement.className +
+                      ' zbox=' + getComputedStyle(document.getElementById('zoombox')).display);
+                  } catch (z) { window.webkit.messageHandlers.viv.postMessage('ZOOMSTATE fail ' + z); }
+                }, 250);
                 if (id === 'rail-move') setTimeout(function() {
                   window.webkit.messageHandlers.viv.postMessage('MOVESTATE clip=' +
                     (MOTION.move ? (MOTION.move.video ? 'video' : 'sheets' + (MOTION.move.sheets || []).length) : 'null') +

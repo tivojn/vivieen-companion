@@ -3150,19 +3150,31 @@ if(IS_IOS){
   railLive.addEventListener('click',()=>{
     if(LIVE)stopLiveTalk('ended');else void startLiveTalk();
   });
-  // Zoom: the slider scales her freely; the closeup button is the desk's
-  // Cmd+Shift+9 in pocket form - one tap face-forward, tap again to reset
-  // (which is all Cmd+Shift+0 ever promised).
+  // Zoom: the slider tops out AT the face closeup, and the closeup button
+  // jumps straight there - one calibrated destination, computed from this
+  // avatar's own face box so every face fills the glass the same way.
+  // Tap the button again to reset (all Cmd+Shift+0 ever promised).
   const railClose=document.getElementById('rail-close');
   const railZoom=document.getElementById('rail-zoom');
   const zoomRange=document.getElementById('zoomrange');
+  const faceCloseupZoom=()=>{
+    if(!(BODY&&M.body))return 6;
+    const width=BODY.width,height=BODY.height;
+    const crop=viewCrop(M.body,width,height,'full');
+    const lane=petLaneNow<1?0:petLaneNow;
+    const avail=Math.max(cv.height*0.35,cv.height-lane);
+    const s0=Math.min(cv.width/crop.w,avail/crop.h)*0.94;
+    const face=(M.body.alignment&&M.body.alignment.face_bounds)||
+      [width*.22,height*.10,width*.56,height*.42];
+    return Math.max(2,Math.min(8,(cv.height*0.62)/(Math.max(1,face[3])*s0)));
+  };
   const setZoom=(value,headAnchor)=>{
-    IOS_ZOOM=Math.max(.6,Math.min(6,value));
+    IOS_ZOOM=Math.max(.6,Math.min(faceCloseupZoom(),value));
     IOS_HEAD_ANCHOR=Boolean(headAnchor)&&IOS_ZOOM>1.01;
     zoomRange.value=String(Math.round(IOS_ZOOM*100));
   };
   railClose.addEventListener('click',()=>{
-    if(IOS_HEAD_ANCHOR)setZoom(1,false);else setZoom(2.4,true);
+    if(IOS_HEAD_ANCHOR)setZoom(1,false);else setZoom(faceCloseupZoom(),true);
   });
   railZoom.addEventListener('click',()=>{
     document.documentElement.classList.toggle('zoom-open');
@@ -3171,6 +3183,10 @@ if(IS_IOS){
     Number(zoomRange.value)>140));
   setInterval(()=>{
     const now=performance.now();
+    // The slider's right edge IS the face closeup - recalibrated once the
+    // body plate lands (its face box sets the ceiling per avatar).
+    const ceiling=String(Math.round(faceCloseupZoom()*100));
+    if(zoomRange.max!==ceiling)zoomRange.max=ceiling;
     railLive.classList.toggle('on',Boolean(LIVE));
     railMove.classList.toggle('on',moveShowActive(now));
     railIdle.classList.toggle('on',idleShowActive(now));
