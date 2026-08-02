@@ -1700,7 +1700,12 @@ let domVideo={el:null,kind:null};
 function clipCamera(kind,edgeOverride){
   const clip=MOTION[kind];if(!clip||!clip.video)return null;
   const width=clip.frame_width,height=clip.frame_height;
-  const camera=petCamera({bounds:clip.bounds||[0,0,width,height]},width,height);
+  const bounds=clip.bounds||[0,0,width,height];
+  const camera=petCamera({bounds},width,height);
+  // Feet on the window's bottom edge even when docked (non-roam): the
+  // stillness idle now docks into a roam-sized window and a vertically
+  // centered fit would hover her above the Dock line.
+  camera.y=cv.height-(bounds[1]+bounds[3])*camera.scale;
   const edge=edgeOverride!==undefined?edgeOverride:ROAM.edge;
   const freeAct=kind==='idle'&&clip.anchor_mode==='free';
   const mirror=kind==='walk'?ROAM.direction<0:(edge==='right'&&!freeAct);
@@ -1760,7 +1765,10 @@ function drawPetScene(now){
     }
     if(showDomVideo('idle',PET_SIDE))return;
     if(drawMotionClip('idle',now,PET_SIDE))return;
-  }else idleDocked=false;
+  }else if(idleDocked){
+    idleDocked=false;
+    if(typeof SHELL.undockPet==='function')SHELL.undockPet();
+  }
   hideDomVideo();
   const hasBody=Boolean(BODY&&HEADMASK&&M.body);
   const width=hasBody?BODY.width:FACE_KEY.w,height=hasBody?BODY.height:FACE_KEY.h;

@@ -1629,6 +1629,23 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("h.y+=attend*cursorDir.y*0.6;", renderer)
         self.assertIn("h.r+=attend*cursorDir.x*0.12;", renderer)
 
+    def test_stillness_idle_docks_small_and_restores_on_wake(self):
+        # Owner, 2026-08-02: the standing stillness idle used the full
+        # docked pet size - a big cutout parked in the corner, reading as
+        # 'the old approach'. It now docks at roam scale (held bounds
+        # remembered), feet anchored to the window bottom even in the
+        # docked non-roam camera, and undock restores the exact prior
+        # bounds the moment attention returns.
+        main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
+        self.assertIn("if (!preDockBounds) preDockBounds = mainWindow.getBounds();",
+                      main)
+        self.assertIn("clampRoamSizeToArea(petRoamSize(), area)", main)
+        self.assertIn("'vivieen:pet-undock'", main)
+        renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("SHELL.undockPet==='function')SHELL.undockPet();", renderer)
+        self.assertIn("camera.y=cv.height-(bounds[1]+bounds[3])*camera.scale;",
+                      renderer)
+
     def test_facial_rebuild_keeps_the_full_body_set(self):
         # vvn, 2026-08-02: a calibration rebuild published a runtime with
         # NO body and NO motion. export() resolved body/ and motion/
