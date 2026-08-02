@@ -1629,6 +1629,17 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("h.y+=attend*cursorDir.y*0.6;", renderer)
         self.assertIn("h.r+=attend*cursorDir.x*0.12;", renderer)
 
+    def test_cropped_views_feather_their_cut_edges(self):
+        # Owner screenshot 2026-08-02 (the big close-up): the bust crop's
+        # raw edge sliced through arm and hair like a picture frame. Side
+        # and bottom edges now feather out in cropped views; full view
+        # and roam clips show the whole figure and skip it.
+        renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("function fadeCutEdges()", renderer)
+        self.assertIn("if(view==='full')return;", renderer)
+        self.assertIn("ctx.globalCompositeOperation='destination-out';", renderer)
+        self.assertIn("fadeCutEdges();", renderer)
+
     def test_click_through_ships_enabled_for_existing_installs(self):
         # Owner, 2026-08-02: click-through-the-gaps is the default - the
         # v3 appearance adoption flips it on once for installs where it
