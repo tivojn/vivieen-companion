@@ -257,9 +257,9 @@ class PetInputBridgeTests(unittest.TestCase):
             expression.GAZE_DX, expression.GAZE_DX[1:])])
         self.assertGreaterEqual(max(expression.GAZE_DY), 2.0)
         server = (ROOT / "server" / "app.py").read_text()
-        self.assertIn("RUNTIME_VERSION = 13", server)
+        self.assertIn("RUNTIME_VERSION = 15", server)
         export_source = (ROOT / "studio" / "export.py").read_text()
-        self.assertIn("dict(v=13,", export_source)
+        self.assertIn("dict(v=15,", export_source)
 
     def test_body_parts_are_classified_and_react(self):
         # Clicks resolve to the nearest baked bone segment (head stays
@@ -1722,7 +1722,7 @@ class PetMatteTests(unittest.TestCase):
                       export)
         server = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
         self.assertIn('clip.get("alpha_stream_hevc")', server)
-        self.assertIn("RUNTIME_VERSION = 13", server)
+        self.assertIn("RUNTIME_VERSION = 15", server)
         renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn("canPlayType('video/mp4; codecs=\"hvc1\"')", renderer)
         self.assertIn("const bail=setTimeout(()=>res(false),6000);", renderer)

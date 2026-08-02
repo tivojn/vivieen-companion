@@ -24,24 +24,65 @@ struct CompanionWebView: UIViewRepresentable {
               o.apply(console, arguments);
               try { window.webkit.messageHandlers.viv.postMessage('CERR ' + Array.from(arguments).join(' ')); } catch (e) {}
             }; })(console.error);
+            document.addEventListener('click', function(e) {
+              try {
+                var id = e.target.closest('button') ? e.target.closest('button').id : e.target.tagName;
+                window.webkit.messageHandlers.viv.postMessage('CLICK ' + id);
+                if (id === 'rail-move') setTimeout(function() {
+                  window.webkit.messageHandlers.viv.postMessage('MOVESTATE clip=' +
+                    (MOTION.move ? (MOTION.move.video ? 'video' : 'sheets' + (MOTION.move.sheets || []).length) : 'null') +
+                    ' active=' + moveShowActive() + ' until=' + Math.round(moveShowUntil - performance.now()) +
+                    ' drew=' + drawMotionClip('move', performance.now()));
+                }, 300);
+              } catch (x) {
+                try { window.webkit.messageHandlers.viv.postMessage('CLICKERR ' + x); } catch (y) {}
+              }
+            }, true);
+            document.addEventListener('pointerdown', function(e) {
+              try { window.webkit.messageHandlers.viv.postMessage('PDOWN ' +
+                (e.target.closest('button') ? e.target.closest('button').id : e.target.tagName) +
+                ' ' + Math.round(e.clientX) + ',' + Math.round(e.clientY)); } catch (x) {}
+            }, true);
             setTimeout(function() {
               try {
-                var cv = document.querySelector('canvas');
                 var st = document.getElementById('st');
-                window.webkit.messageHandlers.viv.postMessage('STATE canvas=' +
-                  (cv ? cv.width + 'x' + cv.height + ' vis=' + getComputedStyle(cv).display : 'none') +
+                var rail = document.getElementById('rail');
+                window.webkit.messageHandlers.viv.postMessage('STATE ' +
                   ' cls=' + document.documentElement.className +
                   ' status=' + (st ? st.textContent : '?') +
-                  ' inner=' + innerWidth + 'x' + innerHeight);
+                  ' motion=' + (typeof MOTION !== 'undefined' ? Object.keys(MOTION).join('+') : 'n/a') +
+                  ' moveVideo=' + (typeof MOTION !== 'undefined' && MOTION.move ? Boolean(MOTION.move.video) : '?') +
+                  ' idleVideo=' + (typeof MOTION !== 'undefined' && MOTION.idle ? Boolean(MOTION.idle.video) : '?') +
+                  ' rail=' + (rail ? getComputedStyle(rail).display : 'none'));
+                var caps = document.createElement('video');
+                window.webkit.messageHandlers.viv.postMessage('CPT vp9=[' +
+                  caps.canPlayType('video/webm; codecs="vp9"') + '] hvc1=[' +
+                  caps.canPlayType('video/mp4; codecs="hvc1"') + '] qt=[' +
+                  caps.canPlayType('video/quicktime') + ']');
+                var probeVideo = document.createElement('video');
+                probeVideo.muted = true; probeVideo.playsInline = true; probeVideo.preload = 'auto';
+                probeVideo.onloadedmetadata = function() {
+                  window.webkit.messageHandlers.viv.postMessage('MOV meta ' +
+                    probeVideo.videoWidth + 'x' + probeVideo.videoHeight); };
+                probeVideo.oncanplaythrough = function() {
+                  window.webkit.messageHandlers.viv.postMessage('MOV canplaythrough'); };
+                probeVideo.onerror = function() {
+                  window.webkit.messageHandlers.viv.postMessage('MOV error ' +
+                    (probeVideo.error ? probeVideo.error.code + ' ' + (probeVideo.error.message || '') : '?')); };
+                probeVideo.src = 'assets/motion-move.mov';
+                probeVideo.load();
               } catch (e) { window.webkit.messageHandlers.viv.postMessage('STATE fail ' + e); }
-            }, 4000);
+            }, 5000);
             """, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         configuration.userContentController.addUserScript(probe)
         configuration.userContentController.add(context.coordinator, name: "viv")
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.uiDelegate = context.coordinator
+        webView.navigationDelegate = context.coordinator
         webView.isOpaque = false
         webView.backgroundColor = .clear
+        // The avatar stage never scrolls (the page pins itself), but the
+        // Character Studio and any other page needs real scrolling.
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         load(into: webView)
@@ -75,7 +116,13 @@ struct CompanionWebView: UIViewRepresentable {
         }
     }
 
-    final class Coordinator: NSObject, WKUIDelegate, WKScriptMessageHandler {
+    final class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate,
+                             WKScriptMessageHandler {
+        func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+            let path = webView.url?.path ?? "/"
+            webView.scrollView.isScrollEnabled = !(path == "/" || path.isEmpty)
+        }
+
         func userContentController(_ controller: WKUserContentController,
                                    didReceive message: WKScriptMessage) {
             NSLog("[viv-web] %@", String(describing: message.body))

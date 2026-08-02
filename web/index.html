@@ -259,6 +259,28 @@ html.ios.talk-mode #talkbar{display:block;flex:1;height:44px;border-radius:12px;
   touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 html.ios.talk-mode #talkbar.rec{background:rgba(124,116,226,.4);border-color:rgba(124,116,226,.8)}
 html.ios.talk-mode #talkbar.cancel{background:rgba(212,76,71,.4);border-color:rgba(212,76,71,.8)}
+/* Action rail: one-tap shortcuts beside her - live call on top, then
+   dance, walk, rest. Desk builds never show it (hover and gestures own
+   those verbs there). */
+#rail{display:none}
+html.ios #rail{display:flex;flex-direction:column;gap:14px;position:fixed;
+  right:10px;top:50%;transform:translateY(-58%);z-index:5}
+html.ios #rail button{width:44px;height:44px;border-radius:50%;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(255,255,255,.14);background:rgba(20,22,26,.55);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:#c9cdd4;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+html.ios #rail svg{width:20px;height:20px;fill:currentColor}
+html.ios #rail button.on{background:rgba(124,116,226,.42);
+  border-color:rgba(124,116,226,.8);color:#efeefe}
+html.ios #rail #rail-live.on{background:rgba(212,76,71,.5);
+  border-color:rgba(212,76,71,.9);color:#ffe9e8}
+#zoombox{display:none}
+html.ios.zoom-open #zoombox{display:flex;position:fixed;left:16px;right:70px;
+  bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:6;padding:10px 14px;
+  background:rgba(20,22,26,.6);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,.14);border-radius:14px}
+html.ios #zoombox input{width:100%}
 </style></head><body>
 <div id="shell"><div id="drag"></div><div id="shellBtns">
   <button class="shellBtn" id="shellPin" title="Always on top">◇</button>
@@ -266,6 +288,15 @@ html.ios.talk-mode #talkbar.cancel{background:rgba(212,76,71,.4);border-color:rg
   <button class="shellBtn" id="shellHide" title="Hide avatar">×</button>
 </div></div>
 <div id="stage"><canvas id="cv"></canvas></div><div id="vignette"></div>
+<div id="rail">
+  <button id="rail-live" type="button" aria-label="Live talk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.5 2.9 3.7 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z"/></svg></button>
+  <button id="rail-move" type="button" aria-label="Dance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.6c-.6-.4-1.3-.6-2-.6-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4V7h4V3h-6z"/></svg></button>
+  <button id="rail-walk" type="button" aria-label="Walk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 5.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM9.8 8.9 7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5 0-.8.1L6 8.3V13h2V9.6l1.8-.7z"/></svg></button>
+  <button id="rail-idle" type="button" aria-label="Rest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-1-.1-1.4A7 7 0 0 1 12.6 3.1L12 3z"/></svg></button>
+  <button id="rail-close" type="button" aria-label="Closeup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6h-2V6.4l-4.3 4.3-1.4-1.4L17.6 5H15V3zM3 15h2v2.6l4.3-4.3 1.4 1.4L6.4 19H9v2H3v-6z"/></svg></button>
+  <button id="rail-zoom" type="button" aria-label="Zoom"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12zm-1 3h2v2h2v2h-2v2H9v-2H7V9h2V7z"/></svg></button>
+</div>
+<div id="zoombox"><input id="zoomrange" type="range" min="60" max="260" step="5" value="100" aria-label="Avatar zoom"></div>
 <div id="petBubble" role="status" aria-live="polite"></div>
 <div id="listenWave" aria-hidden="true"><span id="listenWaveDot"></span><span id="listenWaveBars"><span></span><span></span><span></span><span></span><span></span></span><span id="listenWaveText">Listening…</span></div>
 <div id="emptyState" hidden><div id="emptyCard">
@@ -1671,19 +1702,30 @@ function petBottomReserve(){
   if(!IS_IOS&&de.classList.contains('listening'))want=Math.max(want,88);
   return want*cvScale();
 }
+let IOS_ZOOM=1,IOS_HEAD_ANCHOR=false;
 function petCamera(meta,width,height,forceView){
   const crop=viewCrop(meta,width,height,forceView);
   petLaneNow+=(petBottomReserve()-petLaneNow)*0.22;
   const lane=petLaneNow<1?0:petLaneNow;
   const avail=Math.max(cv.height*0.35,cv.height-lane);
   const margin=PET.roam?0.985:(PET.view==='full'?0.94:0.98);
-  const scale=Math.min(cv.width/crop.w,avail/crop.h)*margin;
-  const x=cv.width/2-(crop.x+crop.w/2)*scale;
+  let scale=Math.min(cv.width/crop.w,avail/crop.h)*margin;
+  let x=cv.width/2-(crop.x+crop.w/2)*scale;
   // Roam: the crop bottom IS the feet, and the shell rests the window
   // bottom on the Dock's top edge - anchor them exactly there, no float
   // (the old 0.5% reserve read as hovering above the Dock).
-  const y=PET.roam?avail-(crop.y+crop.h)*scale:
+  let y=PET.roam?avail-(crop.y+crop.h)*scale:
     avail/2-(crop.y+crop.h/2)*scale;
+  // Phone zoom: the slider scales her in place; the closeup preset (the
+  // rail's Cmd+Shift+9 cousin) anchors her crown near the top so the face
+  // fills the screen and the body runs off the bottom - never cropped by
+  // a view, only by the glass.
+  if(IS_IOS&&!PET.roam&&IOS_ZOOM!==1){
+    scale*=IOS_ZOOM;
+    x=cv.width/2-(crop.x+crop.w/2)*scale;
+    y=IOS_HEAD_ANCHOR?cv.height*0.05-crop.y*scale:
+      avail/2-(crop.y+crop.h/2)*scale;
+  }
   return {scale,x,y,crop};
 }
 const ROAM_BOX={width:250,height:340};
@@ -1839,6 +1881,8 @@ function drawPetScene(now){
   if(moveShowUntil&&now>=moveShowUntil)moveShowUntil=0;
   if(walkShowActive(now)&&drawMotionClip('walk',now)){hideDomVideo();return;}
   if(walkShowUntil&&now>=walkShowUntil)walkShowUntil=0;
+  if(idleShowActive(now)&&(showDomVideo('idle',PET_SIDE)||drawMotionClip('idle',now,PET_SIDE)))return;
+  if(idleShowUntil&&now>=idleShowUntil){idleShowUntil=0;hideDomVideo();}
   if(standingIdleActive(now)){
     // She settles in her bottom corner above the Dock and leans on the screen
     // edge, like a colleague stepping aside; the window docks once per
@@ -2813,6 +2857,19 @@ function toggleWalkShow(){
   walkShowUntil=now+seconds*3000;
   return true;
 }
+/* Rest: the edge-idle take leaning on the phone's own right edge, held
+   until something touches her - the rail's third verb. */
+let idleShowUntil=0;
+function idleShowActive(now=performance.now()){
+  return Boolean(MOTION.idle&&!PET.roam&&now<idleShowUntil);
+}
+function toggleIdleShow(){
+  const now=performance.now();
+  if(idleShowActive(now)){idleShowUntil=0;hideDomVideo();return true;}
+  if(!MOTION.idle)return false;
+  idleShowUntil=now+120000;
+  return true;
+}
 function petDoubleTap(part){
   if(part==='hair'&&toggleMoveShow())return true;
   if((part==='leg_l'||part==='leg_r')&&IS_IOS&&toggleWalkShow())return true;
@@ -2939,6 +2996,7 @@ cv.addEventListener('pointerup',event=>{
     // double-tap toggle without the first tap eating the performance).
     if(moveShowActive(now)&&part!=='hair')moveShowUntil=0;
     if(walkShowActive(now)&&part!=='leg_l'&&part!=='leg_r')walkShowUntil=0;
+    if(idleShowActive(now)){idleShowUntil=0;hideDomVideo();}
     lastTap={part,at:now};
     petTapReaction(part);
   }
@@ -3084,6 +3142,46 @@ if(IS_IOS){
   };
   talkbar.addEventListener('pointerup',endHold);
   talkbar.addEventListener('pointercancel',endHold);
+  // Action rail: live call, dance, walk, rest - one tap each, states lit.
+  const railLive=document.getElementById('rail-live');
+  const railMove=document.getElementById('rail-move');
+  const railWalk=document.getElementById('rail-walk');
+  const railIdle=document.getElementById('rail-idle');
+  railMove.addEventListener('click',()=>toggleMoveShow());
+  railWalk.addEventListener('click',()=>toggleWalkShow());
+  railIdle.addEventListener('click',()=>toggleIdleShow());
+  railLive.addEventListener('click',()=>{
+    if(LIVE)stopLiveTalk('ended');else void startLiveTalk();
+  });
+  // Zoom: the slider scales her freely; the closeup button is the desk's
+  // Cmd+Shift+9 in pocket form - one tap face-forward, tap again to reset
+  // (which is all Cmd+Shift+0 ever promised).
+  const railClose=document.getElementById('rail-close');
+  const railZoom=document.getElementById('rail-zoom');
+  const zoomRange=document.getElementById('zoomrange');
+  const setZoom=(value,headAnchor)=>{
+    IOS_ZOOM=Math.max(.6,Math.min(2.6,value));
+    IOS_HEAD_ANCHOR=Boolean(headAnchor)&&IOS_ZOOM>1.01;
+    zoomRange.value=String(Math.round(IOS_ZOOM*100));
+  };
+  railClose.addEventListener('click',()=>{
+    if(IOS_HEAD_ANCHOR)setZoom(1,false);else setZoom(2.4,true);
+  });
+  railZoom.addEventListener('click',()=>{
+    document.documentElement.classList.toggle('zoom-open');
+  });
+  zoomRange.addEventListener('input',()=>setZoom(Number(zoomRange.value)/100,
+    Number(zoomRange.value)>140));
+  setInterval(()=>{
+    const now=performance.now();
+    railLive.classList.toggle('on',Boolean(LIVE));
+    railMove.classList.toggle('on',moveShowActive(now));
+    railWalk.classList.toggle('on',walkShowActive(now));
+    railIdle.classList.toggle('on',idleShowActive(now));
+    railClose.classList.toggle('on',IOS_HEAD_ANCHOR);
+    railZoom.classList.toggle('on',
+      document.documentElement.classList.contains('zoom-open'));
+  },400);
   // iOS auto-scrolls the page to keep a focused field visible, which
   // shoves her head off the top and leaves the page shifted after the
   // keyboard goes away. The stage never legitimately scrolls - pin it.

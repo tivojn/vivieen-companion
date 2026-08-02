@@ -211,7 +211,7 @@ def active_slug():
         return None
 
 
-RUNTIME_VERSION = 13  # v13: HEVC-alpha .mov twins ride along for WebKit/iOS
+RUNTIME_VERSION = 15  # v15: sheets ride along as the no-HEVC fallback (iOS simulator)
 
 
 def ensure_runtime(slug, log=print):
