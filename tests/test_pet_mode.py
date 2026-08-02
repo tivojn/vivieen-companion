@@ -1649,12 +1649,11 @@ class PetMatteTests(unittest.TestCase):
         # The close-up framing (head, neck, a hint of shoulder), a second
         # press restores what she was, and BOTH shortcuts force 100%
         # opacity (owner: 'not half as current set').
-        # POSITION ONLY (owner, third iteration): view, zoom and window
-        # size stay exactly as the user has them - the shortcut is the
-        # drag into the corner, top ~34% of the window on screen.
+        # FULL body at max zoom, lower body hanging off the screen bottom
+        # - never a cropped bust frame (owner rollback, 2026-08-02).
         self.assertNotIn("state.petView = 'bust';", main)
-        self.assertNotIn("state.petZoom = PET_ZOOM_RANGE.max;", main)
-        self.assertIn("area.height - current.height * 0.34", main)
+        self.assertIn("state.petZoom = PET_ZOOM_RANGE.max;", main)
+        self.assertIn("area.height * 0.08", main)
         self.assertIn("if (companionHold) {", main)
         self.assertEqual(
             main.count("applyPetOpacity(1);                    // both shortcuts mean FULLY visible")
