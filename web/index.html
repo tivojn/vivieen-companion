@@ -342,6 +342,23 @@ html.ios #thread .msg img,html.ios #thread .msg video{display:block;
   background:#0a0c10;border-radius:9px;margin:4px 0}
 /* A file card is the file - no prose padding around it. */
 html.ios #thread .msg.media{padding:5px}
+html.ios #thread .media-name{padding:6px 6px 2px;font-size:12.5px;
+  color:#aab0bb;letter-spacing:.01em}
+/* Working: three dots while she thinks, then one line per step she takes -
+   the same narration a verbose EnConvo channel writes into Telegram. */
+html.ios #thread .msg.working{background:rgba(12,14,18,.6)}
+html.ios #thread .typing{display:flex;gap:5px;align-items:center;height:18px}
+html.ios #thread .typing span{width:6px;height:6px;border-radius:50%;
+  background:#8e96a6;animation:vivType 1.15s infinite ease-in-out}
+html.ios #thread .typing span:nth-child(2){animation-delay:.16s}
+html.ios #thread .typing span:nth-child(3){animation-delay:.32s}
+@keyframes vivType{0%,60%,100%{opacity:.25;transform:translateY(0)}
+  30%{opacity:1;transform:translateY(-3px)}}
+html.ios #thread .msg.working .step{margin-top:7px;padding-left:15px;
+  position:relative;font-size:13px;color:#9aa2b1;line-height:1.45}
+html.ios #thread .msg.working .step:before{content:'';position:absolute;
+  left:3px;top:7px;width:5px;height:5px;border-radius:50%;
+  background:rgba(124,116,226,.85)}
 html.ios #thread .msg.media img,html.ios #thread .msg.media video{margin:0}
 html.ios #thread .msg audio{display:block;width:100%;margin:4px 0}
 html.ios #thread .msg pre{overflow-x:auto;padding:8px 10px;border-radius:8px;
@@ -2516,6 +2533,82 @@ async function speak(b64,tr){
   speaking=monitorEnabled&&externalAudio.active;track=[];curV='sil';
 }
 
+/* ---- the coupled channel ----------------------------------------------
+   An EnConvo agent can work for minutes. Telegram's channel shows "typing"
+   and, in verbose mode, narrates each step; the pocket thread does exactly
+   that, and takes the same slash commands. */
+function threadWorking(){
+  const container=document.getElementById('thread');
+  const card=document.createElement('div');
+  card.className='msg her working';
+  const dots=document.createElement('div');
+  dots.className='typing';
+  dots.innerHTML='<span></span><span></span><span></span>';
+  card.append(dots);
+  if(IS_IOS){container.append(card);threadToBottom(false);}
+  card.addStep=label=>{
+    if(ENCONVO.verbose===false)return;
+    const line=document.createElement('div');
+    line.className='step';line.textContent=label;
+    card.append(line);
+    if(threadNearBottom(container))threadToBottom(false);
+  };
+  return card;
+}
+async function enconvoStream(body,work){
+  const response=await fetch('api/enconvo/chat',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body),signal:ENCONVO.abort&&ENCONVO.abort.signal});
+  if(!response.body)return await response.json();
+  const reader=response.body.getReader(),decoder=new TextDecoder();
+  let buffer='',result=null;
+  for(;;){
+    const{done,value}=await reader.read();
+    if(done)break;
+    buffer+=decoder.decode(value,{stream:true});
+    let cut;
+    while((cut=buffer.indexOf('\n\n'))>=0){
+      const frame=buffer.slice(0,cut);buffer=buffer.slice(cut+2);
+      if(!frame.startsWith('data:'))continue;
+      let event;try{event=JSON.parse(frame.slice(5).trim());}catch(x){continue;}
+      if(event.type==='step')work.addStep(event.text);
+      else if(event.type==='error')throw new Error(event.detail||'agent failed');
+      else if(event.type==='done')result=event;
+    }
+  }
+  if(!result)throw new Error('the agent closed without answering');
+  return result;
+}
+// The same commands EnConvo's own channels take (launch_channel.js):
+// /new · /stop · /audio · /verbose · /status.
+function enconvoSlash(text){
+  const[word,...rest]=String(text).trim().toLowerCase().split(/\s+/);
+  const onOff=value=>value==='off'?false:value==='on'?true:null;
+  const say=line=>{threadPush('her',line);setCaption(line);};
+  if(word==='/new'||word==='/newsession'){
+    ENCONVO.sessions[ENCONVO.agent]='';
+    say('· new session with '+(ENCONVO.title||ENCONVO.agent)+' ·');
+  }else if(word==='/stop'){
+    if(ENCONVO.abort){ENCONVO.abort.abort();}
+    else say('· nothing running ·');
+  }else if(word==='/audio'){
+    const want=onOff(rest[0]);
+    ENCONVO.audio=want===null?ENCONVO.audio===false:want;
+    say('· voice '+(ENCONVO.audio===false?'off':'on')+' ·');
+  }else if(word==='/verbose'){
+    const want=onOff(rest[0]);
+    ENCONVO.verbose=want===null?ENCONVO.verbose===false:want;
+    say('· step updates '+(ENCONVO.verbose===false?'off':'on')+' ·');
+  }else if(word==='/status'){
+    say(['**'+(ENCONVO.title||ENCONVO.agent)+'**','',
+      '- session · '+(ENCONVO.sessions[ENCONVO.agent]?'open':'new on next message'),
+      '- voice · '+(ENCONVO.audio===false?'off':'on'),
+      '- step updates · '+(ENCONVO.verbose===false?'off':'on'),
+      '- running · '+(ENCONVO.abort?'yes':'no')].join('\n'));
+  }else return false;
+  ptt.disabled=monitorEnabled;
+  return true;
+}
 async function turn(text,spoken=false){
   ptt.disabled=true;elYou.textContent=text;setCaption('');
   threadPush('user',text);
@@ -2523,14 +2616,16 @@ async function turn(text,spoken=false){
   // Coupled to an EnConvo agent: the message goes to that brain through
   // the Mac's gateway, and the reply comes home in HER voice.
   if(window.ENCONVO&&ENCONVO.agent){
+    if(enconvoSlash(text)){ptt.disabled=monitorEnabled;return;}
+    const work=threadWorking();
     try{
       setStatus('asking '+(ENCONVO.title||'the agent'),'busy');
-      const r=await(await fetch('api/enconvo/chat',{method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({agent:ENCONVO.agent,message:text,
-          session_id:ENCONVO.sessions[ENCONVO.agent]||'',
-          context_files:ENCONVO.pending||[]})})).json();
+      ENCONVO.abort=new AbortController();
+      const r=await enconvoStream({agent:ENCONVO.agent,message:text,
+        session_id:ENCONVO.sessions[ENCONVO.agent]||'',
+        context_files:ENCONVO.pending||[]},work);
       ENCONVO.pending=[];
+      work.remove();
       if(r.detail)throw new Error(r.detail);
       if(r.session_id)ENCONVO.sessions[ENCONVO.agent]=r.session_id;
       setCaption(r.text);
@@ -2538,13 +2633,20 @@ async function turn(text,spoken=false){
       // Anything she made or fetched arrives as a card you can play right
       // here - the prose may never have read like a link.
       threadAttachments(r.media);
-      if(r.audio){setStatus('speaking','on');await speak(r.audio,r.track);}
+      if(r.audio&&ENCONVO.audio!==false){
+        setStatus('speaking','on');await speak(r.audio,r.track);}
       setStatus('coupled · '+(ENCONVO.title||ENCONVO.agent),'on');
     }catch(e){
-      setCaption('(agent trouble: '+e.message+')');
-      threadPush('her','(agent trouble: '+e.message+')');
-      setStatus('ready','on');
+      work.remove();
+      if(e.name==='AbortError'){
+        threadPush('her','· stopped ·');setStatus('coupled','on');
+      }else{
+        setCaption('(agent trouble: '+e.message+')');
+        threadPush('her','(agent trouble: '+e.message+')');
+        setStatus('ready','on');
+      }
     }
+    ENCONVO.abort=null;
     ptt.disabled=monitorEnabled;
     return;
   }
@@ -3281,6 +3383,13 @@ function threadAttachments(list){
     node.src=url;node.dataset.src=url;
     if(node.tagName==='A')node.href=url;
     card.append(node);
+    // She names what she hands over; show her name for it, not the uuid
+    // the tool happened to write to disk.
+    if(item.name&&node.tagName!=='A'&&!/^[0-9a-f-]{16,}\./i.test(item.name)){
+      const caption=document.createElement('div');
+      caption.className='media-name';caption.textContent=item.name;
+      card.append(caption);
+    }
     const settle=()=>{if(threadNearBottom(container)||stick)threadToBottom(false);};
     node.addEventListener('load',settle);
     node.addEventListener('loadedmetadata',settle);
@@ -3670,7 +3779,10 @@ if(IS_IOS){
   const railEnconvo=document.getElementById('rail-enconvo');
   const agentSheet=document.getElementById('agentsheet');
   const agentList=document.getElementById('agentlist');
-  window.ENCONVO={agent:'',title:'',sessions:{}};
+  // audio and verbose default on, the way a fresh EnConvo channel starts;
+  // /audio and /verbose flip them, /status reports them.
+  window.ENCONVO={agent:'',title:'',sessions:{},
+    audio:true,verbose:true,abort:null,pending:[]};
   const closeAgents=()=>document.documentElement.classList.remove('agents-open');
   railEnconvo.addEventListener('click',async()=>{
     if(document.documentElement.classList.contains('agents-open')){closeAgents();return;}

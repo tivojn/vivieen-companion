@@ -1894,8 +1894,11 @@ class PocketBarAndToolsTests(unittest.TestCase):
             for path in (good, script):
                 with open(path, "wb") as handle:
                     handle.write(b"x")
+            # This is about who may be served, not about codecs.
             with mock.patch.object(app, "_enconvo_roots",
-                                   return_value=[os.path.realpath(downloads)]):
+                                   return_value=[os.path.realpath(downloads)]), \
+                    mock.patch.object(app, "_phone_playable",
+                                      side_effect=lambda value: value):
                 self.assertTrue(app._enconvo_share(good))
                 # Not media: never served, whatever the agent claims.
                 self.assertIsNone(app._enconvo_share(script))
@@ -1912,35 +1915,134 @@ class PocketBarAndToolsTests(unittest.TestCase):
                 self.assertIn(f"[the clip](api/enconvo/file/", linked)
                 self.assertNotIn("[clip.mp4](api", linked)
 
-    def test_the_coupled_lane_lends_the_agent_hands(self):
-        # EnConvo's HTTP gateway runs an agent's brain without its tool
-        # belt, so the phone lends its own - driven by the agent's choice.
+    def test_the_pocket_app_talks_to_agents_the_way_a_channel_does(self):
+        # EnConvo's IM channels POST the agent's own command route -
+        # /<extension>/<command>, no /api - as an event stream. The agent
+        # then picks and runs its own tools. Nothing here tells it how.
         source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
-        self.assertIn("<<viv:image", source)
-        self.assertIn("<<viv:download", source)
-        self.assertIn("image_create/features/gemini/create", source)
-        self.assertIn("request.message + _TOOL_BRIEF", source)
-        # Bounded: one tool per turn, twice at most.
-        self.assertIn("for _ in range(2):", source)
-        # The directive is never spoken or shown back to the owner.
-        self.assertIn("_TOOL_CALL.sub(\"\", text)", source)
+        self.assertIn('f"{ENCONVO_HOST}/{extension}/{command}"', source)
+        self.assertIn('"Accept": "text/event-stream"', source)
+        self.assertIn('"runType": "command"', source)
+        self.assertIn('"input_text": message', source)
+        # run_mode is THE switch. Mavis's saved config says "chat", which is
+        # a brain with no hands through every route - which is exactly why
+        # the lane looked toolless. "agent" is where the tool belt lives.
+        self.assertIn('"run_mode": "agent"', source)
+        # And no coaching: the old shim taught the agent its own tools.
+        self.assertNotIn("<<viv:", source)
 
-    def test_a_download_target_must_be_a_web_address(self):
+    def test_a_command_key_is_understood_however_it_is_written(self):
         import sys
         sys.path.insert(0, str(ROOT / "server"))
         import app
 
-        with self.assertRaises(RuntimeError):
-            app._tool_download("file:///etc/passwd")
-        with self.assertRaises(RuntimeError):
-            app._tool_download("; rm -rf ~")
-        # A phone keyboard capitalises the first word of a message, and
-        # schemes are case-insensitive - "HTTPS://" must still be a URL.
-        with mock.patch.object(app.subprocess, "run") as run:
-            with self.assertRaises(RuntimeError) as caught:
-                app._tool_download("HTTPS://example.com/v")
-            self.assertIn("nothing came down", str(caught.exception))
-            self.assertTrue(run.called)
+        for value in ("main", "agent|main", "agent/main"):
+            self.assertEqual(app._enconvo_command_key(value), "agent|main")
+        self.assertEqual(app._enconvo_command_key("agent|Gq3x"), "agent|Gq3x")
+
+    def test_delivered_files_are_read_from_the_delivery_call(self):
+        # EnConvo agents hand artifacts over through delivery/present_files
+        # and are told NOT to repeat the path in prose, so this is the only
+        # place a produced file is ever named.
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        import app
+
+        with tempfile.TemporaryDirectory() as home:
+            made = os.path.join(home, "shot.png")
+            with open(made, "wb") as handle:
+                handle.write(b"x")
+            steps = [
+                {"flowRunStatus": "success",
+                 "flowParams": json.dumps({
+                     "path": "image_create/features/open_ai/create"}),
+                 "output": {"paths": [made]}},
+                # Arguments stream in character by character; mid-flight the
+                # title is a single letter. Only the finished call counts.
+                {"flowRunStatus": "input-streaming",
+                 "flowParams": json.dumps({
+                     "path": "delivery/present_files",
+                     "params": {"deliverables": [
+                         {"type": "file", "url": made, "title": "W"}]}})},
+                {"flowRunStatus": "success",
+                 "flowParams": json.dumps({
+                     "path": "delivery/present_files",
+                     "params": {"deliverables": [
+                         {"type": "file", "url": made,
+                          "title": "Winter Greenhouse"}]}})},
+            ]
+            found = app._enconvo_step_files(steps)
+            self.assertEqual(len(found), 1)
+            # The tool reports a path; the delivery carries her name for it.
+            self.assertEqual(found[0]["title"], "Winter Greenhouse")
+            # A file that does not exist is not a deliverable...
+            self.assertEqual(app._enconvo_step_files(
+                [{"flowParams": json.dumps({
+                    "path": "delivery/present_files",
+                    "params": {"deliverables": [
+                        {"url": os.path.join(home, "ghost.png")}]}})}]),
+                [])
+            # ...and one outside the served roots never becomes a card,
+            # however confidently the agent hands it over.
+            self.assertIsNone(app._enconvo_share("/etc/passwd"))
+            self.assertIsNone(app._enconvo_share("/usr/bin/env"))
+
+    def test_the_thread_narrates_the_way_a_verbose_channel_does(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        import app
+
+        # EnConvo's own rule (launch_channel.js): announce a call that has
+        # STARTED, never a hidden one, never the channel's own plumbing,
+        # and label it with the agent's description of what it is doing.
+        running = {"type": "flow_step", "flowRunStatus": "running",
+                   "flowName": "local_api", "flowId": "a",
+                   "title": "Untitled",
+                   "flowParams": json.dumps({
+                       "description": "Generate fox in snow image",
+                       "path": "image_create/features/open_ai/create"})}
+        self.assertEqual(app._enconvo_step_note(running)["text"],
+                         "Generate fox in snow image")
+        # Not yet started, hidden, or the channel talking to itself.
+        for tweak in ({"flowRunStatus": "input-streaming"},
+                      {"hide": True},
+                      {"flowParams": json.dumps(
+                          {"path": "im_channels/reply"})}):
+            self.assertIsNone(app._enconvo_step_note({**running, **tweak}))
+        # Falls back to the step's own title when it has no description.
+        bare = {**running, "flowParams": json.dumps({"path": ""})}
+        self.assertEqual(app._enconvo_step_note(bare)["text"], "Untitled")
+
+        source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        # Verbose, like a Telegram channel - and streamed, so a long job
+        # reads as work rather than a frozen app.
+        self.assertIn('"im_verbose": True', source)
+        self.assertIn('media_type="text/event-stream"', source)
+        self.assertIn('{"type": "typing"}', source)
+
+    def test_the_channel_takes_the_same_slash_commands(self):
+        # /new /stop /audio /verbose /status, exactly EnConvo's set.
+        for command in ("/new", "/newsession", "/stop", "/audio",
+                        "/verbose", "/status"):
+            self.assertIn(f"'{command}'", self.renderer, command)
+        # A command never reaches the agent.
+        self.assertIn("if(enconvoSlash(text)){", self.renderer)
+        # /stop actually aborts the request in flight.
+        self.assertIn("ENCONVO.abort=new AbortController();", self.renderer)
+        self.assertIn("ENCONVO.abort.abort();", self.renderer)
+        # The thread reads the stream rather than waiting for one blob.
+        self.assertIn("response.body.getReader()", self.renderer)
+        self.assertIn("work.addStep(event.text)", self.renderer)
+
+    def test_media_tools_never_inherit_the_engines_stdin(self):
+        # ffmpeg and ffprobe read stdin; the engine's is a pipe nobody
+        # closes, and an inherited one hangs the probe until it times out.
+        source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("stdin=subprocess.DEVNULL", source)
+        self.assertIn('"-nostdin"', source)
+        # And a probe that will not answer means re-encode, not ship an
+        # unplayable card.
+        self.assertIn("re-encoding to be safe", source)
 
     def test_served_files_answer_range_requests(self):
         # Safari refuses to scrub a video whose source ignores ranges.
