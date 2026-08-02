@@ -649,7 +649,18 @@ function fitTxtPlaceholder(){
     width>=150?'Hold head to talk…':'Type…';
 }
 addEventListener('resize',()=>fitTxtPlaceholder());
-function fit(){const d=devicePixelRatio||1;cv.width=innerWidth*d;cv.height=innerHeight*d;
+/* The companion pose legally makes the window far taller than the
+   display; a full-res backing store there is a ~27-megapixel canvas and
+   the per-frame composite outruns the frame budget - the mouth lags the
+   voice (owner, 2026-08-02). Cap the backing store near the DISPLAY's
+   pixel size: the off-screen body needs no pixels, and the on-screen
+   part still renders 1:1. cvScale() is the ONLY css->canvas ratio. */
+function cvScale(){return cv.width/Math.max(1,innerWidth);}
+function fit(){const d=devicePixelRatio||1;
+  const capW=((screen&&screen.width)||innerWidth)*d*1.15;
+  const capH=((screen&&screen.height)||innerHeight)*d*1.15;
+  const back=Math.min(1,capW/(innerWidth*d),capH/(innerHeight*d));
+  cv.width=Math.round(innerWidth*d*back);cv.height=Math.round(innerHeight*d*back);
   fitTxtPlaceholder();
   // Resizing resets context state. Animation frames are upscaled whenever the
   // Animation Size zoom outruns the 720p source, and the default bilinear
@@ -1009,7 +1020,7 @@ function faceAnchorCss(){
     const by=matrix[1][0]*ex+matrix[1][1]*ey+matrix[1][2];
     ex=bx;ey=by;
   }
-  const ratio=devicePixelRatio||1;
+  const ratio=cvScale();
   return {x:(ex*camera.scale+camera.x)/ratio,
           y:(ey*camera.scale+camera.y)/ratio};
 }
@@ -1596,7 +1607,7 @@ function petBottomReserve(){
     want=Math.max(want,barHeight+18);
   }
   if(de.classList.contains('listening'))want=Math.max(want,88);
-  return want*(devicePixelRatio||1);
+  return want*cvScale();
 }
 function petCamera(meta,width,height){
   const crop=viewCrop(meta,width,height);
@@ -1721,7 +1732,7 @@ function clipCamera(kind,edgeOverride){
 function showDomVideo(kind,edgeOverride){
   const fit=clipCamera(kind,edgeOverride);
   if(!fit)return false;
-  const video=fit.clip.video,d=devicePixelRatio||1;
+  const video=fit.clip.video,d=cvScale();
   if(domVideo.el!==video){
     hideDomVideo();
     video.style.position='fixed';video.style.left='0';video.style.top='0';
@@ -2419,7 +2430,7 @@ function updatePetHit(force=false){
     if(still&&now-hitSampleAt<250){
       sample=hitSampleValue;
     }else{
-      const ratio=devicePixelRatio||1,x=Math.floor(pointer.x*ratio),y=Math.floor(pointer.y*ratio);
+      const ratio=cvScale(),x=Math.floor(pointer.x*ratio),y=Math.floor(pointer.y*ratio);
       try{sample=ctx.getImageData(x,y,1,1).data[3]>14;}catch(error){sample=false;}
       hitSampleAt=now;hitSamplePoint={x:pointer.x,y:pointer.y};hitSampleValue=sample;
     }
@@ -2515,7 +2526,7 @@ function pointerOnHead(x,y){
   if(!ready||!(BODY&&HEADMASK&&M.body))return false;
   const matrix=M.body.face_transform;
   if(!matrix||matrix.length!==2)return false;
-  const ratio=devicePixelRatio||1;
+  const ratio=cvScale();
   const px=Math.floor(x*ratio),py=Math.floor(y*ratio);
   if(px<0||py<0||px>=cv.width||py>=cv.height)return false;
   if(!petHitCanvas){
@@ -2554,7 +2565,7 @@ function canPetTalk(){
    sway transforms the scene is drawn with. The head stays mask-exact. */
 function canvasToBody(x,y){
   if(!(BODY&&M.body))return null;
-  const ratio=devicePixelRatio||1;
+  const ratio=cvScale();
   const width=BODY.width,height=BODY.height;
   const camera=petCamera(M.body,width,height);
   let px=(x*ratio-camera.x)/camera.scale;
