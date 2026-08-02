@@ -1826,15 +1826,18 @@ AVATAR_STORE_BASE = ("https://github.com/tivojn/vivieen-companion"
                      "/releases/download/avatar-store-v1/")
 AVATAR_STORE = [
     {"id": "vvn", "name": "Vvn", "file": "Vvn.avtr", "bytes": 308302113,
+     "face": "vvn-face.jpg", "body": "vvn-body.png",
      "blurb": ("Compact starter companion - face, full body, office walk, "
                "high-heel touch edge idle, and k-pop point dance, all in.")},
     {"id": "vivieen", "name": "Vivieen", "file": "Vivieen.avtr",
      "bytes": 448109330,
+     "face": "vivieen-face.jpg", "body": "vivieen-body.png",
      "blurb": ("The signature companion - a complete rig with every "
                "animation set, ready for the desk the moment it lands.")},
 ]
 _store_lock = threading.Lock()
 _store_jobs = {}
+_store_art = {}
 STORE_BUSY_PHASES = ("downloading", "installing", "publishing")
 
 
@@ -1898,6 +1901,32 @@ async def api_avatar_store():
         {**item, "url": AVATAR_STORE_BASE + item["file"],
          "job": jobs.get(item["id"])}
         for item in AVATAR_STORE]}
+
+
+@app.get("/api/avatar/store/art")
+async def api_avatar_store_art(id: str = Query(...),
+                               kind: str = Query("face")):
+    """Face/body preview for a store card. The page's CSP only allows
+    same-origin images, so the server fetches the GitHub asset once and
+    keeps it in memory (~25-75 KB each)."""
+    item = _store_entry(id)
+    if not item or kind not in ("face", "body"):
+        raise HTTPException(404, "no such store art")
+    name = item[kind]
+    cached = _store_art.get(name)
+    if cached is None:
+        import urllib.request
+        request = urllib.request.Request(
+            AVATAR_STORE_BASE + name,
+            headers={"User-Agent": "vivieen-companion"})
+        def fetch():
+            with urllib.request.urlopen(request, timeout=30) as feed:
+                return feed.read(4 << 20)
+        cached = await asyncio.to_thread(fetch)
+        _store_art[name] = cached
+    media = "image/jpeg" if name.endswith(".jpg") else "image/png"
+    return Response(cached, media_type=media,
+                    headers={"Cache-Control": "max-age=86400"})
 
 
 class StoreInstall(BaseModel):
@@ -2013,6 +2042,11 @@ async def api_config_set(body: dict):
        (new.get("tts") or {}).get("provider") != (cur.get("tts") or {}).get("provider"):
         _state["warm"] = False
         threading.Thread(target=_warm, daemon=True).start()
+    # A live-talk change while a line is open hot-swaps the provider leg:
+    # every open call reconnects with the new provider/voice mid-call.
+    if _live_swaps and _live_hot_fields(new) != _live_hot_fields(cur):
+        for waiting in list(_live_swaps):
+            waiting.set()
     return {"config": P.redacted(new),
             "globals": await P.global_defaults_async(refresh=True)}
 
@@ -2353,6 +2387,22 @@ ELEVEN_CONVAI_URL = "wss://api.elevenlabs.io/v1/convai/conversation"
 LIVE_SILENCE_HANGUP_S = 30
 
 
+# Live lines currently open. Saving a live-talk change in Settings sets
+# every event here; each open call drops its provider leg and reconnects
+# with the new settings while the browser socket stays up - voice and even
+# provider switch mid-call.
+_live_swaps = set()
+
+
+def _live_hot_fields(cfg):
+    """The live-talk settings whose change should hot-swap an open call."""
+    live = cfg.get("live") or {}
+    return (live.get("provider") or "xai",
+            live.get("xai_voice") or "", live.get("xai_model") or "",
+            live.get("eleven_voice_id") or "",
+            bool(live.get("xai_api_key")), bool(live.get("eleven_api_key")))
+
+
 def _live_settings():
     cfg = P.load()
     live = cfg.get("live") or {}
@@ -2410,69 +2460,85 @@ async def live_voice(client: WebSocket):
             await client.close(code=4403)
             return
     await client.accept()
-    settings = _live_settings()
-    if not settings:
-        await client.send_json({
-            "type": "error",
-            "message": "Live talk is not configured - add an xAI or "
-                       "ElevenLabs key under Settings > Models > Live voice."})
-        await client.close()
-        return
-    # The live mistake (2026-08-01): the console's key ID (a UUID) pasted
-    # where the API key goes - upstream answers an opaque HTTP 400. Catch
-    # it here with a message that names the fix.
-    if settings["provider"] == "xai" and not settings["key"].startswith("xai-"):
-        await client.send_json({
-            "type": "error",
-            "message": "That xAI value looks like a key ID, not an API key "
-                       "- real keys start with 'xai-'. Copy the full key "
-                       "from console.x.ai and save it again."})
-        await client.close()
-        return
     import websockets
     last_audio = [time.time()]
+    swap = asyncio.Event()
+    _live_swaps.add(swap)
     try:
-        if settings["provider"] == "xai":
-            url = f"{XAI_REALTIME_URL}?model={settings['model']}"
-            headers = {"Authorization": "Bearer " + settings["key"]}
-            async with websockets.connect(
-                    url, additional_headers=headers,
-                    max_size=1 << 24, open_timeout=15) as upstream:
-                await upstream.send(json.dumps({
-                    "type": "session.update", "session": {
-                        "voice": settings["voice"],
-                        "instructions": settings["persona"],
-                        "turn_detection": {"type": "server_vad",
-                                           "silence_duration_ms": 700},
-                        "audio": {
-                            "input": {"format": {"type": "audio/pcm",
-                                                 "rate": 24000},
-                                      "transport": "json"},
-                            "output": {"format": {"type": "audio/pcm",
-                                                  "rate": 24000},
-                                       "transport": "json"},
-                        }}}))
-                await client.send_json({"type": "ready", "provider": "xai",
-                                        "input_rate": 24000,
-                                        "output_rate": 24000})
-                await _live_pump(client, upstream, _xai_event, last_audio,
-                                 lambda b64: json.dumps(
-                                     {"type": "input_audio_buffer.append",
-                                      "audio": b64}))
-        else:
-            agent_id = await asyncio.to_thread(_ensure_eleven_agent, settings)
-            url = f"{ELEVEN_CONVAI_URL}?agent_id={agent_id}"
-            headers = {"xi-api-key": settings["key"]}
-            async with websockets.connect(
-                    url, additional_headers=headers,
-                    max_size=1 << 24, open_timeout=15) as upstream:
-                await client.send_json({"type": "ready",
-                                        "provider": "elevenlabs",
-                                        "input_rate": 16000,
-                                        "output_rate": 16000})
-                await _live_pump(client, upstream, _eleven_event, last_audio,
-                                 lambda b64: json.dumps(
-                                     {"user_audio_chunk": b64}))
+        while True:
+            settings = _live_settings()
+            if not settings:
+                await client.send_json({
+                    "type": "error",
+                    "message": "Live talk is not configured - add an xAI or "
+                               "ElevenLabs key under Settings > Models > "
+                               "Live voice."})
+                break
+            # The live mistake (2026-08-01): the console's key ID (a UUID)
+            # pasted where the API key goes - upstream answers an opaque
+            # HTTP 400. Catch it here with a message that names the fix.
+            if settings["provider"] == "xai" and \
+                    not settings["key"].startswith("xai-"):
+                await client.send_json({
+                    "type": "error",
+                    "message": "That xAI value looks like a key ID, not an "
+                               "API key - real keys start with 'xai-'. Copy "
+                               "the full key from console.x.ai and save it "
+                               "again."})
+                break
+            swap.clear()
+            if settings["provider"] == "xai":
+                url = f"{XAI_REALTIME_URL}?model={settings['model']}"
+                headers = {"Authorization": "Bearer " + settings["key"]}
+                async with websockets.connect(
+                        url, additional_headers=headers,
+                        max_size=1 << 24, open_timeout=15) as upstream:
+                    await upstream.send(json.dumps({
+                        "type": "session.update", "session": {
+                            "voice": settings["voice"],
+                            "instructions": settings["persona"],
+                            "turn_detection": {"type": "server_vad",
+                                               "silence_duration_ms": 700},
+                            "audio": {
+                                "input": {"format": {"type": "audio/pcm",
+                                                     "rate": 24000},
+                                          "transport": "json"},
+                                "output": {"format": {"type": "audio/pcm",
+                                                      "rate": 24000},
+                                           "transport": "json"},
+                            }}}))
+                    await client.send_json({"type": "ready",
+                                            "provider": "xai",
+                                            "input_rate": 24000,
+                                            "output_rate": 24000})
+                    swapped = await _live_pump(
+                        client, upstream, _xai_event, last_audio,
+                        lambda b64: json.dumps(
+                            {"type": "input_audio_buffer.append",
+                             "audio": b64}), swap=swap)
+            else:
+                agent_id = await asyncio.to_thread(_ensure_eleven_agent,
+                                                   settings)
+                url = f"{ELEVEN_CONVAI_URL}?agent_id={agent_id}"
+                headers = {"xi-api-key": settings["key"]}
+                async with websockets.connect(
+                        url, additional_headers=headers,
+                        max_size=1 << 24, open_timeout=15) as upstream:
+                    await client.send_json({"type": "ready",
+                                            "provider": "elevenlabs",
+                                            "input_rate": 16000,
+                                            "output_rate": 16000})
+                    swapped = await _live_pump(
+                        client, upstream, _eleven_event, last_audio,
+                        lambda b64: json.dumps(
+                            {"user_audio_chunk": b64}), swap=swap)
+            if not swapped:
+                break
+            # Hot swap: the provider leg just closed; tell the renderer the
+            # line is switching, forgive the gap on the silence clock, and
+            # reconnect with the freshly saved settings.
+            last_audio[0] = time.time()
+            await client.send_json({"type": "switching"})
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -2483,14 +2549,18 @@ async def live_voice(client: WebSocket):
         except Exception:
             pass
     finally:
+        _live_swaps.discard(swap)
         try:
             await client.close()
         except Exception:
             pass
 
 
-async def _live_pump(client, upstream, translate, last_audio, wrap_audio):
-    """Three tasks: mic frames up, provider events down, silence watchdog."""
+async def _live_pump(client, upstream, translate, last_audio, wrap_audio,
+                     swap=None):
+    """Three tasks: mic frames up, provider events down, silence watchdog.
+    A fourth waits on the hot-swap event; returns True when that one fired
+    so the caller can reconnect the provider leg mid-call."""
     async def uplink():
         while True:
             message = await client.receive()
@@ -2526,10 +2596,16 @@ async def _live_pump(client, upstream, translate, last_audio, wrap_audio):
                 await client.send_json({"type": "closed", "reason": "silence"})
                 return
 
-    tasks = [asyncio.create_task(coro())
+    tasks = [asyncio.create_task(coro(), name=coro.__name__)
              for coro in (uplink, downlink, watchdog)]
+    if swap is not None:
+        async def swapwait():
+            await swap.wait()
+        tasks.append(asyncio.create_task(swapwait(), name="swapwait"))
     try:
-        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        done, _ = await asyncio.wait(tasks,
+                                     return_when=asyncio.FIRST_COMPLETED)
+        return any(task.get_name() == "swapwait" for task in done)
     finally:
         for task in tasks:
             task.cancel()

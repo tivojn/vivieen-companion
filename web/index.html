@@ -2061,14 +2061,29 @@ async function startLiveTalk(){
       session.agentText=m.final?m.text:session.agentText+m.text;
       setCaption(session.agentText);
     }else if(m.type==='interrupt')liveFlush(session);
+    else if(m.type==='switching'){
+      // Provider leg is reconnecting with new settings; the line stays up.
+      liveFlush(session);
+      setStatus('switching live voice…','busy');
+    }
     else if(m.type==='error'){setCaption('(live talk: '+m.message+')');stopLiveTalk('error');}
     else if(m.type==='closed')stopLiveTalk(m.reason||'ended');
   };
   ws.onclose=()=>{if(LIVE===session)stopLiveTalk('ended');};
 }
 async function liveStartMic(session,rate){
-  session.stream=await navigator.mediaDevices.getUserMedia({audio:{
-    channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+  // Re-entrant: a hot swap (provider/voice change mid-call) sends a fresh
+  // 'ready', possibly at a different sample rate. Keep the mic stream,
+  // rebuild the capture context only when the rate actually changes.
+  if(!session.stream)
+    session.stream=await navigator.mediaDevices.getUserMedia({audio:{
+      channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+  if(session.ctx){
+    if(session.micRate===rate)return;
+    try{session.cap&&session.cap.disconnect();}catch(e){}
+    try{session.ctx.close();}catch(e){}
+  }
+  session.micRate=rate;
   session.ctx=new AudioContext({sampleRate:rate});
   // A blob: module URL is blocked by the page CSP - the worklet is a
   // real same-origin file instead.

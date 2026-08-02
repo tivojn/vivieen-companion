@@ -373,6 +373,51 @@ class LiveVoiceTests(unittest.TestCase):
         self.assertTrue(masked["live"]["has_xai_api_key"])
         self.assertFalse(masked["live"]["has_eleven_api_key"])
 
+    def test_live_hot_fields_flag_only_live_talk_changes(self):
+        fields = self.app_module._live_hot_fields
+        base = {"live": {"provider": "xai", "xai_voice": "eve"}}
+        unrelated = {"live": {"provider": "xai", "xai_voice": "eve"},
+                     "llm": {"provider": "openai"}}
+        new_voice = {"live": {"provider": "xai", "xai_voice": "rex"}}
+        new_provider = {"live": {"provider": "elevenlabs",
+                                 "xai_voice": "eve"}}
+        self.assertEqual(fields(base), fields(unrelated))
+        self.assertNotEqual(fields(base), fields(new_voice))
+        self.assertNotEqual(fields(base), fields(new_provider))
+
+    def test_live_pump_reports_a_hot_swap(self):
+        """Setting the swap event mid-call makes the pump return True so
+        the bridge reconnects the provider leg without dropping the line."""
+        import asyncio
+        import time as clock
+        pump = self.app_module._live_pump
+
+        class FakeClient:
+            async def receive(self):
+                await asyncio.sleep(3600)
+
+            async def send_json(self, _):
+                pass
+
+        class FakeUpstream:
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                await asyncio.sleep(3600)
+
+            async def send(self, _):
+                pass
+
+        async def scenario():
+            swap = asyncio.Event()
+            asyncio.get_running_loop().call_later(0.05, swap.set)
+            return await pump(FakeClient(), FakeUpstream(),
+                              lambda payload: [], [clock.time()],
+                              lambda b64: b64, swap=swap)
+
+        self.assertTrue(asyncio.run(scenario()))
+
     def test_xai_events_translate_to_the_unified_stream(self):
         translate = self.app_module._xai_event
         self.assertEqual(
