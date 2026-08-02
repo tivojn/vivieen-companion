@@ -1629,6 +1629,17 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("h.y+=attend*cursorDir.y*0.6;", renderer)
         self.assertIn("h.r+=attend*cursorDir.x*0.12;", renderer)
 
+    def test_cmd_shift_9_is_desk_companion_mode(self):
+        # Owner, 2026-08-02: Cmd+Shift+9 puts her at the largest screen-
+        # fitting zoom, resting in the bottom-right corner above the Dock;
+        # Cmd+Shift+0 remains the untouched recovery layout.
+        main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
+        self.assertIn("const companion = 'CommandOrControl+Shift+9';", main)
+        self.assertIn("globalShortcut.register(companion, deskCompanionMode)", main)
+        self.assertIn("PET_BASE_SIZE, PET_NORMAL_MINIMUM, PET_ZOOM_RANGE.max, area", main)
+        self.assertIn("'CommandOrControl+Shift+0';", main)
+        self.assertIn("globalShortcut.register(accelerator, recoverCompanion)", main)
+
     def test_stillness_idle_docks_small_and_restores_on_wake(self):
         # Owner, 2026-08-02: the standing stillness idle used the full
         # docked pet size - a big cutout parked in the corner, reading as
