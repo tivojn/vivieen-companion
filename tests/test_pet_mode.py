@@ -53,7 +53,7 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("function petTapReaction", renderer)
         self.assertIn("cv.addEventListener('pointercancel'", renderer)
         # Drag must never start once push-to-talk is live.
-        self.assertIn("if(gesture&&!dragging&&!gesture.ptt&&", renderer)
+        self.assertIn("if(SHELL&&gesture&&!dragging&&!gesture.ptt&&", renderer)
 
     def test_head_press_drives_enconvo_voice_hotkey(self):
         # A held head presses EnConvo's right-Option voice hotkey for real
@@ -96,7 +96,7 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("stopRec()", stop)
         # canPetTalk no longer requires the hotkey bridge when unfollowed.
         marker = renderer.index("function canPetTalk")
-        window = renderer[marker:marker + 220]
+        window = renderer[marker:marker + 420]
         self.assertIn("monitorEnabled?", window)
         # The menu row reflects that both modes talk from the head.
         main = (ROOT / "electron" / "main.cjs").read_text()
@@ -141,7 +141,9 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("classList.toggle('chat-visible'", renderer)
         self.assertIn("chat-open.chat-visible #bar{opacity:1", renderer)
         self.assertIn("!classes.contains('chat-visible'))return false", renderer)
-        self.assertIn("if(now-lastHitSentAt>500){lastHitSentAt=now;SHELL.setPetHit(petHit);}", renderer)
+        self.assertIn("if(now-lastHitSentAt>500){lastHitSentAt=now;\n"
+                      "      if(SHELL&&typeof SHELL.setPetHit==='function')"
+                      "SHELL.setPetHit(petHit);}", renderer)
         # Live dictation: timesliced recording streams interim transcripts
         # into the input field through the configured dictation model.
         self.assertIn("rec.start(280)", renderer)
@@ -272,7 +274,7 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("function startLimbReaction", renderer)
         self.assertIn("drawLimbReaction(now);", renderer)
         self.assertIn("petTapReaction(part);", renderer)
-        self.assertIn("const part=active.part||'body';", renderer)
+        self.assertIn("let part=active.part||'body';", renderer)
         self.assertIn("M.body.reactions", renderer)
         self.assertIn("_publish_body_extras", export_source)
         self.assertIn("react_", export_source)
@@ -287,7 +289,7 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("function standingIdleActive", renderer)
         self.assertIn("STANDING_IDLE_AFTER_MS=10000", renderer)
         self.assertIn("if(standingIdleActive(now)){", renderer)
-        self.assertIn("DOUBLE_TAP_MS=450", renderer)
+        self.assertIn("DOUBLE_TAP_MS=IS_IOS?650:450", renderer)
         self.assertIn("function petDoubleTap", renderer)
         # The old anywhere-on-her dblclick walk handler must stay gone: it
         # fired alongside the part verbs, so a chest double-tap meant to
@@ -1685,6 +1687,29 @@ class PetMatteTests(unittest.TestCase):
         server = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
         self.assertEqual(server.count("_client_token(client)"), 2)
         self.assertIn("_client_token(request)", server)
+
+    def test_phone_talks_wechat_style_and_struts_in_frame(self):
+        # Owner design talk (2026-08-02): head-hold is a desk idiom. On the
+        # phone the mic toggle swaps the field for one big hold-to-talk bar
+        # (press records, release sends, slide up cancels unheard); finger
+        # double-taps get a wider window and the whole head owns the dance;
+        # a leg double-tap plays the walk take in place (catwalk) since
+        # there is no desktop to roam; captions are glass, capped at 30vh,
+        # dimmed while she speaks; feet keep a lane above the input row.
+        renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="talkbar"', renderer)
+        self.assertIn('id="micmode"', renderer)
+        self.assertIn("recDiscard=holdCancel;", renderer)
+        self.assertIn("if(recDiscard){", renderer)
+        self.assertIn("DOUBLE_TAP_MS=IS_IOS?650:450;", renderer)
+        self.assertIn("if(IS_IOS&&part==='head')part='hair';", renderer)
+        self.assertIn("function toggleWalkShow()", renderer)
+        self.assertIn("(part==='leg_l'||part==='leg_r')&&IS_IOS&&toggleWalkShow()",
+                      renderer)
+        self.assertIn("--caption-expanded-height:30vh", renderer)
+        self.assertIn("html.ios.her-speaking #her{opacity:.72}", renderer)
+        self.assertIn("if(!de.classList.contains('pet')&&!IS_IOS)return 0;",
+                      renderer)
 
     def test_motion_video_ships_hevc_twin_and_never_hangs_boot(self):
         # iOS WebKit cannot decode VP9-alpha webm, and an unsupported webm

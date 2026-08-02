@@ -4,6 +4,7 @@ struct CompanionView: View {
     @AppStorage("serverAddress") private var serverAddress = ""
     @AppStorage("pairingToken") private var pairingToken = ""
     @State private var showUnpair = false
+    @State private var homeKey = 0
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -11,6 +12,7 @@ struct CompanionView: View {
             // top edge and must never hide under the island. The bottom is
             // hers: the chat bar sits flush with the home indicator.
             CompanionWebView(address: serverAddress, token: pairingToken)
+                .id(homeKey)
                 .ignoresSafeArea(edges: .bottom)
             Button {
                 showUnpair = true
@@ -21,6 +23,7 @@ struct CompanionView: View {
                     .padding(10)
             }
             .confirmationDialog("Vivieen", isPresented: $showUnpair) {
+                Button("Back to Vivieen") { homeKey += 1 }
                 Button("Unpair from this Mac", role: .destructive) {
                     serverAddress = ""
                     pairingToken = ""

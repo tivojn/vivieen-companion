@@ -234,6 +234,31 @@ html[data-design=atelier] #monitorTip{border-radius:0;
   border-color:rgba(201,168,106,.3);background:rgba(22,20,17,.95)}
 html[data-design=atelier] #petBubble{border-radius:0;
   border-color:rgba(201,168,106,.32);background:rgba(22,20,17,.85)}
+/* ---- Pocket Mirror (iOS) ------------------------------------------------
+   Phone ergonomics: captions are frosted glass capped at her lower thigh
+   (her face and lip-sync stay visible while she speaks), the caption dims
+   during speech and brightens for re-reading, and the WeChat-style talk
+   bar replaces head-holding as the advertised way to speak. */
+html.ios #bar{padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));background:none}
+html.ios #log,html.ios #row{width:100%}
+html.ios #her{--caption-expanded-height:30vh;font-size:15px;
+  background:rgba(8,10,13,.55);transition:max-height 400ms cubic-bezier(.22,1,.36,1),opacity 300ms ease}
+html.ios.her-speaking #her{opacity:.72}
+html.ios #monitor{display:none}
+#micmode{display:none}
+html.ios #micmode{display:flex;flex:none;width:40px;height:40px;border-radius:50%;
+  align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.16);
+  background:rgba(255,255,255,.06);color:#cfd3da;padding:0}
+html.ios #micmode svg{width:19px;height:19px;fill:currentColor}
+html.ios.talk-mode #micmode{background:rgba(124,116,226,.28);border-color:rgba(124,116,226,.6)}
+#talkbar{display:none}
+html.ios.talk-mode #txt{display:none}
+html.ios.talk-mode #talkbar{display:block;flex:1;height:44px;border-radius:12px;
+  border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);
+  color:#e8e9ec;font-size:15px;font-weight:600;letter-spacing:.02em;
+  touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+html.ios.talk-mode #talkbar.rec{background:rgba(124,116,226,.4);border-color:rgba(124,116,226,.8)}
+html.ios.talk-mode #talkbar.cancel{background:rgba(212,76,71,.4);border-color:rgba(212,76,71,.8)}
 </style></head><body>
 <div id="shell"><div id="drag"></div><div id="shellBtns">
   <button class="shellBtn" id="shellPin" title="Always on top">◇</button>
@@ -264,6 +289,8 @@ Settings</a>
     </button>
     <div id="manual">
       <button id="ptt" disabled hidden>Hold to talk</button>
+      <button id="micmode" type="button" aria-label="Switch between typing and talking" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg></button>
+      <button id="talkbar" type="button">Hold to talk</button>
       <textarea id="txt" rows="1" placeholder="Hold her head to talk, or type…" autocomplete="off" enterkeyhint="send"></textarea>
     </div>
   </div>
@@ -286,6 +313,7 @@ const PET_PREVIEW=new URLSearchParams(location.search).has('pet-preview');
 // must work from a finger. Window-level verbs (drag, roam, opacity) stay
 // desk-only.
 const IS_IOS=new URLSearchParams(location.search).has('ios');
+if(IS_IOS)document.documentElement.classList.add('ios');
 // A second on-desk avatar loads this same page at /c/<slug>/?side=left: it
 // idles against the LEFT screen edge while the active avatar keeps the right.
 const PET_SIDE=new URLSearchParams(location.search).get('side')==='left'?'left':'right';
@@ -652,6 +680,11 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshAss
 // "Hold her head to talk" wrapped mid-word (owner screenshot 2026-08-01).
 function fitTxtPlaceholder(){
   if(!txt)return;
+  if(typeof IS_IOS!=='undefined'&&IS_IOS){
+    // The mic toggle advertises talking on the phone; the field just types.
+    txt.placeholder='Type a message…';
+    return;
+  }
   const width=txt.clientWidth||0;
   txt.placeholder=width>=260?'Hold her head to talk, or type…':
     width>=150?'Hold head to talk…':'Type…';
@@ -1621,14 +1654,21 @@ function viewCrop(meta,width,height,forceView){
 let petLaneNow=0;
 function petBottomReserve(){
   const de=document.documentElement;
-  if(!de.classList.contains('pet'))return 0;
+  if(!de.classList.contains('pet')&&!IS_IOS)return 0;
   let want=0;
-  if(de.classList.contains('chat-open')){
+  if(IS_IOS){
+    // Feet above the input row, always visible and tappable. Only the
+    // input row is reserved - captions are glass and allowed to overlap
+    // her legs up to the lower thigh.
+    const rowBox=document.getElementById('row');
+    want=Math.max(want,(rowBox?rowBox.getBoundingClientRect().height:44)+16);
+  }
+  if(!IS_IOS&&de.classList.contains('chat-open')){
     const barBox=document.getElementById('bar');
     const barHeight=barBox?barBox.getBoundingClientRect().height:0;
     want=Math.max(want,barHeight+18);
   }
-  if(de.classList.contains('listening'))want=Math.max(want,88);
+  if(!IS_IOS&&de.classList.contains('listening'))want=Math.max(want,88);
   return want*cvScale();
 }
 function petCamera(meta,width,height,forceView){
@@ -1785,6 +1825,9 @@ function hideDomVideo(){
   domVideo.el=null;domVideo.kind=null;
 }
 function drawPetScene(now){
+  // Phone captions dim while she speaks (eyes on her lips, not the text)
+  // and brighten when she finishes, for re-reading.
+  if(IS_IOS)document.documentElement.classList.toggle('her-speaking',Boolean(speaking));
   ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
   ctx.clearRect(0,0,cv.width,cv.height);
   const motionKind=PET.roam&&ROAM.enabled?
@@ -1794,6 +1837,8 @@ function drawPetScene(now){
   if(moveShowActive(now)&&showDomVideo('move'))return;
   if(moveShowActive(now)&&drawMotionClip('move',now)){hideDomVideo();return;}
   if(moveShowUntil&&now>=moveShowUntil)moveShowUntil=0;
+  if(walkShowActive(now)&&drawMotionClip('walk',now)){hideDomVideo();return;}
+  if(walkShowUntil&&now>=walkShowUntil)walkShowUntil=0;
   if(standingIdleActive(now)){
     // She settles in her bottom corner above the Dock and leans on the screen
     // edge, like a colleague stepping aside; the window docks once per
@@ -1856,7 +1901,7 @@ function syncPetEngagement(now=performance.now()){
 let lastFrameAt=0,lastRectsAt=0;
 function frameInterval(now){
   const lively=speaking||recording||dragging||gesture||REACT||
-    externalAudio.active||now<moveShowUntil||
+    externalAudio.active||now<moveShowUntil||now<walkShowUntil||
     (ROAM.enabled&&ROAM.mode==='walk');
   if(lively)return 1000/(powerOnBattery?30:60)-2;
   // Clip mode: the compositor is playing the video; this loop only runs
@@ -1891,7 +1936,7 @@ function loop(now){
   // attention brings the live standing avatar straight back. An OPEN chat
   // bar is not attention by itself - head-talk leaves it open for follow-ups
   // and she must still step aside - but typing in it is.
-  if(petHit||speaking||recording||dragging||REACT||gesture||now<moveShowUntil||
+  if(petHit||speaking||recording||dragging||REACT||gesture||now<moveShowUntil||now<walkShowUntil||
      (document.hasFocus()&&document.activeElement===txt)||txt.value.trim())lastEngagedAt=now;
   const ts=now/1000;
   lvl=lvl*0.55+level()*0.45;
@@ -2278,6 +2323,15 @@ async function startRec(force=false){
   };
   rec.onstop=async()=>{
     stream.getTracks().forEach(t=>t.stop());
+    if(recDiscard){
+      // Slide-up cancel on the talk bar: the take dies here, nothing is
+      // transcribed, nothing is sent.
+      recDiscard=false;
+      closeDictationStream();
+      txt.value='';autoSizeTxt();
+      setStatus('ready','on');ptt.disabled=monitorEnabled;
+      return;
+    }
     const blob=new Blob(chunks,{type:rec.mimeType||'audio/webm'});
     if(blob.size<3000){
       closeDictationStream();
@@ -2716,7 +2770,10 @@ function petBodyPart(x,y){
    the box and stamps the tile; first and last states ARE the plate. */
 let REACT=null;
 let lastEngagedAt=performance.now(),lastTap={part:'',at:0},roamHoverStop=0,idleDocked=false;
-const STANDING_IDLE_AFTER_MS=10000,ROAM_HOVER_STOP_MS=260,DOUBLE_TAP_MS=450;
+// Fingers double-tap slower than mice - 450ms read as two singles on the
+// phone and the hair dance "didn't respond" (owner, 2026-08-02).
+const STANDING_IDLE_AFTER_MS=10000,ROAM_HOVER_STOP_MS=260,
+  DOUBLE_TAP_MS=IS_IOS?650:450;
 /* Double taps are the deliberate verbs: legs start the Horizon Walk, the
    chest raises opacity, a foot lowers it. Returns true when the part had a
    double-tap action, so the second tap never also fires a reaction. */
@@ -2740,8 +2797,25 @@ function toggleMoveShow(){
   moveShowUntil=now+seconds*4000;
   return true;
 }
+/* Catwalk: on the phone there is no desktop to roam, so a leg double-tap
+   plays the same office-walk take in place - a short strut on her own
+   stage, then back to standing (owner design talk, 2026-08-02). */
+let walkShowUntil=0;
+function walkShowActive(now=performance.now()){
+  return Boolean(MOTION.walk&&!PET.roam&&now<walkShowUntil);
+}
+function toggleWalkShow(){
+  const now=performance.now();
+  if(walkShowActive(now)){walkShowUntil=0;return true;}
+  if(!MOTION.walk)return false;
+  const clip=MOTION.walk;
+  const seconds=Math.max(2,(Number(clip.frames)||1)/Math.max(1,Number(clip.fps)||24));
+  walkShowUntil=now+seconds*3000;
+  return true;
+}
 function petDoubleTap(part){
   if(part==='hair'&&toggleMoveShow())return true;
+  if((part==='leg_l'||part==='leg_r')&&IS_IOS&&toggleWalkShow())return true;
   if((part==='leg_l'||part==='leg_r')&&MOTION.walk&&
      SHELL&&typeof SHELL.setPetRoam==='function'){
     Promise.resolve(SHELL.setPetRoam(true))
@@ -2852,7 +2926,10 @@ cv.addEventListener('pointerup',event=>{
   if(!active)return;
   if(active.ptt){stopPetTalk();return;}
   if(performance.now()-active.t0<=TAP_MS){
-    const part=active.part||'body';
+    let part=active.part||'body';
+    // A fingertip cannot aim at the hair strip; on the phone the whole
+    // head owns the double-tap dance.
+    if(IS_IOS&&part==='head')part='hair';
     const now=performance.now();
     if(lastTap.part===part&&now-lastTap.at<=DOUBLE_TAP_MS&&petDoubleTap(part)){
       lastTap={part:'',at:0};
@@ -2861,6 +2938,7 @@ cv.addEventListener('pointerup',event=>{
     // Any tap off the hair ends a running move show (the hair keeps its
     // double-tap toggle without the first tap eating the performance).
     if(moveShowActive(now)&&part!=='hair')moveShowUntil=0;
+    if(walkShowActive(now)&&part!=='leg_l'&&part!=='leg_r')walkShowUntil=0;
     lastTap={part,at:now};
     petTapReaction(part);
   }
@@ -2964,6 +3042,56 @@ monitorButton.addEventListener('click',async()=>{
 });
 ptt.addEventListener('mousedown',()=>startRec());
 addEventListener('mouseup',stopRec);
+/* ---- Pocket Mirror talk bar (iOS) --------------------------------------
+   WeChat idiom: the mic toggle swaps the field for one big hold-to-talk
+   bar. Press records, release sends, slide UP past the threshold cancels.
+   recDiscard makes the cancel real: the take is dropped unheard. */
+let recDiscard=false;
+if(IS_IOS){
+  const micmode=document.getElementById('micmode');
+  const talkbar=document.getElementById('talkbar');
+  const setTalkMode=on=>{
+    document.documentElement.classList.toggle('talk-mode',on);
+    micmode.setAttribute('aria-pressed',String(on));
+    if(!on)talkbar.classList.remove('rec','cancel');
+  };
+  micmode.addEventListener('click',
+    ()=>setTalkMode(!document.documentElement.classList.contains('talk-mode')));
+  let holdY=0,holdCancel=false;
+  const CANCEL_LIFT_PX=70;
+  talkbar.addEventListener('pointerdown',event=>{
+    event.preventDefault();
+    holdY=event.clientY;holdCancel=false;recDiscard=false;
+    try{talkbar.setPointerCapture(event.pointerId);}catch(error){}
+    talkbar.classList.add('rec');
+    document.documentElement.classList.add('listening');
+    startRec(true);
+  });
+  talkbar.addEventListener('pointermove',event=>{
+    if(!recording)return;
+    const lifted=holdY-event.clientY>CANCEL_LIFT_PX;
+    if(lifted!==holdCancel){
+      holdCancel=lifted;
+      talkbar.classList.toggle('cancel',lifted);
+      talkbar.textContent=lifted?'Release to cancel':'Hold to talk';
+    }
+  });
+  const endHold=()=>{
+    talkbar.classList.remove('rec','cancel');
+    talkbar.textContent='Hold to talk';
+    recDiscard=holdCancel;holdCancel=false;
+    stopRec();
+  };
+  talkbar.addEventListener('pointerup',endHold);
+  talkbar.addEventListener('pointercancel',endHold);
+  // iOS auto-scrolls the page to keep a focused field visible, which
+  // shoves her head off the top and leaves the page shifted after the
+  // keyboard goes away. The stage never legitimately scrolls - pin it.
+  addEventListener('scroll',()=>{if(scrollY||scrollX)scrollTo(0,0);});
+  document.addEventListener('focusout',()=>setTimeout(()=>scrollTo(0,0),60));
+  if(window.visualViewport)
+    visualViewport.addEventListener('resize',()=>{scrollTo(0,0);fitTxtPlaceholder();});
+}
 addEventListener('keydown',e=>{if(!monitorEnabled&&e.code==='Space'&&document.activeElement!==txt&&!e.repeat){
   e.preventDefault();startRec();}});
 addEventListener('keyup',e=>{if(!monitorEnabled&&e.code==='Space'&&document.activeElement!==txt){
