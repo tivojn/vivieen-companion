@@ -441,12 +441,15 @@ function defaultState() {
     enconvoFollowDefaultVersion: 1,
     petMode: true,
     petOpacity: 1,
-    petView: 'half',
+    // Full body out of the box: the half view read as "her legs are
+    // missing" on a fresh install, and the feet/leg click affordances
+    // (dim, walk) need the whole figure on screen (owner, 2026-08-02).
+    petView: 'full',
     // 60% across the board: the full-size character crowded the desktop,
     // and 60% keeps the 720p-capped animation frames near 1:1 on screen.
     petZoom: 0.6,
     petRoamZoom: 0.6,
-    appearanceDefaultVersion: 3,
+    appearanceDefaultVersion: 4,
     petClickThrough: true,
     petLocked: false,
     petRoam: false,
@@ -477,6 +480,13 @@ function loadState() {
     if (Number(saved.appearanceDefaultVersion || 0) < 3) {
       next.petClickThrough = true;
       next.appearanceDefaultVersion = 3;
+    }
+    // v4 (2026-08-02): whole figure by default. The 'half' view on a new
+    // install looked like a bug ("legs are missing") and hid the feet/leg
+    // click targets. Still a per-user choice in the View menu afterwards.
+    if (Number(saved.appearanceDefaultVersion || 0) < 4) {
+      next.petView = 'full';
+      next.appearanceDefaultVersion = 4;
     }
     next.petOpacity = Math.max(0, Math.min(1, Number(next.petOpacity) || 0));
     next.petZoom = clampPetZoom(next.petZoom, PET_ZOOM_RANGE);
@@ -1894,6 +1904,10 @@ function recoverCompanion() {
   if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
   // Reset the zoom before anything re-applies it: keeping the current size
   // once "recovered" a pinch-blown window to a spot still off every edge.
+  // Recovery is the safe reset: whole figure, and a zoom that provably
+  // fits this display - blind zoom=1 (560x760) overflowed short screens
+  // now that enableLargerThanScreen removed the OS clamp.
+  state.petView = 'full';
   state.petZoom = 1;
   if (state.petRoam) {
     state.petRoam = false;
@@ -1905,6 +1919,10 @@ function recoverCompanion() {
   state.petLocked = false;
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const area = display.workArea;
+  state.petZoom = clampPetZoom(
+    fitPetZoomToArea(
+      PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom, area, PET_DOCK_MARGIN),
+    PET_ZOOM_RANGE);
   const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);
   mainWindow.setBounds(dockedPetBounds(size, area, PET_DOCK_MARGIN));
   state.bounds = mainWindow.getBounds();
