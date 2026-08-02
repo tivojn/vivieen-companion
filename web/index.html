@@ -324,6 +324,16 @@ html.ios #thread .msg img,html.ios #thread .msg video{display:block;
 html.ios #thread .msg pre{overflow-x:auto;padding:8px 10px;border-radius:8px;
   background:#171a20;border:1px solid #262b33}
 html.ios #thread .msg a{color:#aeb7ff}
+/* ChatGPT-style: the thread scrolls like any messenger, and when you're
+   away from the newest message a ↓ pill floats above the bar - one tap
+   returns to the freshest reply, fully in view. */
+#threaddown{display:none}
+html.ios #threaddown.on{display:flex;position:fixed;right:16px;
+  bottom:calc(104px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:9;
+  width:40px;height:40px;border-radius:50%;align-items:center;justify-content:center;
+  background:rgba(24,26,32,.85);border:1px solid rgba(255,255,255,.2);color:#e8eaee;
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+#threaddown svg{width:18px;height:18px;fill:currentColor}
 /* Stage mode: a rail performance (dance, rest, closeup, zoom) brings HER
    to the front - the thread bows out and returns when the show ends. */
 html.ios.stage-mode #thread{opacity:0}
@@ -392,6 +402,7 @@ html.ios #zoombox input{width:100%;flex:1}
 </div>
 <div id="thread"></div>
 <div id="agentsheet"><div id="agentlist"></div></div>
+<button id="threaddown" type="button" aria-label="Jump to newest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16.5 4.5 9l1.4-1.4L12 13.7l6.1-6.1L19.5 9 12 16.5z"/></svg></button>
 <div id="zoombox">
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12z"/></svg><input id="zoomrange" type="range" min="60" max="600" step="5" value="100" aria-label="Avatar zoom"></div>
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2s6 7.1 6 12a6 6 0 0 1-12 0c0-4.9 6-12 6-12zm0 16a4 4 0 0 0 4-4c0-.6-.1-1.2-.4-1.9L8.4 15.3A4 4 0 0 0 12 18z"/></svg><input id="alpharange" type="range" min="25" max="100" step="5" value="100" aria-label="Avatar opacity"></div>
@@ -3189,18 +3200,40 @@ function threadMedia(card){
     }
   });
 }
+function threadNearBottom(container){
+  return container.scrollHeight-container.scrollTop-container.clientHeight<70;
+}
+function threadToBottom(smooth){
+  const container=document.getElementById('thread');
+  container.scrollTo({top:container.scrollHeight,
+    behavior:smooth?'smooth':'auto'});
+}
 function threadPush(role,text){
   if(!IS_IOS)return null;
   const value=String(text||'').trim();
   if(!value)return null;
   const container=document.getElementById('thread');
+  const stick=threadNearBottom(container);
   const card=document.createElement('div');
   card.className='msg '+(role==='user'?'user':'her');
   renderMarkdown(value,card);
   threadMedia(card);
+  // Media settle AFTER the push and grow the card - re-stick when each
+  // one loads or the newest reply ends up clipped (owner, 2026-08-02).
+  card.querySelectorAll('img,video').forEach(media=>{
+    const settle=()=>{if(threadNearBottom(container)||stick)threadToBottom(false);};
+    media.addEventListener('load',settle);
+    media.addEventListener('loadedmetadata',settle);
+  });
   container.append(card);
   while(container.children.length>40)container.firstChild.remove();
-  container.scrollTop=container.scrollHeight;
+  if(stick||role==='user'){
+    threadToBottom(false);
+    // Tall cards finish layout a beat later - settle twice or the last
+    // line hides behind the fold (owner, 2026-08-02).
+    requestAnimationFrame(()=>threadToBottom(false));
+    setTimeout(()=>threadToBottom(false),280);
+  }
   return card;
 }
 function petTapReaction(part){
@@ -3464,6 +3497,30 @@ if(IS_IOS){
     }catch(error){
       flashPrompt('Photo upload failed: '+String(error.message||error).slice(0,80));
     }
+  });
+  // A long-lived phone page across a Mac engine restart runs stale code
+  // (it faked the photo-upload failure, 2026-08-02). Watch the boot id;
+  // when the engine is reborn, be reborn with it.
+  let bootSeen='';
+  setInterval(async()=>{
+    try{
+      const h=await(await fetch('health',{cache:'no-store'})).json();
+      if(!h.boot)return;
+      if(!bootSeen)bootSeen=h.boot;
+      else if(bootSeen!==h.boot)location.reload();
+    }catch(e){}
+  },15000);
+  // Jump-to-newest: the pill appears whenever you scroll away from the
+  // freshest reply.
+  const threadBox=document.getElementById('thread');
+  const threadDown=document.getElementById('threaddown');
+  threadBox.addEventListener('scroll',()=>{
+    threadDown.classList.toggle('on',
+      threadBox.children.length>0&&!threadNearBottom(threadBox));
+  });
+  threadDown.addEventListener('click',()=>{
+    threadToBottom(true);
+    threadDown.classList.remove('on');
   });
   // The rail whispers: it fades to a quarter after a few idle seconds so
   // the thread owns the full width, and any touch wakes it (owner,

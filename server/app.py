@@ -46,6 +46,9 @@ async def lifespan(_application):
 app = FastAPI(title="Vivieen", lifespan=lifespan)
 APP_ID = "com.vivieen.companion"
 AUTH_TOKEN = os.environ.get("VIVIEEN_AUTH_TOKEN", "")
+# Changes every engine start: the pocket page compares it and reloads
+# itself, so a long-lived phone session can never run yesterday's code.
+BOOT_ID = secrets.token_hex(4)
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 SLUG_PATTERN = r"^[a-z0-9](?:[a-z0-9-]{0,62})$"
@@ -2174,7 +2177,8 @@ async def health():
         detail = block.get("voice") if kind == "tts" else block.get("model")
         return f"{block.get('provider')} / {detail or 'default'}"
 
-    return {"app_id": APP_ID, "warm": _state["warm"], "warming": _state["warming"],
+    return {"app_id": APP_ID, "boot": BOOT_ID,
+            "warm": _state["warm"], "warming": _state["warming"],
             "ollama": cfg["llm"].get("provider") == "ollama" and ok,
             "provider_ok": ok, "llm_ok": ok,
             "llm": label("llm"), "voice": label("tts"), "ears": label("stt"),
