@@ -1955,20 +1955,20 @@ function deskCompanionMode() {
                     bounds: mainWindow.getBounds() };
   applyPetOpacity(1);                      // both shortcuts mean FULLY visible
   const area = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
-  // FULL BODY at max zoom, positioned so only head, neck and a hint of
-  // shoulder remain on screen - the lower body hangs off the bottom
-  // edge, exactly like dragging her down into the corner (owner,
-  // 2026-08-02: never a cropped bust frame; drag her up and the rest of
-  // her is still there).
-  state.petZoom = PET_ZOOM_RANGE.max;
-  const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);
+  // POSITION ONLY - the original full-body overlay stays exactly as the
+  // user has it (view, zoom, window size all untouched; resizing past
+  // the screen just gets clamped by macOS and re-frames her). The
+  // shortcut is the DRAG: slide the window down into the right corner so
+  // the upper body keeps you company and the rest hangs below the
+  // screen. Drag her up and she is all still there.
+  const current = mainWindow.getBounds();
   const bounds = {
-    x: Math.round(area.x + area.width * 0.72 - size.width / 2),
-    y: Math.round(area.y + area.height * 0.08),
-    width: size.width,
-    height: size.height,
+    x: Math.round(Math.min(area.x + area.width - current.width * 0.55,
+                           area.x + area.width * 0.80 - current.width / 2)),
+    y: Math.round(area.y + area.height - current.height * 0.34),
+    width: current.width,
+    height: current.height,
   };
-  mainWindow.setMinimumSize(PET_NORMAL_MINIMUM.width, PET_NORMAL_MINIMUM.height);
   mainWindow.setBounds(bounds, false);
   state.bounds = { ...bounds };
   if (state.petOpacity > 0.001) mainWindow.showInactive();
