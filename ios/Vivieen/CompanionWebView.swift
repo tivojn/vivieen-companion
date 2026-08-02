@@ -128,6 +128,7 @@ struct CompanionWebView: UIViewRepresentable {
         configuration.userContentController.addUserScript(probe)
         configuration.userContentController.add(context.coordinator, name: "viv")
         configuration.userContentController.add(context.coordinator, name: "pip")
+        configuration.userContentController.add(context.coordinator, name: "mic")
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.uiDelegate = context.coordinator
         webView.navigationDelegate = context.coordinator
@@ -146,6 +147,7 @@ struct CompanionWebView: UIViewRepresentable {
         webView.scrollView.bouncesZoom = false
         webView.scrollView.pinchGestureRecognizer?.isEnabled = false
         context.coordinator.pip.webView = webView
+        context.coordinator.mic.webView = webView
         DispatchQueue.main.async {
             context.coordinator.pip.attach(to: webView)
             removeInputAccessory(from: webView)
@@ -185,6 +187,7 @@ struct CompanionWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate,
                              WKScriptMessageHandler {
         let pip = PipDriver()
+        let mic = MicDriver()
         var pageURL: URL?
 
         func webView(_ webView: WKWebView,
@@ -211,6 +214,15 @@ struct CompanionWebView: UIViewRepresentable {
                 if body == "start" { pip.start() }
                 else if body == "stop" { pip.stop() }
                 else { pip.enqueue(dataURL: body) }
+                return
+            }
+            if message.name == "mic" {
+                guard let body = message.body as? String else { return }
+                if body.hasPrefix("start:") {
+                    mic.start(rate: Double(body.dropFirst(6)) ?? 16000)
+                } else if body == "stop" {
+                    mic.stop()
+                }
                 return
             }
             NSLog("[viv-web] %@", String(describing: message.body))

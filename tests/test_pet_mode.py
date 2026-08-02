@@ -1468,9 +1468,12 @@ class PetMatteTests(unittest.TestCase):
         renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn("session.sources.size>0||performance.now()<session.echoGuardUntil",
                       renderer)
-        self.assertIn("if(rms<0.09){session.ws.send(new ArrayBuffer(e.data.byteLength));return;}",
+        self.assertIn("if(guarded&&session.lastRms<0.09){", renderer)
+        self.assertIn("session.ws.send(new ArrayBuffer(data.byteLength));return;",
                       renderer)
-        self.assertIn("session.echoGuardUntil=performance.now()+350;", renderer)
+        # The guard opens when her audio ARRIVES - covering the playback
+        # race - and holds through a 450ms room tail.
+        self.assertIn("session.echoGuardUntil=Math.max(", renderer)
 
     def test_live_talk_rides_the_existing_speech_machinery(self):
         # Realtime conversation (2026-08-01): mic PCM streams to the server
@@ -2038,6 +2041,48 @@ class PocketBarAndToolsTests(unittest.TestCase):
         # The thread reads the stream rather than waiting for one blob.
         self.assertIn("response.body.getReader()", self.renderer)
         self.assertIn("work.addStep(event.text)", self.renderer)
+
+    def test_muted_means_muted_lips_included(self):
+        # No sound, no articulation - lips moving over silence read as a
+        # glitch, not a courtesy (owner, 2026-08-03).
+        self.assertIn("if(window.IOS_MUTED)return'sil';", self.renderer)
+
+    def test_live_talk_uses_the_native_microphone_bridge(self):
+        # WKWebView's getUserMedia in the Simulator is a MOCK device - a
+        # ~155Hz hum at 10% amplitude, never the real mic. "She can't hear
+        # me" was literally true: she was hearing a tone. AVAudioEngine is
+        # the real microphone on device AND in the Simulator.
+        self.assertIn("webkit.messageHandlers.mic", self.renderer)
+        self.assertIn("window.__vivMicData=", self.renderer)
+        self.assertIn("liveSendPcm(session,", self.renderer)
+        swift = (ROOT / "ios" / "Vivieen" / "MicDriver.swift").read_text()
+        self.assertIn("AVAudioEngine", swift)
+        self.assertIn("installTap", swift)
+        self.assertIn("AVAudioConverter", swift)
+        glue = (ROOT / "ios" / "Vivieen" / "CompanionWebView.swift").read_text()
+        self.assertIn('name: "mic"', glue)
+        self.assertIn('body.hasPrefix("start:")', glue)
+        # Hang-up also stops the native capture.
+        self.assertIn("webkit.messageHandlers.mic.postMessage('stop')",
+                      self.renderer)
+
+    def test_the_silence_hangup_measures_the_owner_not_the_line(self):
+        source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("LIVE_SILENCE_HANGUP_S = 15", source)
+        # Only a voice resets the clock: the phone streams continuously
+        # (zeroed frames while she speaks, room tone while nobody does) and
+        # counting those meant the quiet-line hangup could never fire.
+        self.assertIn("> 0.012", source)
+        # And her own speaker bleed must not look like a voice: the echo
+        # guard opens when audio ARRIVES, covering the playback race.
+        self.assertIn("session.echoGuardUntil=Math.max(", self.renderer)
+
+    def test_the_thread_never_crams_its_cards(self):
+        # flex:none, or a full thread SHRINKS every card to a sliver
+        # instead of scrolling (owner screenshot, 2026-08-03).
+        self.assertIn("flex:none;\n  width:100%", self.renderer)
+        # And an empty VAD turn - "…" - never earns a bubble.
+        self.assertIn("/[\\p{L}\\p{N}]/u.test(m.text)", self.renderer)
 
     def test_media_tools_never_inherit_the_engines_stdin(self):
         # ffmpeg and ffprobe read stdin; the engine's is a pipe nobody

@@ -469,7 +469,7 @@ class LiveVoiceTests(unittest.TestCase):
         source = open(os.path.join(ROOT, "server", "app.py"),
                       encoding="utf-8").read()
         self.assertIn('@app.websocket("/live/voice")', source)
-        self.assertIn("LIVE_SILENCE_HANGUP_S = 30", source)
+        self.assertIn("LIVE_SILENCE_HANGUP_S = 15", source)
         self.assertIn('{"type": "closed", "reason": "silence"}', source)
         self.assertIn('"type": "pong"', source)   # ElevenLabs keep-alive
         self.assertIn("def _ensure_eleven_agent", source)

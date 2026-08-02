@@ -2427,7 +2427,7 @@ async def live_worklet():
 
 XAI_REALTIME_URL = "wss://api.x.ai/v1/realtime"
 ELEVEN_CONVAI_URL = "wss://api.elevenlabs.io/v1/convai/conversation"
-LIVE_SILENCE_HANGUP_S = 30
+LIVE_SILENCE_HANGUP_S = 15
 
 
 # Live lines currently open. Saving a live-talk change in Settings sets
@@ -2610,7 +2610,14 @@ async def _live_pump(client, upstream, translate, last_audio, wrap_audio,
                 return
             data = message.get("bytes")
             if data:
-                last_audio[0] = time.time()
+                # Only a VOICE resets the silence clock. The phone streams
+                # continuously - zeroed frames while she speaks, room tone
+                # while nobody does - and counting those as "audio" meant
+                # the quiet-line hangup could never fire.
+                samples = np.frombuffer(data, dtype="<i2")
+                if samples.size and float(np.sqrt(np.mean(
+                        (samples.astype(np.float32) / 32768.0) ** 2))) > 0.012:
+                    last_audio[0] = time.time()
                 await upstream.send(wrap_audio(
                     base64.b64encode(data).decode("ascii")))
             elif message.get("text"):
