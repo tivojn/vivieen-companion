@@ -1917,11 +1917,7 @@ function recoverCompanion() {
 
 function installRecoveryShortcut() {
   const accelerator = 'CommandOrControl+Shift+0';
-  if (!globalShortcut.register(accelerator, () => {
-    companionHold = null;                  // stale hold never survives a reset
-    recoverCompanion();
-    applyPetOpacity(1);                    // both shortcuts mean FULLY visible
-  })) {
+  if (!globalShortcut.register(accelerator, recoverCompanion)) {
     writeBackendLog(`[shortcut unavailable] ${accelerator}\n`);
   }
   // Cmd+Shift+9: desk-companion mode - the avatar at its largest
@@ -1934,31 +1930,11 @@ function installRecoveryShortcut() {
   }
 }
 
-let companionHold = null;
 function deskCompanionMode() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  // Toggle: a second press hands back exactly what she was before.
-  if (companionHold) {
-    const hold = companionHold;
-    companionHold = null;
-    state.petView = hold.view;
-    state.petZoom = hold.zoom;
-    mainWindow.setBounds(hold.bounds, false);
-    state.bounds = { ...hold.bounds };
-    saveStateSoon();
-    broadcastState();
-    return;
-  }
   if (state.petRoam) applyPetRoam(false);
   preDockBounds = null;                    // explicit mode, nothing to restore
-  companionHold = { view: state.petView, zoom: state.petZoom,
-                    bounds: mainWindow.getBounds() };
-  applyPetOpacity(1);                      // both shortcuts mean FULLY visible
   const area = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
-  // The close-up: head, neck, a hint of shoulder - her resting at the
-  // right side of the desk, not the full figure (owner screenshot,
-  // 2026-08-02).
-  state.petView = 'bust';
   state.petZoom = fitPetZoomToArea(
     PET_BASE_SIZE, PET_NORMAL_MINIMUM, PET_ZOOM_RANGE.max, area);
   const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);
