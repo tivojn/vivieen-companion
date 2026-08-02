@@ -1920,31 +1920,6 @@ function installRecoveryShortcut() {
   if (!globalShortcut.register(accelerator, recoverCompanion)) {
     writeBackendLog(`[shortcut unavailable] ${accelerator}\n`);
   }
-  // Cmd+Shift+9: desk-companion mode - the avatar at its largest
-  // screen-fitting size, resting in the bottom-right corner above the
-  // Dock (owner, 2026-08-02: like her lying at the right side of the
-  // desk). Cmd+Shift+0 stays the untouched recovery layout.
-  const companion = 'CommandOrControl+Shift+9';
-  if (!globalShortcut.register(companion, deskCompanionMode)) {
-    writeBackendLog(`[shortcut unavailable] ${companion}\n`);
-  }
-}
-
-function deskCompanionMode() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (state.petRoam) applyPetRoam(false);
-  preDockBounds = null;                    // explicit mode, nothing to restore
-  const area = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
-  state.petZoom = fitPetZoomToArea(
-    PET_BASE_SIZE, PET_NORMAL_MINIMUM, PET_ZOOM_RANGE.max, area);
-  const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);
-  const bounds = dockedPetBounds(size, area, 0);
-  mainWindow.setMinimumSize(PET_NORMAL_MINIMUM.width, PET_NORMAL_MINIMUM.height);
-  mainWindow.setBounds(bounds, false);
-  state.bounds = { ...bounds };
-  if (state.petOpacity > 0.001) mainWindow.showInactive();
-  saveStateSoon();
-  broadcastState();
 }
 
 function openSettings() {
