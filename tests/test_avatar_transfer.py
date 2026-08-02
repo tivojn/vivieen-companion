@@ -133,6 +133,16 @@ class AvatarStoreTests(unittest.TestCase):
                 "https://github.com/tivojn/vivieen-companion/releases/download/"))
             self.assertGreater(item["bytes"], 100 * 1024 * 1024)
             self.assertTrue(item["blurb"])
+            # Cards show her before the download: face + full-body art.
+            self.assertTrue(item["face"].endswith(".jpg"))
+            self.assertTrue(item["body"].endswith(".png"))
+
+    def test_store_art_rejects_unknown_id_and_kind(self):
+        import asyncio
+        from fastapi import HTTPException
+        for bad in (("nobody", "face"), ("vvn", "keyframe")):
+            with self.assertRaises(HTTPException):
+                asyncio.run(server_app.api_avatar_store_art(*bad))
 
     def test_store_install_rejects_unknown_avatar(self):
         import asyncio

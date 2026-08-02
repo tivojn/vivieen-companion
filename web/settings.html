@@ -1615,6 +1615,12 @@ function storeCard(item) {
   const done = job && job.phase === 'done';
   const err = job && job.phase === 'error' ? job.error : '';
   return `<div class="card" data-store="${item.id}">
+    <div style="display:flex;gap:12px;margin-bottom:12px">
+      <img src="/api/avatar/store/art?id=${item.id}&kind=face" alt="${item.name} face"
+        style="width:104px;height:104px;object-fit:cover;border-radius:12px;border:1px solid var(--line)">
+      <img src="/api/avatar/store/art?id=${item.id}&kind=body" alt="${item.name} full body"
+        style="height:104px;border-radius:12px;border:1px solid var(--line);background:var(--press);padding:2px">
+    </div>
     <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
       <strong style="font-size:15px">${item.name}</strong>
       <span class="note">${storeMB(item.bytes)} · GitHub</span>
