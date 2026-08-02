@@ -224,6 +224,13 @@ def publish_pet_assets(slug, runtime_dir=None, log=print):
 def export(slug, dest, quality=92, states=blink.N_STATES, log=print,
            source_dir=None, manifest_data=None):
     d = source_dir or reg.adir(slug)
+    # Persistent, avatar-level assets (the body plates and motion takes)
+    # live in the avatar's HOME dir. A calibration recompose exports from
+    # a temporary stage that only holds keyframe+visemes - resolving body/
+    # motion against `d` there published runtimes with neither, so every
+    # facial rebuild silently stripped the full-body set (vvn, 2026-08-02;
+    # carol's 'body no longer attached' was this too).
+    home = reg.adir(slug)
     m = manifest_data or reg.read_manifest(slug)
     if not m or m.get("status") != "ready":
         raise ValueError(f"{slug} is not built yet")
@@ -265,7 +272,7 @@ def export(slug, dest, quality=92, states=blink.N_STATES, log=print,
         log=log,
     )
     body_meta = None
-    body_dir = os.path.join(d, "body")
+    body_dir = os.path.join(home, "body")
     body_manifest = os.path.join(body_dir, "body.json")
     if os.path.isfile(body_manifest):
         with open(body_manifest) as handle:
@@ -276,7 +283,7 @@ def export(slug, dest, quality=92, states=blink.N_STATES, log=print,
         body_meta["head_mask"] = "assets/head-mask.png"
         _publish_body_extras(body_dir, body_meta, dest, log)
         log("  full-body plate published")
-    motion_meta = _publish_motion(d, dest, log)
+    motion_meta = _publish_motion(home, dest, log)
 
     frames, names = {}, []
     for rt, shape in NAME_MAP.items():
