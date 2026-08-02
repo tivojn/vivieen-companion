@@ -1818,6 +1818,107 @@ async def api_avatar_import(archive: UploadFile = File(...)):
     return {"imported": True, **result}
 
 
+# ------------------------------------------------------------- avatar store
+# Ready-made companions hosted as GitHub release assets. The server does the
+# downloading so the browser never streams a 300 MB file through fetch; the
+# settings page polls /api/avatar/store for progress.
+AVATAR_STORE_BASE = ("https://github.com/tivojn/vivieen-companion"
+                     "/releases/download/avatar-store-v1/")
+AVATAR_STORE = [
+    {"id": "vvn", "name": "Vvn", "file": "Vvn.avtr", "bytes": 308302113,
+     "blurb": ("Compact starter companion - face, full body, office walk, "
+               "high-heel touch edge idle, and k-pop point dance, all in.")},
+    {"id": "vivieen", "name": "Vivieen", "file": "Vivieen.avtr",
+     "bytes": 448109330,
+     "blurb": ("The signature companion - a complete rig with every "
+               "animation set, ready for the desk the moment it lands.")},
+]
+_store_lock = threading.Lock()
+_store_jobs = {}
+STORE_BUSY_PHASES = ("downloading", "installing", "publishing")
+
+
+def _store_entry(item_id):
+    for item in AVATAR_STORE:
+        if item["id"] == item_id:
+            return item
+    return None
+
+
+def _store_install(item):
+    import urllib.request
+    key = item["id"]
+    handle = tempfile.NamedTemporaryFile(suffix=".avtr", delete=False)
+    temp = handle.name
+    try:
+        request = urllib.request.Request(
+            AVATAR_STORE_BASE + item["file"],
+            headers={"User-Agent": "vivieen-companion"})
+        with urllib.request.urlopen(request, timeout=60) as feed:
+            expect = int(feed.headers.get("Content-Length")
+                         or item["bytes"] or 0)
+            got = 0
+            while True:
+                chunk = feed.read(1 << 20)
+                if not chunk:
+                    break
+                got += len(chunk)
+                if got > MAX_AVTR_BYTES:
+                    raise ValueError("download exceeds the 4 GB limit")
+                handle.write(chunk)
+                with _store_lock:
+                    _store_jobs[key].update(
+                        phase="downloading",
+                        pct=min(90, int(got * 90 / expect)) if expect else 0)
+        handle.close()
+        with _store_lock:
+            _store_jobs[key].update(phase="installing", pct=92)
+        result = _import_avatar_archive(temp)
+        slug = result["slug"]
+        with _store_lock:
+            _store_jobs[key].update(phase="publishing", pct=96, slug=slug)
+        if result.get("status") == "ready":
+            ensure_runtime(slug, log=jlog(slug, "publishing store install"))
+        with _store_lock:
+            _store_jobs[key].update(phase="done", pct=100)
+    except Exception as error:
+        with _store_lock:
+            _store_jobs[key].update(phase="error", error=str(error))
+    finally:
+        handle.close()
+        if os.path.exists(temp):
+            os.unlink(temp)
+
+
+@app.get("/api/avatar/store")
+async def api_avatar_store():
+    with _store_lock:
+        jobs = {key: dict(value) for key, value in _store_jobs.items()}
+    return {"items": [
+        {**item, "url": AVATAR_STORE_BASE + item["file"],
+         "job": jobs.get(item["id"])}
+        for item in AVATAR_STORE]}
+
+
+class StoreInstall(BaseModel):
+    id: str
+
+
+@app.post("/api/avatar/store/install")
+async def api_avatar_store_install(request: StoreInstall):
+    item = _store_entry(request.id)
+    if not item:
+        raise HTTPException(404, "no such avatar in the store")
+    with _store_lock:
+        job = _store_jobs.get(item["id"])
+        if job and job.get("phase") in STORE_BUSY_PHASES:
+            return {"started": False, "job": dict(job)}
+        _store_jobs[item["id"]] = {"phase": "downloading", "pct": 0,
+                                   "error": "", "slug": ""}
+    threading.Thread(target=_store_install, args=(item,), daemon=True).start()
+    return {"started": True}
+
+
 @app.post("/api/avatar/delete")
 async def api_delete(b: Slug):
     r = reg()

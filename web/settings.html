@@ -727,6 +727,12 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
 
   <h2>Candidates</h2>
   <div class="grid" id="avatars"></div>
+
+  <h2>Avatar store</h2>
+  <p class="note" style="margin:-6px 0 12px">Ready-made companions, downloaded
+    straight from GitHub. Each one arrives complete — face, full body, walk,
+    edge idle, and move — and lands on the bench above.</p>
+  <div class="grid" id="avatar-store"></div>
 </section>
 
 <!-- ------------------------------------------------------------ MODELS -->
@@ -1591,6 +1597,61 @@ async function loadAvatars() {
   const busy = r.avatars.filter(a => a.status === 'building' || (a.job && !a.job.done));
   busy.forEach(a => tail(a.slug));
   if (busy.length) scheduleAvatarPoll(); else stopAvatarPoll();
+}
+
+// ---------------------------------------------------------- avatar store
+// Two ready-made .avtr companions served from GitHub release assets. The
+// server downloads and imports; this side just renders phases and polls
+// while anything is in flight.
+let STORE_TIMER = 0;
+const STORE_PREV = {};
+const storeMB = bytes => Math.round(bytes / 1048576) + ' MB';
+const STORE_LABEL = {downloading: 'Downloading', installing: 'Unpacking',
+                     publishing: 'Publishing'};
+
+function storeCard(item) {
+  const job = item.job || null;
+  const busy = job && STORE_LABEL[job.phase];
+  const done = job && job.phase === 'done';
+  const err = job && job.phase === 'error' ? job.error : '';
+  return `<div class="card" data-store="${item.id}">
+    <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+      <strong style="font-size:15px">${item.name}</strong>
+      <span class="note">${storeMB(item.bytes)} · GitHub</span>
+    </div>
+    <p class="note" style="margin:6px 0 12px">${item.blurb}</p>
+    ${busy ? `<div class="jobbox"><div class="note">${STORE_LABEL[job.phase]}… ${job.pct || 0}%</div>
+        <div class="bar"><i style="width:${job.pct || 0}%"></i></div></div>`
+      : done ? `<div class="note" style="color:var(--ok-text)">Installed — she's waiting on the bench above.</div>`
+      : `<button class="btn pri" data-get="${item.id}" type="button"
+           title="Download from GitHub and install — nothing else to do">Get ${item.name}</button>`}
+    ${err ? `<p class="note" style="color:var(--bad-text);margin-top:8px">${err}</p>` : ''}
+  </div>`;
+}
+
+async function loadStore() {
+  const r = await api('/api/avatar/store').catch(() => null);
+  if (!r || !r.items) return;
+  const box = $('#avatar-store');
+  if (!box) return;
+  box.innerHTML = r.items.map(storeCard).join('');
+  box.querySelectorAll('[data-get]').forEach(button => button.onclick = async () => {
+    button.disabled = true;
+    await api('/api/avatar/store/install', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: button.dataset.get})});
+    loadStore();
+  });
+  let busy = false, landed = false;
+  for (const item of r.items) {
+    const phase = item.job ? item.job.phase : '';
+    if (STORE_LABEL[phase]) busy = true;
+    if (phase === 'done' && STORE_PREV[item.id] !== 'done') landed = true;
+    STORE_PREV[item.id] = phase;
+  }
+  if (landed) loadAvatars();
+  clearTimeout(STORE_TIMER);
+  if (busy) STORE_TIMER = setTimeout(loadStore, 1000);
 }
 
 async function refreshAvatarCard(slug) {
@@ -3627,6 +3688,7 @@ async function boot() {
   $('#psys').value = CFG.persona.system || '';
   $('#pname').oninput = $('#psys').oninput = dirty;
   await Promise.all([loadAvatars(), refreshMediaDefaults(null, true)]);
+  loadStore();
   note('');
 }
 boot();
