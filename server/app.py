@@ -49,7 +49,10 @@ AUTH_TOKEN = os.environ.get("VIVIEEN_AUTH_TOKEN", "")
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 SLUG_PATTERN = r"^[a-z0-9](?:[a-z0-9-]{0,62})$"
-CSP = ("default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; "
+# img/media allow https so chat cards can show pictures and play video the
+# model links to; scripts stay same-origin only.
+CSP = ("default-src 'self'; img-src 'self' data: blob: https:; "
+       "media-src 'self' blob: https:; "
        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
        # 'self' does not cover the ws: scheme, and live dictation streams
        # over a local WebSocket to this same server.

@@ -34,6 +34,11 @@ canvas{width:100%;height:100%;display:block;
 #her:focus-visible{outline:1px solid #8b93a0;outline-offset:2px}
 #her .caption-summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #her .caption-markdown{display:grid;gap:.72em;overflow-wrap:anywhere}
+/* `display:grid` outranks the UA rule behind the hidden attribute, so the
+   folded caption drew BOTH the summary and the full markdown - every
+   reply looked doubled with its second copy clipped (owner screenshot,
+   2026-08-02). Hidden means hidden. */
+#her .caption-markdown[hidden],#her .caption-summary[hidden]{display:none}
 #her .caption-markdown h1,#her .caption-markdown h2,#her .caption-markdown h3,
 #her .caption-markdown h4,#her .caption-markdown h5,#her .caption-markdown h6{
   color:#fff;font-weight:680;line-height:1.22;letter-spacing:-.025em}
@@ -275,6 +280,37 @@ html.ios #rail button.on{background:rgba(124,116,226,.42);
   border-color:rgba(124,116,226,.8);color:#efeefe}
 html.ios #rail #rail-live.on{background:rgba(212,76,71,.5);
   border-color:rgba(212,76,71,.9);color:#ffe9e8}
+/* Pocket thread: the conversation stacks left-aligned above the input,
+   both voices as glass cards with full markdown - and media cards that
+   actually play. She is the BACKGROUND, full figure, dimmable via the
+   opacity slider - never cropped, never fighting the text (owner,
+   2026-08-02). Empty space passes taps through to her; scrolling works
+   from any card. */
+#thread{display:none}
+html.ios #thread{display:flex;flex-direction:column;justify-content:flex-end;
+  gap:8px;position:fixed;left:12px;right:64px;
+  top:calc(env(safe-area-inset-top,0px) + 40px);
+  bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:4;
+  overflow-y:auto;overflow-x:hidden;pointer-events:none;
+  -webkit-mask-image:linear-gradient(to bottom,transparent,#000 8%);
+  mask-image:linear-gradient(to bottom,transparent,#000 8%)}
+html.ios #thread .msg{pointer-events:auto;align-self:stretch;
+  width:100%;min-width:0;max-width:100%;box-sizing:border-box;
+  padding:9px 12px;border-radius:13px;
+  font-size:14.5px;line-height:1.5;color:#e9ecf1;overflow-wrap:anywhere;
+  overflow:hidden;background:rgba(12,14,18,.72);
+  border:1px solid rgba(255,255,255,.10);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+html.ios #thread .msg.user{background:rgba(63,60,112,.55);
+  border-color:rgba(124,116,226,.38)}
+html.ios #thread .msg img,html.ios #thread .msg video{display:block;
+  width:100%;max-width:100%;height:29vh;object-fit:contain;
+  background:#0a0c10;border-radius:9px;margin:4px 0}
+html.ios #thread .msg pre{overflow-x:auto;padding:8px 10px;border-radius:8px;
+  background:#171a20;border:1px solid #262b33}
+html.ios #thread .msg a{color:#aeb7ff}
+html.ios #log{display:none}
+html.ios #txt{font-size:16px}
 #toast{display:none}
 html.ios #toast{display:block;position:fixed;left:16px;right:16px;
   bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:8;
@@ -309,6 +345,7 @@ html.ios #zoombox input{width:100%;flex:1}
   <button id="rail-pip" type="button" aria-label="Picture in picture"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3V5zm2 2v10h14V7H5zm7 4h5v4h-5v-4z"/></svg></button>
   <button id="rail-zoom" type="button" aria-label="Zoom"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12zm-1 3h2v2h2v2h-2v2H9v-2H7V9h2V7z"/></svg></button>
 </div>
+<div id="thread"></div>
 <div id="zoombox">
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12z"/></svg><input id="zoomrange" type="range" min="60" max="600" step="5" value="100" aria-label="Avatar zoom"></div>
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2s6 7.1 6 12a6 6 0 0 1-12 0c0-4.9 6-12 6-12zm0 16a4 4 0 0 0 4-4c0-.6-.1-1.2-.4-1.9L8.4 15.3A4 4 0 0 0 12 18z"/></svg><input id="alpharange" type="range" min="25" max="100" step="5" value="100" aria-label="Avatar opacity"></div>
@@ -360,7 +397,15 @@ const PET_PREVIEW=new URLSearchParams(location.search).has('pet-preview');
 // must work from a finger. Window-level verbs (drag, roam, opacity) stay
 // desk-only.
 const IS_IOS=new URLSearchParams(location.search).has('ios');
-if(IS_IOS)document.documentElement.classList.add('ios');
+if(IS_IOS){
+  document.documentElement.classList.add('ios');
+  // iOS auto-zooms the page whenever a sub-16px input takes focus - THE
+  // hidden hand behind every 'giant video / clipped card / runaway mic'
+  // sighting today. The app is its own viewport; it never scales.
+  const viewportMeta=document.querySelector('meta[name="viewport"]');
+  if(viewportMeta)viewportMeta.content=
+    'width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no';
+}
 // A second on-desk avatar loads this same page at /c/<slug>/?side=left: it
 // idles against the LEFT screen edge while the active avatar keeps the right.
 const PET_SIDE=new URLSearchParams(location.search).get('side')==='left'?'left':'right';
@@ -2218,10 +2263,17 @@ async function startLiveTalk(){
       document.documentElement.classList.add('listening');
       if(SHELL&&typeof SHELL.setLiveTalk==='function')SHELL.setLiveTalk(true);
     }else if(m.type==='audio')livePlay(session,m.data,m.rate||24000);
-    else if(m.type==='user_text'&&m.text)elYou.textContent=m.text;
+    else if(m.type==='user_text'&&m.text){
+      elYou.textContent=m.text;
+      if(IS_IOS){
+        if(liveUserCard)liveUserCard.textContent=m.text;
+        else liveUserCard=threadPush('user',m.text);
+      }
+    }
     else if(m.type==='agent_text'&&m.text){
       session.agentText=m.final?m.text:session.agentText+m.text;
       setCaption(session.agentText);
+      if(m.final){threadPush('her',m.text);liveUserCard=null;}
     }else if(m.type==='interrupt')liveFlush(session);
     else if(m.type==='switching'){
       // Provider leg is reconnecting with new settings; the line stays up.
@@ -2361,6 +2413,7 @@ async function speak(b64,tr){
 
 async function turn(text,spoken=false){
   ptt.disabled=true;elYou.textContent=text;setCaption('');
+  threadPush('user',text);
   setStatus('thinking','busy');
   history.push({role:'user',content:text});
   let llmRoute=null;
@@ -2374,9 +2427,11 @@ async function turn(text,spoken=false){
     // monitor is lip-syncing EnConvo; only unspoken chat turns defer to it.
     if(monitorEnabled&&!spoken){renderMonitorStatus();return;}
     setCaption(r.text);
+    threadPush('her',r.text);
     setStatus('speaking','on');
     await speak(r.audio,r.track);
-  }catch(e){setCaption('(something broke: '+e.message+')');}
+  }catch(e){setCaption('(something broke: '+e.message+')');
+    threadPush('her','(something broke: '+e.message+')');}
   if(monitorEnabled)renderMonitorStatus();else setStatus(routedStatus(llmRoute),'on');
   ptt.disabled=monitorEnabled;
 }
@@ -3044,6 +3099,35 @@ function facePlayAt(clientX,clientY){
   }else if(region==='mouth')FACEPLAY.smileUntil=now+950;
   return true;
 }
+/* ---- pocket thread ---------------------------------------------------- */
+let liveUserCard=null;
+function threadMedia(card){
+  card.querySelectorAll('a').forEach(anchor=>{
+    const href=anchor.getAttribute('href')||'';
+    if(/\.(mp4|mov|m4v|webm)([?#]|$)/i.test(href)){
+      const video=document.createElement('video');
+      video.controls=true;video.playsInline=true;video.preload='metadata';
+      video.src=href;anchor.replaceWith(video);
+    }else if(/\.(png|jpe?g|gif|webp)([?#]|$)/i.test(href)){
+      const image=document.createElement('img');
+      image.loading='lazy';image.src=href;anchor.replaceWith(image);
+    }
+  });
+}
+function threadPush(role,text){
+  if(!IS_IOS)return null;
+  const value=String(text||'').trim();
+  if(!value)return null;
+  const container=document.getElementById('thread');
+  const card=document.createElement('div');
+  card.className='msg '+(role==='user'?'user':'her');
+  renderMarkdown(value,card);
+  threadMedia(card);
+  container.append(card);
+  while(container.children.length>40)container.firstChild.remove();
+  container.scrollTop=container.scrollHeight;
+  return card;
+}
 function petTapReaction(part){
   const now=performance.now();
   if(now-lastTapAt<700)return;
@@ -3372,8 +3456,12 @@ if(IS_IOS){
   // keyboard goes away. The stage never legitimately scrolls - pin it.
   addEventListener('scroll',()=>{if(scrollY||scrollX)scrollTo(0,0);});
   document.addEventListener('focusout',()=>setTimeout(()=>scrollTo(0,0),60));
-  if(window.visualViewport)
+  if(window.visualViewport){
     visualViewport.addEventListener('resize',()=>{scrollTo(0,0);fitTxtPlaceholder();});
+    // The keyboard also pans the VISUAL viewport, which slid the bar and
+    // rail sideways off the glass; snap the layout scroll back each time.
+    visualViewport.addEventListener('scroll',()=>{if(scrollX||scrollY)scrollTo(0,0);});
+  }
 }
 addEventListener('keydown',e=>{if(!monitorEnabled&&e.code==='Space'&&document.activeElement!==txt&&!e.repeat){
   e.preventDefault();startRec();}});

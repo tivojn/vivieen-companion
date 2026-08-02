@@ -46,6 +46,21 @@ struct CompanionWebView: UIViewRepresentable {
                 try { window.webkit.messageHandlers.viv.postMessage('CLICKERR ' + x); } catch (y) {}
               }
             }, true);
+            setInterval(function() {
+              try {
+                var t = document.getElementById('thread');
+                if (!t || !t.children.length) return;
+                var v = t.querySelector('video');
+                var r = t.getBoundingClientRect();
+                var c = t.lastElementChild.getBoundingClientRect();
+                window.webkit.messageHandlers.viv.postMessage('THREAD n=' + t.children.length +
+                  ' rect=' + Math.round(r.left) + ',' + Math.round(r.top) + ',' + Math.round(r.width) +
+                  ' card=' + Math.round(c.left) + ',' + Math.round(c.width) +
+                  ' sl=' + t.scrollLeft +
+                  (v ? ' vidH=' + Math.round(v.getBoundingClientRect().height) +
+                       ' vidCSS=' + getComputedStyle(v).maxHeight + '/' + getComputedStyle(v).height : ' novid'));
+              } catch (e) {}
+            }, 4000);
             document.addEventListener('pointerdown', function(e) {
               try { window.webkit.messageHandlers.viv.postMessage('PDOWN ' +
                 (e.target.closest('button') ? e.target.closest('button').id : e.target.tagName) +
@@ -104,13 +119,13 @@ struct CompanionWebView: UIViewRepresentable {
         webView.scrollView.pinchGestureRecognizer?.isEnabled = false
         context.coordinator.pip.webView = webView
         DispatchQueue.main.async { context.coordinator.pip.attach(to: webView) }
-        load(into: webView)
+        load(into: webView, coordinator: context.coordinator)
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
-    private func load(into webView: WKWebView) {
+    private func load(into webView: WKWebView, coordinator: Coordinator) {
         guard var components = URLComponents(string: address),
               let host = components.host else { return }
         // The decoupled web view, not the pet overlay: chat, hold-to-talk,
@@ -119,6 +134,7 @@ struct CompanionWebView: UIViewRepresentable {
         components.path = "/"
         components.query = "view=full&ios=1"
         guard let page = components.url else { return }
+        coordinator.pageURL = page
         let cookie = HTTPCookie(properties: [
             .domain: host,
             .path: "/",
@@ -138,6 +154,19 @@ struct CompanionWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate,
                              WKScriptMessageHandler {
         let pip = PipDriver()
+        var pageURL: URL?
+
+        func webView(_ webView: WKWebView,
+                     didFailProvisionalNavigation navigation: WKNavigation!,
+                     withError error: Error) {
+            // The Mac's engine may still be restarting; a silently failed
+            // load left a STALE page rendered (three debugging rounds,
+            // 2026-08-02). Retry until she answers.
+            guard let pageURL else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                webView.load(URLRequest(url: pageURL))
+            }
+        }
 
         func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
             let path = webView.url?.path ?? "/"
