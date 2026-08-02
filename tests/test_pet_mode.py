@@ -1638,6 +1638,21 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("if (Number(saved.appearanceDefaultVersion || 0) < 3) {", main)
         self.assertIn("next.petClickThrough = true;", main)
 
+    def test_canvas_backing_store_is_capped_at_display_size(self):
+        # Companion mode made the window ~3000pt tall and the full-res
+        # backing store a ~27-megapixel canvas - the per-frame composite
+        # outran the frame budget and the mouth lagged the voice (owner,
+        # 2026-08-02). The backing store caps near the display's pixel
+        # size (off-screen body needs no pixels; on-screen stays 1:1) and
+        # every css<->canvas conversion goes through cvScale().
+        renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("function cvScale()", renderer)
+        self.assertIn("const back=Math.min(1,capW/(innerWidth*d),capH/(innerHeight*d));",
+                      renderer)
+        self.assertNotIn("x=Math.floor(pointer.x*ratio),y=Math.floor(pointer.y*ratio);"
+                         .replace("ratio", "devicePixelRatio"), renderer)
+        self.assertGreaterEqual(renderer.count("cvScale()"), 7)
+
     def test_cmd_shift_9_enlarges_and_places_without_framing(self):
         # Final semantics (owner, 2026-08-02, after a full rollback): the
         # view is NEVER touched - no bust, no crop. Cmd+Shift+9 raises the
