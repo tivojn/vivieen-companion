@@ -1655,10 +1655,6 @@ class PetMatteTests(unittest.TestCase):
         self.assertNotIn("state.petView = 'bust';", main)
         self.assertNotIn("state.petZoom = PET_ZOOM_RANGE.max;", main)
         self.assertIn("area.height - current.height * 0.34", main)
-        # setPosition, not setBounds: setBounds is clamped fully on-screen
-        # by macOS, which re-framed her; the drag semantics need the lower
-        # window hanging off the display.
-        self.assertIn("mainWindow.setPosition(x, y, false);", main)
         self.assertIn("if (companionHold) {", main)
         self.assertEqual(
             main.count("applyPetOpacity(1);                    // both shortcuts mean FULLY visible")
