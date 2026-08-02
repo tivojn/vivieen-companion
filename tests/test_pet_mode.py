@@ -1456,6 +1456,20 @@ class PetMatteTests(unittest.TestCase):
         self.assertLess(int(alpha[175, 35]), 220)
         self.assertGreater(int(alpha[165, 120]), 20)
 
+    def test_live_talk_does_not_answer_its_own_voice(self):
+        # Owner, 2026-08-02: speaker bleed re-entered the mic and the
+        # provider transcribed her own reply and answered it. While her
+        # audio is playing (plus a 350ms room tail), mic frames go up as
+        # SILENCE - the stream stays continuous for the server's VAD -
+        # unless the mic is decisively louder than bleed (rms >= 0.09),
+        # which is a real interruption and passes through for barge-in.
+        renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("session.sources.size>0||performance.now()<session.echoGuardUntil",
+                      renderer)
+        self.assertIn("if(rms<0.09){session.ws.send(new ArrayBuffer(e.data.byteLength));return;}",
+                      renderer)
+        self.assertIn("session.echoGuardUntil=performance.now()+350;", renderer)
+
     def test_live_talk_rides_the_existing_speech_machinery(self):
         # Realtime conversation (2026-08-01): mic PCM streams to the server
         # bridge as binary frames; provider audio plays through the SAME

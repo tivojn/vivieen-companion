@@ -2043,7 +2043,8 @@ async function startLiveTalk(){
   setStatus('connecting live…','busy');
   const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/live/voice');
   ws.binaryType='arraybuffer';
-  const session={ws,ctx:null,stream:null,cap:null,queueT:0,sources:new Set(),agentText:''};
+  const session={ws,ctx:null,stream:null,cap:null,queueT:0,sources:new Set(),
+    agentText:'',echoGuardUntil:0};
   LIVE=session;
   ws.onmessage=async e=>{
     if(LIVE!==session||typeof e.data!=='string')return;
@@ -2075,7 +2076,22 @@ async function liveStartMic(session,rate){
   const source=session.ctx.createMediaStreamSource(session.stream);
   session.cap=new AudioWorkletNode(session.ctx,'viv-live-capture');
   session.cap.port.onmessage=e=>{
-    if(LIVE===session&&session.ws.readyState===1)session.ws.send(e.data);
+    if(LIVE!==session||session.ws.readyState!==1)return;
+    // Echo guard: while her own voice is coming out of the speakers (and
+    // a short tail after), the mic hears her and the provider answers
+    // itself (owner, 2026-08-02). Send SILENCE during playback - the
+    // stream stays continuous for the server's VAD clock - unless the
+    // mic is decisively louder than speaker bleed, which is a real
+    // interruption and passes through for barge-in.
+    const guarded=session.sources.size>0||performance.now()<session.echoGuardUntil;
+    if(guarded){
+      const pcm=new Int16Array(e.data);
+      let sum=0;
+      for(let i=0;i<pcm.length;i+=4){const v=pcm[i]/32768;sum+=v*v;}
+      const rms=Math.sqrt(sum/Math.max(1,pcm.length>>2));
+      if(rms<0.09){session.ws.send(new ArrayBuffer(e.data.byteLength));return;}
+    }
+    session.ws.send(e.data);
   };
   source.connect(session.cap);
 }
@@ -2099,6 +2115,8 @@ function livePlay(session,b64,rate){
   src.onended=()=>{
     session.sources.delete(src);
     if(localSource===src)localSource=null;
+    // tail hangover: room echo outlives the buffer by a beat
+    session.echoGuardUntil=performance.now()+350;
     if(LIVE===session&&!session.sources.size){speaking=false;curV='sil';}
   };
   src.start(at);
