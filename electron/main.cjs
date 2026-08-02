@@ -704,7 +704,6 @@ function applyPetZoom(value) {
       mainWindow.setBounds(bounds, false);
       state.bounds = { ...bounds };
     }
-    reapplyCompanionPlacement();
   }
   saveStateSoon();
   broadcastState();
@@ -772,7 +771,6 @@ function applyPetZoomLive(payload) {
       petZoomGesture.anchor, PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);
     mainWindow.setBounds(bounds, false);
     state.bounds = { ...bounds };
-    reapplyCompanionPlacement();
   }
   if (phase !== 'end') {
     pushAppearanceState();
@@ -1937,26 +1935,6 @@ function installRecoveryShortcut() {
 }
 
 let companionHold = null;
-// The companion invariant: top ~34% of the window on screen, centered
-// toward the right. Re-applied after any zoom while the mode is active,
-// so resizing grows her DOWNWARD off-screen instead of re-centering a
-// window whose middle sits below the display (which cut her head off).
-function companionPlacement(size, area) {
-  return {
-    x: Math.round(Math.min(area.x + area.width - size.width * 0.55,
-                           area.x + area.width * 0.80 - size.width / 2)),
-    y: Math.round(area.y + area.height - size.height * 0.34),
-  };
-}
-function reapplyCompanionPlacement() {
-  if (!companionHold || !mainWindow || mainWindow.isDestroyed()) return false;
-  const area = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
-  const current = mainWindow.getBounds();
-  const spot = companionPlacement(current, area);
-  mainWindow.setPosition(spot.x, spot.y, false);
-  state.bounds = { ...spot, width: current.width, height: current.height };
-  return true;
-}
 function deskCompanionMode() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   // Toggle: a second press hands back exactly what she was before.
@@ -1984,12 +1962,14 @@ function deskCompanionMode() {
   // the upper body keeps you company and the rest hangs below the
   // screen. Drag her up and she is all still there.
   const current = mainWindow.getBounds();
-  const spot = companionPlacement(current, area);
+  const x = Math.round(Math.min(area.x + area.width - current.width * 0.55,
+                                area.x + area.width * 0.80 - current.width / 2));
+  const y = Math.round(area.y + area.height - current.height * 0.34);
   // setPosition, NOT setBounds: setBounds gets clamped fully on-screen by
   // macOS, which is exactly what a manual drag does not do - the drag
   // moves the window with its lower two-thirds hanging off the display.
-  mainWindow.setPosition(spot.x, spot.y, false);
-  state.bounds = { ...spot, width: current.width, height: current.height };
+  mainWindow.setPosition(x, y, false);
+  state.bounds = { x, y, width: current.width, height: current.height };
   if (state.petOpacity > 0.001) mainWindow.showInactive();
   saveStateSoon();
   broadcastState();
@@ -2406,9 +2386,6 @@ function installIpc() {
   ipcMain.on('vivieen:drag-end', (event) => {
     if (isBuddySender(event)) { buddyDrag = null; return; }
     petDrag = null;
-    // A manual drag takes over placement: zooming afterwards must not
-    // snap her back to the companion corner.
-    companionHold = null;
     saveStateSoon();
   });
   ipcMain.on('vivieen:live-active', (_event, value) => {
