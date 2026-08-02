@@ -69,6 +69,7 @@ const pointerLastSent = { pet: null, buddy: null };
 let petPointerInteractive = null;
 let petPointerDebugAt = 0;
 let petRoamTimer = null;
+let preDockBounds = null;
 let petRoamRuntime = null;
 let petZoomGesture = null;
 let appearancePushAt = 0;
