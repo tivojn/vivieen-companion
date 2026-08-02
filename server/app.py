@@ -2758,23 +2758,57 @@ async def api_enconvo_portrait(name: str = Query(...)):
     raise HTTPException(404, "no portrait")
 
 
+@app.post("/api/enconvo/photo")
+async def api_enconvo_photo(photo: UploadFile = File(...)):
+    """A phone photo, landed on the Mac so an EnConvo agent can actually
+    see it (agents take context_files by path)."""
+    uploads = os.path.join(reg().AVATARS, "..", "phone-uploads")
+    os.makedirs(uploads, exist_ok=True)
+    suffix = os.path.splitext(photo.filename or "photo.jpg")[1] or ".jpg"
+    name = f"phone-{int(time.time()*1000)}{suffix}"
+    destination = os.path.join(uploads, name)
+    total = 0
+    with open(destination, "wb") as handle:
+        while True:
+            chunk = await photo.read(1 << 20)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > 30 * 1024 * 1024:
+                handle.close()
+                os.unlink(destination)
+                raise HTTPException(413, "photo too large")
+            handle.write(chunk)
+    return {"path": destination}
+
+
 class EnconvoChat(BaseModel):
     agent: str
     message: str
     session_id: str = ""
+    context_files: list = []
 
 
 @app.post("/api/enconvo/chat")
 async def api_enconvo_chat(request: EnconvoChat):
+    uploads = os.path.realpath(os.path.join(reg().AVATARS, "..", "phone-uploads"))
+    safe_files = [path for path in (request.context_files or [])
+                  if isinstance(path, str)
+                  and os.path.realpath(path).startswith(uploads)
+                  and os.path.isfile(path)]
+
     def run():
         session = request.session_id
         if not session:
             fresh = _enconvo_call("agent/session/new",
                                   {"agentId": request.agent}, 20)
             session = fresh.get("sessionId") or fresh.get("id") or ""
-        answer = _enconvo_call("agent/messages", {
+        params = {
             "agentId": request.agent, "sessionId": session,
-            "message": request.message}, 180)
+            "message": request.message}
+        if safe_files:
+            params["context_files"] = safe_files
+        answer = _enconvo_call("agent/messages", params, 180)
         parts = []
         for message in (answer.get("messages") or []):
             if message.get("role") != "assistant":

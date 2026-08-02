@@ -2473,7 +2473,9 @@ async function turn(text,spoken=false){
       const r=await(await fetch('api/enconvo/chat',{method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({agent:ENCONVO.agent,message:text,
-          session_id:ENCONVO.sessions[ENCONVO.agent]||''})})).json();
+          session_id:ENCONVO.sessions[ENCONVO.agent]||'',
+          context_files:ENCONVO.pending||[]})})).json();
+      ENCONVO.pending=[];
       if(r.detail)throw new Error(r.detail);
       if(r.session_id)ENCONVO.sessions[ENCONVO.agent]=r.session_id;
       setCaption(r.text);
@@ -3432,7 +3434,7 @@ if(IS_IOS){
     document.documentElement.classList.toggle('emoji-open');
   });
   plusBtn.addEventListener('click',()=>chatPhoto.click());
-  chatPhoto.addEventListener('change',()=>{
+  chatPhoto.addEventListener('change',async()=>{
     const chosen=chatPhoto.files[0];
     if(!chosen)return;
     const container=document.getElementById('thread');
@@ -3445,6 +3447,23 @@ if(IS_IOS){
     while(container.children.length>40)container.firstChild.remove();
     container.scrollTop=container.scrollHeight;
     chatPhoto.value='';
+    // The photo has to LAND somewhere an agent can see it: up to the Mac,
+    // then its path rides the next coupled message as context_files.
+    if(!(window.ENCONVO&&ENCONVO.agent)){
+      flashPrompt('Photos reach EnConvo agents · tap the bolt to couple first');
+      return;
+    }
+    try{
+      const body=new FormData();
+      body.append('photo',chosen,chosen.name||'photo.jpg');
+      const up=await(await fetch('api/enconvo/photo',{method:'POST',body})).json();
+      if(up.detail)throw new Error(up.detail);
+      ENCONVO.pending=(ENCONVO.pending||[]);
+      ENCONVO.pending.push(up.path);
+      flashPrompt('Photo attached · say something about it and send');
+    }catch(error){
+      flashPrompt('Photo upload failed: '+String(error.message||error).slice(0,80));
+    }
   });
   // The rail whispers: it fades to a quarter after a few idle seconds so
   // the thread owns the full width, and any touch wakes it (owner,
