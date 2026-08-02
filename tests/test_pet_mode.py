@@ -1638,6 +1638,24 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("if (Number(saved.appearanceDefaultVersion || 0) < 3) {", main)
         self.assertIn("next.petClickThrough = true;", main)
 
+    def test_cmd_shift_9_enlarges_and_places_without_framing(self):
+        # Final semantics (owner, 2026-08-02, after a full rollback): the
+        # view is NEVER touched - no bust, no crop. Cmd+Shift+9 raises the
+        # zoom to max and places the window per the reference (crown ~1/3
+        # down, face ~84% across, body off the bottom edge); a second
+        # press restores the prior zoom and bounds; both shortcuts force
+        # 100% opacity. enableLargerThanScreen unclamps the oversized
+        # window - macOS otherwise silently re-frames her on every resize.
+        main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
+        self.assertIn("enableLargerThanScreen: true,", main)
+        self.assertIn("const companion = 'CommandOrControl+Shift+9';", main)
+        self.assertNotIn("state.petView = 'bust';", main)
+        self.assertIn("state.petZoom = PET_ZOOM_RANGE.max;", main)
+        self.assertIn("area.width * 0.84 - size.width / 2", main)
+        self.assertIn("area.height * 0.23", main)
+        self.assertIn("if (companionHold) {", main)
+        self.assertEqual(main.count("applyPetOpacity(1);"), 2)
+
     def test_stillness_idle_docks_small_and_restores_on_wake(self):
         # Owner, 2026-08-02: the standing stillness idle used the full
         # docked pet size - a big cutout parked in the corner, reading as

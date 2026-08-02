@@ -1825,6 +1825,10 @@ function createMainWindow() {
     show: false,
     frame: false,
     transparent: true,
+    // Zooming the overlay legitimately grows the window taller than the
+    // display (the lower body hangs off-screen); without this macOS
+    // silently clamps every resize to the screen and re-frames her.
+    enableLargerThanScreen: true,
     backgroundColor: '#00000000',
     roundedCorners: false,
     hasShadow: false,
@@ -1917,9 +1921,57 @@ function recoverCompanion() {
 
 function installRecoveryShortcut() {
   const accelerator = 'CommandOrControl+Shift+0';
-  if (!globalShortcut.register(accelerator, recoverCompanion)) {
+  if (!globalShortcut.register(accelerator, () => {
+    companionHold = null;
+    recoverCompanion();
+    applyPetOpacity(1);
+  })) {
     writeBackendLog(`[shortcut unavailable] ${accelerator}\n`);
   }
+  // Cmd+Shift+9: enlarge to a big (max-zoom) overlay and slide her into
+  // the bottom-right corner - head and shoulders on screen, the rest of
+  // the FULL body hanging below the display. View is never touched, so
+  // nothing is ever cropped (owner, final semantics 2026-08-02). A
+  // second press restores the exact prior zoom and bounds.
+  const companion = 'CommandOrControl+Shift+9';
+  if (!globalShortcut.register(companion, deskCompanionMode)) {
+    writeBackendLog(`[shortcut unavailable] ${companion}\n`);
+  }
+}
+
+let companionHold = null;
+function deskCompanionMode() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (companionHold) {
+    const hold = companionHold;
+    companionHold = null;
+    state.petZoom = hold.zoom;
+    mainWindow.setBounds(hold.bounds, false);
+    state.bounds = { ...hold.bounds };
+    saveStateSoon();
+    broadcastState();
+    return;
+  }
+  if (state.petRoam) applyPetRoam(false);
+  companionHold = { zoom: state.petZoom, bounds: mainWindow.getBounds() };
+  applyPetOpacity(1);
+  const area = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
+  state.petZoom = PET_ZOOM_RANGE.max;
+  const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);
+  // Matched to the owner's reference: crown ~a third down the screen,
+  // face centred ~84% across, hair spilling past the right edge, body
+  // running off the bottom.
+  const bounds = {
+    x: Math.round(area.x + area.width * 0.84 - size.width / 2),
+    y: Math.round(area.y + area.height * 0.23),
+    width: size.width,
+    height: size.height,
+  };
+  mainWindow.setBounds(bounds, false);
+  state.bounds = { ...bounds };
+  if (state.petOpacity > 0.001) mainWindow.showInactive();
+  saveStateSoon();
+  broadcastState();
 }
 
 function openSettings() {
