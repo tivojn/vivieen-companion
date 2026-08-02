@@ -1795,34 +1795,6 @@ function drawPetScene(now){
   }else ctx.drawImage(faceSurface,0,0,faceSurface.width,faceSurface.height,
     0,0,FACE_KEY.w,FACE_KEY.h);
   ctx.restore();
-  fadeCutEdges();
-}
-/* A cropped framing (bust/head/face/half) slices through arms and hair,
-   and the raw crop edge reads as a picture frame cutting her off (owner
-   screenshot, 2026-08-02, the big close-up). Feather the SIDE and BOTTOM
-   edges wherever body pixels actually touch them, so she emerges into
-   the screen instead of ending at a line. Full view and roam clips show
-   the whole figure and skip this. */
-function fadeCutEdges(){
-  if(PET.roam||!SHELL||!SHELL.isElectron||!PET.enabled)return;
-  const view=PET.view||'half';
-  if(view==='full')return;
-  const w=cv.width,h=cv.height,d=devicePixelRatio||1;
-  const side=Math.max(18*d,Math.round(w*0.045));
-  const foot=Math.max(18*d,Math.round(h*0.05));
-  ctx.save();
-  ctx.setTransform(1,0,0,1,0,0);
-  ctx.globalCompositeOperation='destination-out';
-  let g=ctx.createLinearGradient(0,0,side,0);
-  g.addColorStop(0,'rgba(0,0,0,1)');g.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle=g;ctx.fillRect(0,0,side,h);
-  g=ctx.createLinearGradient(w,0,w-side,0);
-  g.addColorStop(0,'rgba(0,0,0,1)');g.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle=g;ctx.fillRect(w-side,0,side,h);
-  g=ctx.createLinearGradient(0,h,0,h-foot);
-  g.addColorStop(0,'rgba(0,0,0,1)');g.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle=g;ctx.fillRect(0,h-foot,w,foot);
-  ctx.restore();
 }
 
 function syncPetEngagement(now=performance.now()){
