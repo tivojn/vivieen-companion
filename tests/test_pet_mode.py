@@ -2084,6 +2084,29 @@ class PocketBarAndToolsTests(unittest.TestCase):
         # And an empty VAD turn - "…" - never earns a bubble.
         self.assertIn("/[\\p{L}\\p{N}]/u.test(m.text)", self.renderer)
 
+    def test_the_wave_is_a_meter_not_a_loop(self):
+        # The Listening chip's bars follow the REAL microphone level -
+        # a loop that ignores the microphone is a lie about listening.
+        self.assertIn("window.MIC_LEVEL=0;", self.renderer)
+        self.assertIn("window.MIC_LEVEL=session.lastRms;", self.renderer)
+        # PTT rides an analyser on the same stream the recorder captures.
+        self.assertIn("meter.getByteTimeDomainData(sample);", self.renderer)
+        # And no keyframe loop remains on the bars.
+        self.assertNotIn("@keyframes listenWave", self.renderer)
+
+    def test_a_swipe_across_her_opens_the_avatar_deck(self):
+        # Two switchable looks, both owner-picked: noir (dark cascade)
+        # and sorbet (pastel arc fan). Cards come from the registry,
+        # tapping Use activates and reloads.
+        self.assertIn('id="avfan"', self.renderer)
+        self.assertIn("localStorage.getItem('viv-carousel')", self.renderer)
+        self.assertIn("rotate(${d*13}deg)", self.renderer)   # sorbet arc
+        self.assertIn("rotate(${d*-7}deg)", self.renderer)   # noir cascade
+        self.assertIn("api/avatar/activate", self.renderer)
+        self.assertIn("a.slug===feed.active", self.renderer)
+        # A swipe, not a tap: face play keeps taps, the deck takes drags.
+        self.assertIn("Math.abs(dx)>70&&Math.abs(dy)<48", self.renderer)
+
     def test_media_tools_never_inherit_the_engines_stdin(self):
         # ffmpeg and ffprobe read stdin; the engine's is a pipe nobody
         # closes, and an inherited one hangs the probe until it times out.

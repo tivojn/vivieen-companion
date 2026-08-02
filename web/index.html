@@ -142,14 +142,10 @@ html.listening #listenWave{display:flex}
   animation:listenDot 1.6s ease-in-out infinite}
 @keyframes listenDot{50%{opacity:.35}}
 #listenWaveBars{display:flex;align-items:center;gap:2.5px;height:16px}
-#listenWaveBars span{width:2px;height:4px;border-radius:1px;
-  background:rgba(255,255,255,.82);
-  animation:listenWave .9s ease-in-out infinite alternate}
-#listenWaveBars span:nth-child(2){animation-delay:-.14s}
-#listenWaveBars span:nth-child(3){animation-delay:-.28s}
-#listenWaveBars span:nth-child(4){animation-delay:-.42s}
-#listenWaveBars span:nth-child(5){animation-delay:-.56s}
-@keyframes listenWave{to{height:13px}}
+/* The bars are driven by the REAL microphone level (owner: a static loop
+   is a hint, not a meter) - heights come from script, not keyframes. */
+#listenWaveBars span{width:2px;height:3px;border-radius:1px;
+  background:rgba(255,255,255,.82);transition:height 80ms ease}
 #listenWaveText{color:rgba(255,255,255,.6);font-family:inherit;font-size:11px;
   font-weight:500;line-height:1;letter-spacing:.02em}
 #status{position:fixed;top:20px;left:24px;font-size:12px;letter-spacing:.08em;
@@ -286,6 +282,53 @@ html.ios.talk-mode #talkbar{display:block;flex:1;height:44px;border-radius:12px;
   touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 html.ios.talk-mode #talkbar.rec{background:rgba(124,116,226,.4);border-color:rgba(124,116,226,.8)}
 html.ios.talk-mode #talkbar.cancel{background:rgba(212,76,71,.4);border-color:rgba(212,76,71,.8)}
+/* ---- avatar carousel --------------------------------------------------
+   Swipe across her, and the wardrobe opens: every installed face as a
+   card. Two switchable looks - noir stacks a dark diagonal cascade, the
+   chosen card stepping forward like a marquee; sorbet fans pastel cards
+   in an arc and slides the chosen one up front. */
+#avfan{position:fixed;inset:0;z-index:80;display:flex;align-items:center;
+  justify-content:center;background:rgba(5,7,10,.82);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+#avfan[hidden]{display:none}
+#avfanClose,#avfanStyle{position:absolute;z-index:6;height:38px;
+  border-radius:19px;border:1px solid rgba(255,255,255,.2);
+  background:rgba(20,22,26,.6);color:#dfe3ea;font:600 13px/1 inherit}
+#avfanClose{top:calc(14px + env(safe-area-inset-top,0px));left:16px;width:38px}
+#avfanStyle{top:calc(14px + env(safe-area-inset-top,0px));right:16px;
+  padding:0 16px;letter-spacing:.04em;text-transform:uppercase;font-size:11px}
+#avfanDeck{position:absolute;inset:0;overflow:hidden}
+#avfanDeck .avcard{position:absolute;left:50%;top:44%;width:200px;
+  aspect-ratio:3/4;margin:-140px 0 0 -100px;border-radius:18px;
+  overflow:hidden;border:1px solid rgba(255,255,255,.16);
+  box-shadow:0 18px 48px rgba(0,0,0,.5);
+  transition:transform 420ms cubic-bezier(.22,1,.36,1),opacity 420ms ease;
+  will-change:transform;touch-action:none}
+#avfanDeck .avcard img{width:100%;height:100%;object-fit:cover;display:block;
+  pointer-events:none;-webkit-user-select:none;user-select:none}
+#avfanDeck .avcard .name{position:absolute;left:0;right:0;bottom:0;
+  padding:22px 12px 10px;font-size:13.5px;font-weight:600;color:#fff;
+  background:linear-gradient(transparent,rgba(0,0,0,.72));
+  letter-spacing:.01em;pointer-events:none}
+/* sorbet: the photo floats in a porthole on a pastel card */
+#avfan.sorbet #avfanDeck .avcard{background:var(--card,#8ecfd4);
+  border:none;box-shadow:0 14px 34px rgba(0,0,0,.35)}
+#avfan.sorbet #avfanDeck .avcard img{width:112px;height:112px;
+  border-radius:50%;margin:26px auto 0;border:4px solid rgba(255,255,255,.85)}
+#avfan.sorbet #avfanDeck .avcard .name{background:none;color:rgba(20,26,30,.85);
+  text-align:center;bottom:auto;top:150px;font-size:14.5px}
+#avfanDetail{position:absolute;left:50%;bottom:calc(30px + env(safe-area-inset-bottom,0px));
+  transform:translateX(-50%);z-index:5;display:flex;gap:12px;align-items:center;
+  padding:12px 16px;border-radius:16px;background:rgba(16,18,22,.78);
+  border:1px solid rgba(255,255,255,.14);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+#avfan.sorbet #avfanDetail{background:rgba(255,255,255,.9);border:none}
+#avfan.sorbet #avfanDetail .avname{color:#20262b}
+#avfanDetail .avname{font-size:15px;font-weight:700;color:#eef1f5;
+  max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#avfanDetail .avuse{height:40px;padding:0 22px;border-radius:20px;border:none;
+  background:#e2483a;color:#fff;font:700 14px/1 inherit;letter-spacing:.02em}
+#avfanDetail .avuse[disabled]{opacity:.55}
 /* Action rail: one-tap shortcuts beside her - live call on top, then
    dance, walk, rest. Desk builds never show it (hover and gestures own
    those verbs there). */
@@ -454,6 +497,15 @@ html.ios #zoombox input{width:100%;flex:1}
 <div id="zoombox">
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12z"/></svg><input id="zoomrange" type="range" min="60" max="600" step="5" value="100" aria-label="Avatar zoom"></div>
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2s6 7.1 6 12a6 6 0 0 1-12 0c0-4.9 6-12 6-12zm0 16a4 4 0 0 0 4-4c0-.6-.1-1.2-.4-1.9L8.4 15.3A4 4 0 0 0 12 18z"/></svg><input id="alpharange" type="range" min="25" max="100" step="5" value="100" aria-label="Avatar opacity"></div>
+</div>
+<!-- Avatar carousel: horizontal swipe across her opens the deck. Two
+     looks, both owner-picked: "noir" (dark cascade, Netflix) and
+     "sorbet" (pastel arc fan, Spy). -->
+<div id="avfan" hidden>
+  <button id="avfanClose" type="button" aria-label="Close">&#10005;</button>
+  <button id="avfanStyle" type="button" aria-label="Switch carousel style">sorbet</button>
+  <div id="avfanDeck"></div>
+  <div id="avfanDetail"></div>
 </div>
 <div id="petBubble" role="status" aria-live="polite"></div>
 <div id="listenWave" aria-hidden="true"><span id="listenWaveDot"></span><span id="listenWaveBars"><span></span><span></span><span></span><span></span><span></span></span><span id="listenWaveText">Listening…</span></div>
@@ -2409,6 +2461,31 @@ async function startLiveTalk(){
   };
   ws.onclose=()=>{if(LIVE===session)stopLiveTalk('ended');};
 }
+/* ---- the wave is a meter --------------------------------------------
+   Both mics (live talk, hold-to-talk) publish their level here, and the
+   Listening chip's bars FOLLOW it - quiet room, low bars; speech, tall
+   bars. A loop that ignores the microphone is a lie about listening. */
+window.MIC_LEVEL=0;
+(function waveMeter(){
+  const bars=document.querySelectorAll('#listenWaveBars span');
+  const profile=[0.55,0.85,1,0.8,0.6];
+  let shown=0;
+  (function tick(){
+    requestAnimationFrame(tick);
+    if(!document.documentElement.classList.contains('listening')){
+      if(shown){shown=0;bars.forEach(b=>b.style.height='3px');}
+      return;
+    }
+    // Fast attack, slow release - speech flickers, the eye needs a beat.
+    const target=Math.min(1,window.MIC_LEVEL*7);
+    shown+=(target-shown)*(target>shown?0.55:0.18);
+    bars.forEach((bar,i)=>{
+      const wobble=1+0.22*Math.sin(performance.now()/90+i*1.7)*shown;
+      bar.style.height=Math.max(3,Math.round(
+        3+shown*13*profile[i]*wobble))+'px';
+    });
+  })();
+})();
 // One packet leaves the phone: guard against her own echo, then send.
 // Both capture paths - native bridge and getUserMedia - end here.
 function liveSendPcm(session,data){
@@ -2424,6 +2501,7 @@ function liveSendPcm(session,data){
     }
     session.lastRms=Math.sqrt(sum/Math.max(1,pcm.length>>2));
     session.lastShape=lo+'..'+hi+' flips='+flips+'/'+pcm.length;
+    window.MIC_LEVEL=session.lastRms;
   }
   const guarded=session.sources.size>0||performance.now()<session.echoGuardUntil;
   if(guarded&&session.lastRms<0.09){
@@ -2798,6 +2876,29 @@ async function startRec(force=false){
     return;
   }
   rec=new MediaRecorder(stream);chunks=[];
+  // The chip's bars follow the real take: a light analyser rides the same
+  // stream the recorder captures, feeding MIC_LEVEL until the take ends.
+  try{
+    actx=actx||new AudioContext();
+    const meterSrc=actx.createMediaStreamSource(stream);
+    const meter=actx.createAnalyser();meter.fftSize=512;
+    meterSrc.connect(meter);
+    const sample=new Uint8Array(meter.fftSize);
+    const pump=()=>{
+      if(!rec||rec.state!=='recording'&&rec.state!=='paused'){
+        try{meterSrc.disconnect();}catch(e){}
+        window.MIC_LEVEL=0;return;
+      }
+      meter.getByteTimeDomainData(sample);
+      let sum=0;
+      for(let i=0;i<sample.length;i+=2){
+        const v=(sample[i]-128)/128;sum+=v*v;
+      }
+      window.MIC_LEVEL=Math.sqrt(sum/(sample.length>>1));
+      requestAnimationFrame(pump);
+    };
+    setTimeout(pump,60);
+  }catch(e){}
   openDictationStream();
   rec.ondataavailable=e=>{
     chunks.push(e.data);
@@ -3845,6 +3946,131 @@ if(IS_IOS){
     threadToBottom(true);
     threadDown.classList.remove('on');
   });
+  /* ---- avatar carousel ------------------------------------------------ */
+  const avfan=document.getElementById('avfan');
+  const avfanDeck=document.getElementById('avfanDeck');
+  const avfanDetail=document.getElementById('avfanDetail');
+  const avfanStyle=document.getElementById('avfanStyle');
+  const SORBET=['#8ecfd4','#f2a7b3','#b9a7e8','#f4c07f','#9fd8a4','#f0e08a'];
+  const AVFAN={list:[],front:0,open:false,
+    style:localStorage.getItem('viv-carousel')||'noir'};
+  function avfanLayout(){
+    const n=AVFAN.list.length;
+    const sorbet=AVFAN.style==='sorbet';
+    avfan.classList.toggle('sorbet',sorbet);
+    avfanStyle.textContent=sorbet?'noir':'sorbet';
+    avfanDeck.querySelectorAll('.avcard').forEach((card,i)=>{
+      // Position relative to the front card, wrapping both ways.
+      let d=i-AVFAN.front;
+      if(d>n/2)d-=n;if(d<-n/2)d+=n;
+      const abs=Math.abs(d);
+      if(sorbet){
+        // An arc fan: cards swing around a point below the screen.
+        card.style.transform=
+          `translate(${d*58}px,${abs*26}px) rotate(${d*13}deg)`
+          +(d===0?' translateY(-24px) scale(1.12)':' scale(.94)');
+      }else{
+        // A marquee cascade climbing to the right.
+        card.style.transform=
+          `translate(${d*64}px,${d*-20}px) rotate(${d*-7}deg)`
+          +(d===0?' scale(1.16)':' scale(.96)');
+      }
+      card.style.zIndex=String(60-abs);
+      card.style.opacity=abs>3?'0':String(1-abs*0.16);
+    });
+    const front=AVFAN.list[AVFAN.front];
+    if(front){
+      avfanDetail.innerHTML='';
+      const label=document.createElement('span');
+      label.className='avname';label.textContent=front.name||front.slug;
+      const use=document.createElement('button');
+      use.className='avuse';use.type='button';
+      use.textContent=front.active?'On stage':'Use her';
+      use.disabled=Boolean(front.active);
+      use.addEventListener('click',async()=>{
+        use.disabled=true;use.textContent='Switching…';
+        try{
+          const r=await(await fetch('api/avatar/activate',{method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({slug:front.slug})})).json();
+          if(r&&r.error)throw new Error(r.error);
+          location.reload();
+        }catch(err){
+          use.textContent='Failed';
+          flashPrompt('Could not switch: '+String(err.message||err).slice(0,80));
+        }
+      });
+      avfanDetail.append(label,use);
+    }
+  }
+  async function openAvfan(){
+    if(AVFAN.open)return;
+    try{
+      const feed=await(await fetch('api/avatars')).json();
+      AVFAN.list=(feed.avatars||[]).filter(a=>a.status==='ready')
+        .map(a=>({slug:a.slug,name:a.name,active:a.slug===feed.active}));
+    }catch(e){return;}
+    if(AVFAN.list.length<2){
+      flashPrompt('Only one avatar installed · add more in Settings');
+      return;
+    }
+    AVFAN.open=true;
+    AVFAN.front=Math.max(0,AVFAN.list.findIndex(a=>a.active));
+    avfanDeck.innerHTML='';
+    AVFAN.list.forEach((item,i)=>{
+      const card=document.createElement('div');
+      card.className='avcard';
+      card.style.setProperty('--card',SORBET[i%SORBET.length]);
+      const face=document.createElement('img');
+      face.src='/files/'+encodeURIComponent(item.slug)+'/keyframe.png';
+      face.alt=item.name||item.slug;
+      const name=document.createElement('div');
+      name.className='name';name.textContent=item.name||item.slug;
+      card.append(face,name);
+      card.addEventListener('click',()=>{
+        if(i!==AVFAN.front){AVFAN.front=i;avfanLayout();}
+      });
+      avfanDeck.append(card);
+    });
+    avfan.hidden=false;
+    avfanLayout();
+  }
+  function closeAvfan(){AVFAN.open=false;avfan.hidden=true;}
+  document.getElementById('avfanClose').addEventListener('click',closeAvfan);
+  avfanStyle.addEventListener('click',()=>{
+    AVFAN.style=AVFAN.style==='sorbet'?'noir':'sorbet';
+    localStorage.setItem('viv-carousel',AVFAN.style);
+    avfanLayout();
+  });
+  // Drag anywhere on the deck to spin it.
+  let avfanDrag=null;
+  avfanDeck.addEventListener('pointerdown',e=>{
+    avfanDrag={x:e.clientX,moved:false};
+  });
+  avfanDeck.addEventListener('pointermove',e=>{
+    if(!avfanDrag)return;
+    const dx=e.clientX-avfanDrag.x;
+    if(Math.abs(dx)>46){
+      const n=AVFAN.list.length;
+      AVFAN.front=((AVFAN.front-(dx>0?1:-1))%n+n)%n;
+      avfanDrag={x:e.clientX,moved:true};
+      avfanLayout();
+    }
+  });
+  avfanDeck.addEventListener('pointerup',()=>{avfanDrag=null;});
+  // The way in: a clean horizontal swipe across her - not a tap (face
+  // play), not a vertical scroll (thread).
+  let stageSwipe=null;
+  cv.addEventListener('pointerdown',e=>{
+    stageSwipe={x:e.clientX,y:e.clientY,t:performance.now()};
+  },true);
+  cv.addEventListener('pointerup',e=>{
+    if(!stageSwipe||!IS_IOS)return;
+    const dx=e.clientX-stageSwipe.x,dy=e.clientY-stageSwipe.y;
+    const dt=performance.now()-stageSwipe.t;
+    stageSwipe=null;
+    if(Math.abs(dx)>70&&Math.abs(dy)<48&&dt<650)openAvfan();
+  },true);
   // The rail whispers: it fades to a quarter after a few idle seconds so
   // the thread owns the full width, and any touch wakes it (owner,
   // 2026-08-02).
