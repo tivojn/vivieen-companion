@@ -275,6 +275,16 @@ html.ios #rail button.on{background:rgba(124,116,226,.42);
   border-color:rgba(124,116,226,.8);color:#efeefe}
 html.ios #rail #rail-live.on{background:rgba(212,76,71,.5);
   border-color:rgba(212,76,71,.9);color:#ffe9e8}
+#toast{display:none}
+html.ios #toast{display:block;position:fixed;left:16px;right:16px;
+  bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:8;
+  padding:11px 14px;border-radius:13px;font-size:14px;line-height:1.4;
+  color:#e9ecf1;text-align:center;background:rgba(18,20,24,.86);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,.14);
+  opacity:0;transform:translateY(8px);pointer-events:none;
+  transition:opacity 220ms ease,transform 220ms ease}
+html.ios #toast.on{opacity:1;transform:none}
 #zoombox{display:none}
 html.ios.zoom-open #zoombox{display:flex;flex-direction:column;gap:10px;
   position:fixed;left:16px;right:70px;
@@ -2557,6 +2567,21 @@ txt.addEventListener('input',autoSizeTxt);
 let promptFlashTimer=0;
 function flashPrompt(message){
   clearTimeout(promptFlashTimer);
+  // A one-line input field clipped every message longer than its width
+  // (owner screenshot, 2026-08-02). Notices ride their own toast above
+  // the bar, where they can wrap; the field keeps its own placeholder.
+  if(IS_IOS){
+    let toast=document.getElementById('toast');
+    if(!toast){
+      toast=document.createElement('div');
+      toast.id='toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent=message;
+    toast.classList.add('on');
+    promptFlashTimer=setTimeout(()=>toast.classList.remove('on'),5200);
+    return;
+  }
   txt.placeholder=message;
   promptFlashTimer=setTimeout(()=>{txt.placeholder=TXT_PLACEHOLDER;},6000);
 }

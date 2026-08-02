@@ -94,6 +94,14 @@ struct CompanionWebView: UIViewRepresentable {
         // Character Studio and any other page needs real scrolling.
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        // Her gestures are taps and double-taps; WebKit's own double-tap
+        // zoom hijacked them and left the whole page scaled and panned -
+        // head cut off, controls off-screen (owner screenshot,
+        // 2026-08-02). The page never zooms; SHE does, via the slider.
+        webView.scrollView.minimumZoomScale = 1
+        webView.scrollView.maximumZoomScale = 1
+        webView.scrollView.bouncesZoom = false
+        webView.scrollView.pinchGestureRecognizer?.isEnabled = false
         context.coordinator.pip.webView = webView
         DispatchQueue.main.async { context.coordinator.pip.attach(to: webView) }
         load(into: webView)
