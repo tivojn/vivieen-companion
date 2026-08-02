@@ -2237,6 +2237,12 @@ async function liveStartMic(session,rate){
   }
   session.micRate=rate;
   session.ctx=new AudioContext({sampleRate:rate});
+  // iOS does NOT always honour the requested rate (the hardware often
+  // insists on 48k). Sending 48k frames labelled 24k makes the provider
+  // hear slowed garble and answer nothing - "she can't hear me", owner
+  // 2026-08-02. Resample to the wire rate whenever they differ.
+  session.wireRate=rate;
+  session.ratio=session.ctx.sampleRate/rate;
   // A blob: module URL is blocked by the page CSP - the worklet is a
   // real same-origin file instead.
   await session.ctx.audioWorklet.addModule('/live-worklet.js');
@@ -2244,6 +2250,16 @@ async function liveStartMic(session,rate){
   session.cap=new AudioWorkletNode(session.ctx,'viv-live-capture');
   session.cap.port.onmessage=e=>{
     if(LIVE!==session||session.ws.readyState!==1)return;
+    if(session.ratio&&Math.abs(session.ratio-1)>0.01){
+      const src=new Int16Array(e.data);
+      const out=new Int16Array(Math.max(1,Math.floor(src.length/session.ratio)));
+      for(let i=0;i<out.length;i++){
+        const p=i*session.ratio,i0=Math.floor(p),f=p-i0;
+        const a=src[i0]||0,b=src[Math.min(src.length-1,i0+1)]||0;
+        out[i]=a+(b-a)*f;
+      }
+      e={data:out.buffer};
+    }
     // Echo guard: while her own voice is coming out of the speakers (and
     // a short tail after), the mic hears her and the provider answers
     // itself (owner, 2026-08-02). Send SILENCE during playback - the
@@ -3264,35 +3280,45 @@ if(IS_IOS){
   // call keeps its face while you use another app. Where WebKit refuses
   // stream-backed PiP (some simulators), the call STILL survives in the
   // background - the audio session carries it; PiP is just the visual.
+  // The native shell owns the floating window: WebKit's own PiP refuses a
+  // canvas stream, so the renderer just pumps frames over the bridge and
+  // AVPictureInPictureController draws them - a real OS window you can
+  // drag, resize, and slide off the edge (owner, 2026-08-02).
   const railPip=document.getElementById('rail-pip');
-  let pipVideo=null;
-  const pipActive=()=>Boolean(pipVideo&&
-    (pipVideo.webkitPresentationMode==='picture-in-picture'||
-     document.pictureInPictureElement===pipVideo));
-  railPip.addEventListener('click',async()=>{
-    try{
-      if(pipActive()){
-        if(document.pictureInPictureElement)await document.exitPictureInPicture();
-        else pipVideo.webkitSetPresentationMode('inline');
-        return;
-      }
-      if(!pipVideo){
-        pipVideo=document.createElement('video');
-        pipVideo.muted=true;pipVideo.playsInline=true;
-        pipVideo.style.cssText='position:fixed;left:-9999px;top:0;width:2px;height:2px;';
-        document.body.appendChild(pipVideo);
-        pipVideo.srcObject=cv.captureStream(30);
-      }
-      await pipVideo.play();
-      if(typeof pipVideo.webkitSupportsPresentationMode==='function'&&
-         pipVideo.webkitSupportsPresentationMode('picture-in-picture'))
-        pipVideo.webkitSetPresentationMode('picture-in-picture');
-      else if(pipVideo.requestPictureInPicture)
-        await pipVideo.requestPictureInPicture();
-      else flashPrompt('No floating window here · the call still runs in the background');
-    }catch(error){
-      flashPrompt('No floating window here · the call still runs in the background');
+  const pipBridge=window.webkit&&window.webkit.messageHandlers&&
+    window.webkit.messageHandlers.pip;
+  let pipOn=false,pipTimer=0,pipCanvas=null;
+  const pipActive=()=>pipOn;
+  window.__pipStopped=()=>{pipOn=false;clearInterval(pipTimer);pipTimer=0;};
+  window.__pipUnsupported=()=>{
+    pipOn=false;clearInterval(pipTimer);pipTimer=0;
+    // The iOS Simulator reports isPictureInPictureSupported NO - PiP is
+    // a real-device feature. The call itself keeps running either way.
+    flashPrompt('Floating window needs a real iPhone · your call keeps running in the background');
+  };
+  const pipPump=()=>{
+    if(!pipBridge)return;
+    if(!pipCanvas){pipCanvas=document.createElement('canvas');
+      pipCanvas.width=360;pipCanvas.height=640;}
+    const g=pipCanvas.getContext('2d');
+    g.fillStyle='#05070a';g.fillRect(0,0,pipCanvas.width,pipCanvas.height);
+    // Letterbox her stage into the little window without distortion.
+    const s=Math.min(pipCanvas.width/cv.width,pipCanvas.height/cv.height);
+    const w=cv.width*s,h=cv.height*s;
+    try{g.drawImage(cv,(pipCanvas.width-w)/2,(pipCanvas.height-h)/2,w,h);}catch(e){}
+    pipBridge.postMessage(pipCanvas.toDataURL('image/jpeg',0.6));
+  };
+  railPip.addEventListener('click',()=>{
+    if(!pipBridge){
+      flashPrompt('Floating window needs the iPhone app');
+      return;
     }
+    if(pipOn){pipBridge.postMessage('stop');window.__pipStopped();return;}
+    pipOn=true;
+    pipPump();
+    clearInterval(pipTimer);
+    pipTimer=setInterval(pipPump,125);
+    pipBridge.postMessage('start');
   });
   // Opacity: her whole stage fades - handy when she sits over your reading.
   const alphaRange=document.getElementById('alpharange');

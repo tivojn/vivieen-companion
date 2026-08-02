@@ -84,6 +84,7 @@ struct CompanionWebView: UIViewRepresentable {
             """, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         configuration.userContentController.addUserScript(probe)
         configuration.userContentController.add(context.coordinator, name: "viv")
+        configuration.userContentController.add(context.coordinator, name: "pip")
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.uiDelegate = context.coordinator
         webView.navigationDelegate = context.coordinator
@@ -93,6 +94,8 @@ struct CompanionWebView: UIViewRepresentable {
         // Character Studio and any other page needs real scrolling.
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        context.coordinator.pip.webView = webView
+        DispatchQueue.main.async { context.coordinator.pip.attach(to: webView) }
         load(into: webView)
         return webView
     }
@@ -126,6 +129,8 @@ struct CompanionWebView: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate,
                              WKScriptMessageHandler {
+        let pip = PipDriver()
+
         func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
             let path = webView.url?.path ?? "/"
             webView.scrollView.isScrollEnabled = !(path == "/" || path.isEmpty)
@@ -133,6 +138,13 @@ struct CompanionWebView: UIViewRepresentable {
 
         func userContentController(_ controller: WKUserContentController,
                                    didReceive message: WKScriptMessage) {
+            if message.name == "pip" {
+                guard let body = message.body as? String else { return }
+                if body == "start" { pip.start() }
+                else if body == "stop" { pip.stop() }
+                else { pip.enqueue(dataURL: body) }
+                return
+            }
             NSLog("[viv-web] %@", String(describing: message.body))
         }
 
