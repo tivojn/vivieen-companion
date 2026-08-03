@@ -340,6 +340,19 @@ class ProviderDefaultsTests(unittest.TestCase):
         # only her words are worth hearing again
         self.assertIn("if(role!=='user')button('Play aloud'", html)
 
+    def test_settings_and_the_deck_are_cached_and_warmed(self):
+        # "switching avatar quicker, loading setting pages quicker"
+        # (owner, 2026-08-03). The shells are cached - the VALUES still
+        # come live from /api/config, which must never be cached.
+        with open(os.path.join(ROOT, "ios", "Vivieen", "VivScheme.swift"),
+                  encoding="utf-8") as handle:
+            swift = handle.read()
+        self.assertIn('bare(path) == "/settings"', swift)
+        self.assertIn('bare(path) == "/api/avatars"', swift)
+        self.assertNotIn('bare(path) == "/api/config"', swift)
+        # and the deck's faces are warmed the moment the roster is known
+        self.assertIn("private func warmDeck(", swift)
+
     def test_openai_lists_only_models_for_the_requested_modality(self):
         # Exclusion only, never a name allowlist: the old gpt-* prefix list
         # hid every newly-named family (a "luna-1" never appeared). Unknown

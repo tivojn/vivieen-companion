@@ -111,6 +111,15 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             || path.hasPrefix("/assets/")
             || path == "/live-worklet.js"
             || path.hasPrefix("/api/avatar/thumb")
+            // Settings is a PAGE - its shell never changes between
+            // launches, only the values it fetches. Caching the shell is
+            // the difference between opening instantly and waiting for
+            // the Mac; the values still come live from /api/config, which
+            // is deliberately NOT cached (owner, 2026-08-03).
+            || bare(path) == "/settings"
+            // The deck. Cached, the carousel opens at once and still
+            // opens with the Mac asleep.
+            || bare(path) == "/api/avatars"
     }
 
     /// The path without its query. Boot fetches carry cache-busters
@@ -127,6 +136,33 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     /// 2026-08-03). Learned from each manifest as it passes through.
     private var activeSlug = UserDefaults.standard
         .string(forKey: "cachedAvatarSlug") ?? "unknown"
+
+    /// Warm every face's thumbnail as soon as we learn the roster, so the
+    /// carousel's first open is as fast as its second. Quiet, cheap, and
+    /// skipped for anything already held.
+    private func warmDeck(from data: Data, path: String) {
+        guard bare(path) == "/api/avatars",
+              let top = try? JSONSerialization.jsonObject(with: data)
+                as? [String: Any],
+              let rows = top["avatars"] as? [[String: Any]] else { return }
+        for row in rows {
+            guard let slug = row["slug"] as? String, !slug.isEmpty else { continue }
+            let thumb = "/api/avatar/thumb?slug=\(slug)"
+            if let held = try? Data(contentsOf: cacheURL(thumb)), !held.isEmpty {
+                continue
+            }
+            guard let url = URL(string: address + thumb) else { continue }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 20
+            request.setValue(token, forHTTPHeaderField: "x-vivieen-token")
+            session.dataTask(with: request) { [weak self] body, response, _ in
+                guard let self, let body, !body.isEmpty,
+                      (response as? HTTPURLResponse)?.statusCode == 200
+                else { return }
+                try? body.write(to: self.cacheURL(thumb))
+            }.resume()
+        }
+    }
 
     private func noteSlug(from data: Data, path: String) {
         guard bare(path) == "/assets/manifest.json",
@@ -233,6 +269,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             guard let self, let data, !data.isEmpty,
                   (response as? HTTPURLResponse)?.statusCode == 200 else { return }
             self.noteSlug(from: data, path: path)
+            self.warmDeck(from: data, path: path)
             try? data.write(to: self.cacheURL(path))
         }.resume()
     }
@@ -373,6 +410,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             }
             if method == "GET", self.cacheable(path), http.statusCode == 200 {
                 self.noteSlug(from: data, path: path)
+                self.warmDeck(from: data, path: path)
                 try? data.write(to: self.cacheURL(path))
             }
             let type = http.value(forHTTPHeaderField: "Content-Type")
@@ -395,6 +433,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             }
             if method == "GET", self.cacheable(path), reply.status == 200 {
                 self.noteSlug(from: reply.data, path: path)
+                self.warmDeck(from: reply.data, path: path)
                 try? reply.data.write(to: self.cacheURL(path))
             }
             self.finish(task, url: requested, data: reply.data,
