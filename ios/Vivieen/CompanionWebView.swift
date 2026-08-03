@@ -155,6 +155,7 @@ struct CompanionWebView: UIViewRepresentable {
         configuration.userContentController.add(context.coordinator, name: "viv")
         configuration.userContentController.add(context.coordinator, name: "pip")
         configuration.userContentController.add(context.coordinator, name: "mic")
+        configuration.userContentController.add(context.coordinator, name: "live")
         configuration.userContentController.add(context.coordinator, name: "audio")
         configuration.userContentController.add(context.coordinator, name: "share")
         configuration.userContentController.add(context.coordinator, name: "speech")
@@ -217,8 +218,8 @@ struct CompanionWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate,
                              WKScriptMessageHandler {
         let pip = PipDriver()
-        let mic = MicDriver()
-        let speech = SpeechPlayer()
+        let mic = MicDriver.shared
+        let speech = SpeechPlayer.shared
         weak var scheme: VivSchemeHandler?
         var pageURL: URL?
         private let pageLive: (Bool) -> Void
@@ -301,6 +302,19 @@ struct CompanionWebView: UIViewRepresentable {
                 // the system sheet, so it can be saved, aired or sent on.
                 guard let url = message.body as? String else { return }
                 share(urlString: url)
+                return
+            }
+            // Live talk with no Mac: the page asks, the app holds the
+            // socket. It has to be the app - a backgrounded WebView is
+            // suspended and would take a page-held socket with it.
+            if message.name == "live" {
+                guard let body = message.body as? String else { return }
+                if body == "start" {
+                    LiveTap.shared.webView = message.webView
+                    LiveTap.shared.start()
+                } else {
+                    LiveTap.shared.stop(body == "stop" ? "ended" : body)
+                }
                 return
             }
             if message.name == "mic" {

@@ -8,6 +8,13 @@ import WebKit
 /// the real microphone on device AND in the Simulator, so the page asks
 /// native for mic frames and keeps its own wire protocol unchanged.
 final class MicDriver: NSObject {
+    /// One microphone, shared. Live talk needs the SAME device the page
+    /// uses, and it needs the frames natively (see LiveTap).
+    static let shared = MicDriver()
+    /// When set, frames go here INSTEAD of to the page. Live talk must
+    /// keep working with the WebView suspended, so the audio path cannot
+    /// run through JavaScript (owner, 2026-08-03).
+    var onPCM: ((Data) -> Void)?
     private let engine = AVAudioEngine()
     private var converter: AVAudioConverter?
     private var running = false
@@ -67,6 +74,7 @@ final class MicDriver: NSObject {
         guard conversionError == nil, out.frameLength > 0,
               let pcm = out.int16ChannelData else { return }
         let data = Data(bytes: pcm[0], count: Int(out.frameLength) * 2)
+        if let sink = onPCM { sink(data); return }
         let chunk = data.base64EncodedString()
         DispatchQueue.main.async { [weak self] in
             self?.webView?.evaluateJavaScript(

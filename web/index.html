@@ -377,6 +377,27 @@ html.ios #petBubble{
 html.ios.talk-mode #micmode{background:rgba(124,116,226,.28);border-color:rgba(124,116,226,.6)}
 #talkbar{display:none}
 html.ios.talk-mode #txt{display:none}
+/* ---- listening ---------------------------------------------------------
+   A fixed pill guessed its own offset and landed ON the composer,
+   straddling the talk bar and the buttons (owner screenshot, 2026-08-03).
+   It is not a floating hint - it is what that row IS while she listens,
+   so it takes the row and cannot be mispositioned by anything. */
+html.ios #listenWave{order:1;flex:1 0 100%;position:static;transform:none;
+  box-sizing:border-box;height:44px;padding:0;gap:12px;
+  justify-content:center;border-radius:12px;
+  border:1px solid rgba(124,116,226,.5);background:rgba(124,116,226,.16);
+  -webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none}
+html.ios.listening #txt,html.ios.listening.talk-mode #talkbar{display:none}
+html.ios #listenWaveDot{display:none}
+html.ios #listenWaveBars{gap:4px;height:22px}
+html.ios #listenWaveBars span{width:3px;border-radius:2px;
+  background:rgba(124,116,226,.95)}
+html.ios #listenWaveText{font-size:13px;font-weight:600;letter-spacing:.01em;
+  color:#e7e5ff}
+html.ios[data-skin=light] #listenWave{
+  border-color:rgba(108,101,222,.55);background:rgba(108,101,222,.14)}
+html.ios[data-skin=light] #listenWaveBars span{background:rgba(76,68,196,.95)}
+html.ios[data-skin=light] #listenWaveText{color:#2c2a63}
 html.ios.talk-mode #talkbar{display:block;order:1;flex:1 0 100%;height:44px;border-radius:12px;
   border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);
   color:#e8e9ec;font-size:15px;font-weight:600;letter-spacing:.02em;
@@ -3046,6 +3067,53 @@ function loop(now){
    queue. The server hangs up after two silent minutes (billing guard). */
 let LIVE=null;
 
+/* A WebSocket the app holds for us. Same surface the page already codes
+   against - readyState, send, close, onmessage - so every line of live
+   talk below is unchanged whether the Mac is carrying the call or the
+   phone is. Audio never crosses this bridge: only what to display. */
+function nativeLiveSocket(){
+  const shim={readyState:1,onmessage:null,onclose:null,
+    send(){/* the app taps the mic itself */},
+    close(){shim.readyState=3;try{webkit.messageHandlers.live.postMessage('stop');}catch(e){}}};
+  window.__vivLive=json=>{
+    let m;try{m=JSON.parse(json);}catch(e){return;}
+    if(m.type==='closed'){shim.readyState=3;if(shim.onclose)shim.onclose();return;}
+    if(shim.onmessage)shim.onmessage({data:json});
+  };
+  // The page assigns .onmessage AFTER this returns, so the app must not
+  // be allowed to answer before then - hand it the request on the next
+  // tick and the first event cannot be dropped.
+  setTimeout(()=>{
+    try{
+      webkit.messageHandlers.live.postMessage('start');
+      webkit.messageHandlers.viv.postMessage('LIVE asked the app');
+    }catch(e){
+      try{webkit.messageHandlers.viv.postMessage('LIVE no bridge: '+e);}catch(x){}
+      if(shim.onmessage)shim.onmessage({data:JSON.stringify(
+        {type:'error',message:'this build has no native live talk'})});
+    }
+  },0);
+  return shim;
+}
+/* Her mouth, timed by the app's own playback. The page cannot analyse
+   audio it is not playing, so the app reports how long each chunk will
+   sound and the mouth simply keeps moving that long. */
+function liveNativeMouth(session,seconds){
+  if(LIVE!==session||!(seconds>0))return;
+  const now=performance.now();
+  session.mouthUntil=Math.max(session.mouthUntil||now,now)+seconds*1000;
+  if(session.mouthTick)return;
+  const shapes=['aa','oh','ih','ou','CH','SS'];
+  session.mouthTick=setInterval(()=>{
+    if(LIVE!==session||performance.now()>=(session.mouthUntil||0)){
+      clearInterval(session.mouthTick);session.mouthTick=0;
+      speaking=false;curV='sil';return;
+    }
+    speaking=true;
+    curV=shapes[(Math.floor(performance.now()/110))%shapes.length];
+  },55);
+}
+
 async function startLiveTalk(){
   if(LIVE){stopLiveTalk('ended');return;}
   if(monitorEnabled){setCaption('De-couple from EnConvo first — live talk needs the voice channel.');return;}
@@ -3055,7 +3123,11 @@ async function startLiveTalk(){
   // token come from the app (window.VIV_LAN / VIV_TOKEN). This is also
   // why live talk is a same-network feature - a relay mailbox cannot
   // carry a socket.
-  const ws=new WebSocket(wsURL('/live/voice'));
+  // With no Mac there is no socket to it - and the page could not hold
+  // the provider's socket anyway, because a backgrounded WebView is
+  // suspended and would take it down. Solo hands the whole audio path to
+  // the app and keeps only the display (owner, 2026-08-03).
+  const ws=SOLO.active?nativeLiveSocket():new WebSocket(wsURL('/live/voice'));
   ws.binaryType='arraybuffer';
   const session={ws,ctx:null,stream:null,cap:null,queueT:0,sources:new Set(),
     agentText:'',echoGuardUntil:0};
@@ -3063,9 +3135,14 @@ async function startLiveTalk(){
   ws.onmessage=async e=>{
     if(LIVE!==session||typeof e.data!=='string')return;
     const m=JSON.parse(e.data);
+    if(m.type==='mouth'){liveNativeMouth(session,m.seconds||0);return;}
     if(m.type==='ready'){
-      try{await liveStartMic(session,m.input_rate||24000);}
-      catch(err){setCaption('(microphone: '+err.message+')');stopLiveTalk('mic');return;}
+      // Native: the app already owns the microphone and her voice. Asking
+      // the page to open a second capture would fight it for the device.
+      if(!m.native){
+        try{await liveStartMic(session,m.input_rate||24000);}
+        catch(err){setCaption('(microphone: '+err.message+')');stopLiveTalk('mic');return;}
+      }else{document.documentElement.classList.add('listening');}
       setStatus('live talk · '+(m.provider==='xai'?'Grok':'ElevenLabs'),'rec');
       document.documentElement.classList.add('listening');
       if(SHELL&&typeof SHELL.setLiveTalk==='function')SHELL.setLiveTalk(true);
@@ -3282,6 +3359,9 @@ function liveFlush(session){
 function stopLiveTalk(reason){
   const session=LIVE;LIVE=null;
   if(!session)return;
+  if(session.mouthTick){clearInterval(session.mouthTick);session.mouthTick=0;}
+  speaking=false;curV='sil';
+  window.__vivLive=null;
   liveFlush(session);
   try{session.ws.close();}catch(e){}
   try{session.cap&&session.cap.disconnect();}catch(e){}
@@ -5049,15 +5129,19 @@ if(IS_IOS){
   // send once there is a draft (owner, 2026-08-03). Moving the NODE
   // keeps this one handler and one lit state.
   if(IS_IOS)document.getElementById('manual').appendChild(railLive);
+  // The listening meter belongs to the composer on the phone, not to the
+  // page: inside #manual it simply takes the field's row while she is
+  // listening, instead of floating over it at a guessed offset.
+  if(IS_IOS)document.getElementById('manual')
+    .appendChild(document.getElementById('listenWave'));
   const railMove=document.getElementById('rail-move');
   const railIdle=document.getElementById('rail-idle');
   railMove.addEventListener('click',()=>toggleMoveShow());
   railIdle.addEventListener('click',()=>toggleIdleShow());
   railLive.addEventListener('click',()=>{
-    if(SOLO.active){
-      flashPrompt('Live talk needs your Mac — it rides a socket a mailbox cannot carry');
-      return;
-    }
+    // No longer Mac-bound. The relay still cannot carry a socket - but
+    // the PHONE can open one straight to the provider, and now does
+    // (see LiveTap). This refusal outlived the limitation it described.
     if(LIVE)stopLiveTalk('ended');else void startLiveTalk();
   });
   // EnConvo lane: the rail's bolt opens the agent sheet - every EnConvo

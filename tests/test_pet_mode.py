@@ -2171,7 +2171,16 @@ class PocketBarAndToolsTests(unittest.TestCase):
         # "server offline" blames the wrong layer when the real reason is
         # that no key has ever reached the phone.
         self.assertIn("no API key has reached this phone yet", self.renderer)
-        self.assertIn("Live talk needs your Mac", self.renderer)
+
+    def test_live_talk_is_no_longer_refused_without_the_mac(self):
+        # The rail used to refuse live talk in solo outright - true when
+        # the only route was a socket to the Mac, and the relay cannot
+        # carry one. The PHONE can open one straight to the provider now,
+        # so that refusal was describing a limitation that had been
+        # removed, and it fired before startLiveTalk could even run.
+        self.assertNotIn("Live talk needs your Mac", self.renderer)
+        self.assertIn("const ws=SOLO.active?nativeLiveSocket()", self.renderer)
+        self.assertIn("function nativeLiveSocket()", self.renderer)
 
     def test_solo_answers_when_the_mac_does_not(self):
         # Verified on the phone with the engine killed: status line

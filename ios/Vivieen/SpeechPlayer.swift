@@ -14,6 +14,8 @@ import WebKit
 /// mouth - and hands the actual samples here, where the app's own
 /// .playback session decides the route and the mute switch has no vote.
 final class SpeechPlayer: NSObject {
+    /// One voice, shared - live talk plays through the same engine.
+    static let shared = SpeechPlayer()
     private let engine = AVAudioEngine()
     private let node = AVAudioPlayerNode()
     private var wired = false
