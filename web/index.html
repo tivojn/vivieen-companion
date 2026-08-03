@@ -1289,7 +1289,7 @@ async function poll(){
    reach - the page only ever knows key NAMES. Chat, voice, ears and
    image come straight from the providers; EnConvo and live talk stay
    Mac-bound and say so honestly. */
-const SOLO={active:false,cfg:null,misses:0};
+const SOLO={active:false,cfg:null,misses:0,told:false};
 async function soloLoad(){
   try{SOLO.cfg=await(await fetch('solo/config')).json();}
   catch(e){SOLO.cfg=null;}
@@ -1573,7 +1573,23 @@ async function soloTurn(text){
 }
 function soloEnter(){
   if(SOLO.active)return;
-  if(!soloLLM())return;               // nothing synced - honest offline stays
+  if(!soloLLM()){
+    // Nothing to run on. Say WHICH thing is missing rather than leaving
+    // a bare "server offline" that blames the wrong layer (owner,
+    // 2026-08-03).
+    if(!SOLO.told){
+      SOLO.told=true;
+      soloLoad().then(()=>{
+        if(soloLLM()){soloEnter();return;}
+        const why=SOLO.cfg
+          ?'no API key has reached this phone yet — open the app once beside your Mac'
+          :'this build has no solo mode';
+        setStatus('offline · '+(SOLO.cfg?'no key synced':'no solo'),'');
+        flashPrompt('Your Mac is asleep and '+why);
+      });
+    }
+    return;
+  }
   SOLO.active=true;
   providerReady=true;ptt.disabled=false;
   document.documentElement.classList.add('solo');
@@ -1583,7 +1599,7 @@ function soloEnter(){
 }
 function soloExit(){
   if(!SOLO.active)return;
-  SOLO.active=false;soloToldEnconvo=false;
+  SOLO.active=false;soloToldEnconvo=false;SOLO.told=false;
   document.documentElement.classList.remove('solo');
   fetch('solo/sync',{method:'POST'}).catch(()=>{});
 }
@@ -4952,6 +4968,10 @@ if(IS_IOS){
   railMove.addEventListener('click',()=>toggleMoveShow());
   railIdle.addEventListener('click',()=>toggleIdleShow());
   railLive.addEventListener('click',()=>{
+    if(SOLO.active){
+      flashPrompt('Live talk needs your Mac — it rides a socket a mailbox cannot carry');
+      return;
+    }
     if(LIVE)stopLiveTalk('ended');else void startLiveTalk();
   });
   // EnConvo lane: the rail's bolt opens the agent sheet - every EnConvo

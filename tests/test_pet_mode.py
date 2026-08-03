@@ -2140,6 +2140,39 @@ class PocketBarAndToolsTests(unittest.TestCase):
         app_source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
         self.assertIn("import relay_agent", app_source)
 
+    def test_the_cache_never_serves_one_avatar_as_another(self):
+        # The Mac serves every face from the SAME /assets/ paths, so a
+        # key built from the path alone hands back the last avatar's
+        # sprites forever - two faces on one body, and a carousel where
+        # everybody is the same woman (owner screenshots, 2026-08-03).
+        scheme = (ROOT / "ios" / "Vivieen" / "VivScheme.swift").read_text()
+        self.assertIn('name = slug + "_" + key.replacingOccurrences',
+                      scheme)
+        self.assertIn("private func noteSlug(", scheme)
+        # And a query that is IDENTITY, not a cache-buster, must survive:
+        # thumb?slug=cleo and thumb?slug=vvn are different people.
+        self.assertIn('.replacingOccurrences(of: "?", with: "$")', scheme)
+
+    def test_a_provider_with_no_model_still_answers(self):
+        # A key with no model chosen sent model:"" and the provider
+        # rejected it - surfacing as "ROUTE FAILED / my model is not
+        # answering" with nothing naming the cause (owner, xAI).
+        source = (ROOT / "server" / "providers.py").read_text(encoding="utf-8")
+        self.assertIn("FALLBACK_MODEL = {", source)
+        self.assertIn('model = (c.get("model") or "").strip() '
+                      'or FALLBACK_MODEL.get(p, "")', source)
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        import providers
+        for name in ("openai", "xai", "anthropic", "gemini", "groq"):
+            self.assertTrue(providers.FALLBACK_MODEL.get(name), name)
+
+    def test_solo_says_why_it_cannot_run(self):
+        # "server offline" blames the wrong layer when the real reason is
+        # that no key has ever reached the phone.
+        self.assertIn("no API key has reached this phone yet", self.renderer)
+        self.assertIn("Live talk needs your Mac", self.renderer)
+
     def test_solo_answers_when_the_mac_does_not(self):
         # Verified on the phone with the engine killed: status line
         # "SOLO · GROK", she answered "Yes." and spoke it.

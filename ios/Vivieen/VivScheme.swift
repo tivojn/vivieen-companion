@@ -89,11 +89,44 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         path.firstIndex(of: "?").map { String(path[path.startIndex..<$0]) } ?? path
     }
 
+    /// Which avatar /assets/* currently resolves to. The Mac serves every
+    /// face from the SAME paths, so a key built from the path alone
+    /// serves the last avatar's sprites forever - two faces on one body,
+    /// and a carousel where everybody is the same woman (owner,
+    /// 2026-08-03). Learned from each manifest as it passes through.
+    private var activeSlug = UserDefaults.standard
+        .string(forKey: "cachedAvatarSlug") ?? "unknown"
+
+    private func noteSlug(from data: Data, path: String) {
+        guard bare(path) == "/assets/manifest.json",
+              let top = try? JSONSerialization.jsonObject(with: data)
+                as? [String: Any],
+              let avatar = top["avatar"] as? [String: Any],
+              let slug = avatar["slug"] as? String, !slug.isEmpty else { return }
+        lock.lock(); activeSlug = slug; lock.unlock()
+        UserDefaults.standard.set(slug, forKey: "cachedAvatarSlug")
+    }
+
     private func cacheURL(_ path: String) -> URL {
         let key = bare(path)
-        let safe = key == "/" ? "__page"
-            : key.replacingOccurrences(of: "/", with: "_")
-        return cacheRoot.appendingPathComponent(safe)
+        // Everything the active avatar owns lives under its own slug.
+        // Everything else keeps its QUERY, because for those the query is
+        // identity, not a cache-buster: /api/avatar/thumb?slug=cleo and
+        // ?slug=vvn are different faces, and collapsing them is what made
+        // every card in the deck the same person.
+        var name: String
+        if key == "/" {
+            name = "__page"
+        } else if key.hasPrefix("/assets/") {
+            lock.lock(); let slug = activeSlug; lock.unlock()
+            name = slug + "_" + key.replacingOccurrences(of: "/", with: "_")
+        } else {
+            name = path.replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "?", with: "$")
+                .replacingOccurrences(of: "&", with: "-")
+        }
+        if name.count > 180 { name = String(name.suffix(180)) }
+        return cacheRoot.appendingPathComponent(name)
     }
 
     private func mime(for path: String) -> String {
@@ -151,6 +184,11 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     /// launch per path. Failure is fine - the cache stays as it was.
     private var refreshed = Set<String>()
 
+    private func skipDirectNow() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return Date() < directOffUntil
+    }
+
     private func refreshInBackground(_ path: String) {
         lock.lock()
         let skip = Date() < directOffUntil || refreshed.contains(bare(path))
@@ -163,6 +201,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         session.dataTask(with: request) { [weak self] data, response, _ in
             guard let self, let data, !data.isEmpty,
                   (response as? HTTPURLResponse)?.statusCode == 200 else { return }
+            self.noteSlug(from: data, path: path)
             try? data.write(to: self.cacheURL(path))
         }.resume()
     }
@@ -229,7 +268,10 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             return
         }
 
-        if method == "GET", cacheable(path),
+        // The manifest is the ONLY thing that can teach us the active
+        // avatar, so it must reach the Mac whenever the Mac is there.
+        let manifest = bare(path) == "/assets/manifest.json"
+        if method == "GET", cacheable(path), !manifest || skipDirectNow(),
            let cached = try? Data(contentsOf: cacheURL(path)), !cached.isEmpty {
             finish(task, url: requested, data: cached, type: mime(for: bare(path)))
             // Stale-while-revalidate: the cached copy answers NOW; a quiet
@@ -277,6 +319,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                 return
             }
             if method == "GET", self.cacheable(path), http.statusCode == 200 {
+                self.noteSlug(from: data, path: path)
                 try? data.write(to: self.cacheURL(path))
             }
             let type = http.value(forHTTPHeaderField: "Content-Type")
@@ -298,6 +341,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                 return
             }
             if method == "GET", self.cacheable(path), reply.status == 200 {
+                self.noteSlug(from: reply.data, path: path)
                 try? reply.data.write(to: self.cacheURL(path))
             }
             self.finish(task, url: requested, data: reply.data,

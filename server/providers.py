@@ -837,9 +837,27 @@ async def chat(messages, c, system=""):
         raise
 
 
+# A provider with a key but no model chosen is the commonest way to a
+# dead chat: the request goes out with model:"" and the provider rejects
+# it, which surfaced as "ROUTE FAILED - my model is not answering" with
+# nothing naming the actual cause (owner, xAI, 2026-08-03). Picking the
+# house model is better than failing, and the UI still shows what ran.
+FALLBACK_MODEL = {
+    "openai": "gpt-5-mini", "xai": "grok-3-mini", "anthropic": "claude-sonnet-5",
+    "gemini": "gemini-2.5-flash", "groq": "llama-3.3-70b-versatile",
+    "deepseek": "deepseek-chat", "mistral": "mistral-small-latest",
+    "openrouter": "openai/gpt-5-mini", "moonshot": "kimi-k2-0905-preview",
+    "cerebras": "llama-3.3-70b", "together": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    "fireworks": "accounts/fireworks/models/llama-v3p3-70b-instruct",
+    "perplexity": "sonar", "qwen": "qwen-plus", "zhipu": "glm-4.6",
+    "minimax_llm": "MiniMax-Text-01", "nvidia": "meta/llama-3.3-70b-instruct",
+}
+
+
 async def _chat_direct(messages, c, system=""):
     p = c.get("provider")
-    base, key, model = _base("llm", c), c.get("api_key") or "", c.get("model") or ""
+    base, key = _base("llm", c), c.get("api_key") or ""
+    model = (c.get("model") or "").strip() or FALLBACK_MODEL.get(p, "")
     temp = float(c.get("temperature", 0.8))
     maxtok = int(c.get("max_tokens", 160))
 
