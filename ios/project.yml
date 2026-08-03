@@ -14,7 +14,6 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         SWIFT_OBJC_BRIDGING_HEADER: Vivieen/Vivieen-Bridging-Header.h
-        CODE_SIGN_ENTITLEMENTS: Vivieen/Vivieen.entitlements
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Vivieen/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -24,6 +23,17 @@ targets:
         # entitlements, so every Keychain write fails -34018 and solo
         # mode silently loses the keys it just decrypted (2026-08-03).
         # TestFlight archives override all of this on the command line.
-        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_IDENTITY: ""
         CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+    configs:
+      # Simulator only. A real signed build gets its Keychain access
+      # group from its provisioning profile; an UNSIGNED simulator build
+      # gets none at all, so every Keychain write failed -34018 and solo
+      # silently lost the keys it had just decrypted (2026-08-03). These
+      # two lines fix that without touching the archive, which refuses an
+      # explicit keychain-group entitlement under distribution signing.
+      Debug:
+        CODE_SIGN_IDENTITY: "-"
         CODE_SIGNING_ALLOWED: YES
+        CODE_SIGN_ENTITLEMENTS: Vivieen/Vivieen.entitlements
