@@ -2653,6 +2653,8 @@ function livePlay(session,b64,rate){
     analyser.smoothingTimeConstant=0.6;analyser.connect(audioSink());}
   const bin=atob(b64),n=bin.length>>1;
   if(!n)return;
+  // Live talk already ships PCM16 - hand it straight to the app.
+  if(NATIVE_SPEECH())nativeSpeak(b64,rate);
   const pcm=new Int16Array(n);
   for(let i=0;i<n;i++)pcm[i]=(bin.charCodeAt(2*i)|(bin.charCodeAt(2*i+1)<<8))<<16>>16;
   const buf=actx.createBuffer(1,n,rate);
@@ -2680,6 +2682,9 @@ function livePlay(session,b64,rate){
 }
 function liveFlush(session){
   for(const src of session.sources){try{src.stop();}catch(e){}}
+  // Barge-in has to reach the app's queue too, or she keeps talking over
+  // you from a buffer the page no longer owns.
+  if(NATIVE_SPEECH())nativeFlush();
   session.sources.clear();session.queueT=0;session.agentText='';
   localSource=null;speaking=false;curV='sil';
 }
@@ -2711,10 +2716,43 @@ addEventListener('keydown',event=>{
 // lip-sync live on the analyser BEFORE this gain) but the room goes quiet.
 let masterGain=null;
 window.IOS_MUTED=false;
+/* WKWebView runs WebAudio on its OWN audio session - one that answers to
+   the ring/silent switch and ignores the category the app sets - so on a
+   real iPhone her voice decoded, scheduled and lip-synced in perfect time
+   with nothing reaching the speaker. The Simulator hid it entirely.
+   Where the native player exists, WebAudio keeps the job it is good at,
+   the CLOCK that drives her mouth, and the samples go to the app.  */
+const NATIVE_SPEECH=()=>Boolean(window.webkit&&webkit.messageHandlers&&
+  webkit.messageHandlers.speech);
+function nativeSpeak(pcmBase64,rate){
+  try{webkit.messageHandlers.speech.postMessage(rate+':'+pcmBase64);}catch(e){}
+}
+function nativeFlush(){
+  try{webkit.messageHandlers.speech.postMessage('flush');}catch(e){}
+}
 function audioSink(){
   if(!masterGain){masterGain=actx.createGain();masterGain.connect(actx.destination);}
-  masterGain.gain.value=window.IOS_MUTED?0:1;
+  // Silent graph when the app is doing the talking - otherwise a device
+  // that DOES let WebAudio through would say everything twice.
+  masterGain.gain.value=(window.IOS_MUTED||NATIVE_SPEECH())?0:1;
   return masterGain;
+}
+/* WAV in, raw PCM16 out: the native player wants samples, not a header. */
+function pcmFromWav(bytes){
+  let at=12;
+  while(at+8<=bytes.length){
+    const id=String.fromCharCode(bytes[at],bytes[at+1],bytes[at+2],bytes[at+3]);
+    const size=bytes[at+4]|(bytes[at+5]<<8)|(bytes[at+6]<<16)|(bytes[at+7]<<24);
+    if(id==='data')return bytes.subarray(at+8,Math.min(bytes.length,at+8+size));
+    at+=8+size+(size&1);
+  }
+  return bytes.subarray(44);
+}
+function b64FromBytes(bytes){
+  let binary='';
+  for(let i=0;i<bytes.length;i+=0x8000)
+    binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));
+  return btoa(binary);
 }
 const history=[];
 let localSource=null;
@@ -2745,8 +2783,11 @@ async function speak(b64,tr){
   const bin=atob(b64),u8=new Uint8Array(bin.length);
   for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
   let buf;
-  try{buf=await actx.decodeAudioData(u8.buffer);}
+  try{buf=await actx.decodeAudioData(u8.buffer.slice(0));}
   catch(e){audbg('decode FAIL: '+e);return;}
+  // The app says it out loud; WebAudio below only keeps the time.
+  if(NATIVE_SPEECH())
+    nativeSpeak(b64FromBytes(pcmFromWav(u8)),buf.sampleRate);
   const src=actx.createBufferSource();src.buffer=buf;localSource=src;
   analyser=actx.createAnalyser();analyser.fftSize=2048;analyser.smoothingTimeConstant=0.6;
   src.connect(analyser);analyser.connect(audioSink());

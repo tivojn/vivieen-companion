@@ -24,6 +24,17 @@ enum AudioSession {
             + " other=\(s.isOtherAudioPlaying)"
     }
 
+    /// Cheap guard before playing: the session can be deactivated by an
+    /// interruption (a call, another app) and nobody tells the page.
+    static func ensureActive() {
+        let session = AVAudioSession.sharedInstance()
+        if session.category != .playback && session.category != .playAndRecord {
+            playbackOnly()
+        } else {
+            try? session.setActive(true)
+        }
+    }
+
     static func playbackOnly() {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default,

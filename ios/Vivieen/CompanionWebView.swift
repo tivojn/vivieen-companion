@@ -37,8 +37,15 @@ private func removeInputAccessory(from webView: WKWebView) {
 struct CompanionWebView: UIViewRepresentable {
     let address: String
     let token: String
+    /// True once her page is actually on screen. The app's own gear hides
+    /// itself then, so the page's gear is the only "settings" in sight.
+    @Binding var pageLive: Bool
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(pageLive: { live in
+            DispatchQueue.main.async { self.pageLive = live }
+        })
+    }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -131,6 +138,7 @@ struct CompanionWebView: UIViewRepresentable {
         configuration.userContentController.add(context.coordinator, name: "mic")
         configuration.userContentController.add(context.coordinator, name: "audio")
         configuration.userContentController.add(context.coordinator, name: "share")
+        configuration.userContentController.add(context.coordinator, name: "speech")
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.uiDelegate = context.coordinator
         webView.navigationDelegate = context.coordinator
@@ -190,7 +198,22 @@ struct CompanionWebView: UIViewRepresentable {
                              WKScriptMessageHandler {
         let pip = PipDriver()
         let mic = MicDriver()
+        let speech = SpeechPlayer()
         var pageURL: URL?
+        private let pageLive: (Bool) -> Void
+
+        init(pageLive: @escaping (Bool) -> Void) {
+            self.pageLive = pageLive
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            pageLive(true)
+        }
+
+        func webView(_ webView: WKWebView,
+                     didFail navigation: WKNavigation!, withError error: Error) {
+            pageLive(false)
+        }
 
         func webView(_ webView: WKWebView,
                      didFailProvisionalNavigation navigation: WKNavigation!,
@@ -216,6 +239,17 @@ struct CompanionWebView: UIViewRepresentable {
                 if body == "start" { pip.start() }
                 else if body == "stop" { pip.stop() }
                 else { pip.enqueue(dataURL: body) }
+                return
+            }
+            if message.name == "speech" {
+                // "<rate>:<base64 pcm16>", or "flush" for barge-in.
+                guard let body = message.body as? String else { return }
+                if body == "flush" { speech.flush(); return }
+                if body == "stop" { speech.stop(); return }
+                guard let split = body.firstIndex(of: ":") else { return }
+                let rate = Double(body[body.startIndex..<split]) ?? 24000
+                speech.enqueue(base64: String(body[body.index(after: split)...]),
+                               rate: rate)
                 return
             }
             if message.name == "audio" {

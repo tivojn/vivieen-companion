@@ -15,7 +15,7 @@
 		<key>CFBundleShortVersionString</key>
 		<string>0.9.0</string>
 		<key>CFBundleVersion</key>
-		<string>2608031001</string>
+		<string>2608031030</string>
 		<key>SigningIdentity</key>
 		<string></string>
 		<key>Team</key>
@@ -24,7 +24,7 @@
 	<key>ArchiveVersion</key>
 	<integer>2</integer>
 	<key>CreationDate</key>
-	<date>2026-08-03T02:01:25Z</date>
+	<date>2026-08-03T02:30:12Z</date>
 	<key>Distributions</key>
 	<array>
 		<dict>
@@ -35,11 +35,11 @@
 			<key>destination</key>
 			<string>upload</string>
 			<key>identifier</key>
-			<string>4ba60f2c-8624-40eb-852e-80eeae89dbec</string>
+			<string>35e3f478-5209-435a-87cc-0089573647ec</string>
 			<key>preparationEvent</key>
 			<dict>
 				<key>date</key>
-				<string>2026-08-03T02:01:26Z</string>
+				<string>2026-08-03T02:30:13Z</string>
 				<key>errors</key>
 				<array/>
 				<key>infoMessages</key>
@@ -64,7 +64,7 @@
 			<key>uploadEvent</key>
 			<dict>
 				<key>date</key>
-				<string>2026-08-03T02:03:12Z</string>
+				<string>2026-08-03T02:31:48Z</string>
 				<key>errors</key>
 				<array/>
 				<key>infoMessages</key>
@@ -79,7 +79,7 @@
 				<array/>
 			</dict>
 			<key>uploadedBuildNumber</key>
-			<string>2608031001</string>
+			<string>2608031030</string>
 		</dict>
 	</array>
 	<key>Name</key>
