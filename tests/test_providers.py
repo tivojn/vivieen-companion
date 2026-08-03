@@ -297,6 +297,49 @@ class ProviderDefaultsTests(unittest.TestCase):
         self.assertIn("silenceHangup: TimeInterval = 15", swift)
         self.assertIn("if !quiet, LiveTap.loudness(pcm) > 0.012 {", swift)
 
+    def test_the_status_line_switches_the_model(self):
+        # Settings -> Models -> scroll was three moves to change one word.
+        # The line already names the brain, so it is where you change it.
+        index_path = os.path.join(ROOT, "web", "index.html")
+        with open(index_path, encoding="utf-8") as handle:
+            html = handle.read()
+        # /api/config answers a DOCUMENT; the lane lives under .config
+        self.assertIn("const cfg=top.config||{};", html)
+        # and only the lane goes back - posting the document invites a wipe
+        self.assertIn("body:JSON.stringify({llm})});", html)
+        # offline the phone writes its own store, and only a model name
+        self.assertIn("fetch('solo/pick'", html)
+        with open(os.path.join(ROOT, "ios", "Vivieen", "VivScheme.swift"),
+                  encoding="utf-8") as handle:
+            swift = handle.read()
+        self.assertIn('case "/solo/pick":', swift)
+        self.assertIn('["llm", "tts", "stt", "image", "video"].contains(lane)',
+                      swift)
+
+    def test_a_turn_can_be_called_off(self):
+        # A reply you cannot stop is one you have to sit through.
+        index_path = os.path.join(ROOT, "web", "index.html")
+        with open(index_path, encoding="utf-8") as handle:
+            html = handle.read()
+        self.assertIn("const TURN={abort:null};", html)
+        self.assertIn("function turnStop()", html)
+        # every lane: her own, the agent, and solo
+        self.assertIn("fetch('reply',{method:'POST',signal,", html)
+        self.assertIn("signal:TURN.abort?TURN.abort.signal:undefined,", html)
+        # stopping must silence her too
+        self.assertIn("try{liveFlushAudio();}catch(e){}", html)
+
+    def test_thread_rows_carry_copy_and_replay(self):
+        index_path = os.path.join(ROOT, "web", "index.html")
+        with open(index_path, encoding="utf-8") as handle:
+            html = handle.read()
+        self.assertIn("function threadActions(", html)
+        self.assertIn("async function replayAloud(", html)
+        # the async clipboard is refused on an insecure origin
+        self.assertIn("document.execCommand('copy')", html)
+        # only her words are worth hearing again
+        self.assertIn("if(role!=='user')button('Play aloud'", html)
+
     def test_openai_lists_only_models_for_the_requested_modality(self):
         # Exclusion only, never a name allowlist: the old gpt-* prefix list
         # hid every newly-named family (a "luna-1" never appeared). Unknown

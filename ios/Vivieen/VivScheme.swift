@@ -441,6 +441,26 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             soloCall(task, requested: requested, body: body)
         case "/solo/soniox":
             sonioxCall(task, requested: requested, body: body)
+        case "/solo/pick":
+            // Choosing a model with no Mac in reach. Only the model name
+            // moves - never a key, never a provider the phone has no
+            // credential for.
+            guard let body,
+                  let spec = try? JSONSerialization.jsonObject(with: body)
+                    as? [String: Any],
+                  let lane = spec["lane"] as? String,
+                  let model = spec["model"] as? String,
+                  ["llm", "tts", "stt", "image", "video"].contains(lane) else {
+                json(task, requested, ["error": "bad pick"], status: 400)
+                return
+            }
+            var config = SoloStore.shared.config
+            var block = (config[lane] as? [String: Any]) ?? [:]
+            block["model"] = model
+            config[lane] = block
+            SoloStore.shared.config = config
+            NSLog("[viv-solo] picked %@ model %@", lane, model)
+            json(task, requested, ["ok": true, "lane": lane, "model": model])
         default:
             json(task, requested, ["error": "unknown solo path"], status: 404)
         }

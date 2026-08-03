@@ -359,6 +359,52 @@ html.ios #rail-live.on{background:rgba(212,76,71,.95);color:#fff}
 html.ios #rail-live svg,html.ios.has-draft #sendBtn svg{
   width:19px;height:19px;fill:currentColor}
 html.ios.has-draft #rail-live{display:none}
+/* Three states, one slot: live talk at rest, send once you type, STOP
+   while she is answering. A turn you cannot call off is a turn you have
+   to sit through (owner, 2026-08-03). */
+#stopBtn{display:none}
+html.ios.turning #rail-live,html.ios.turning #sendBtn{display:none}
+html.ios.turning #stopBtn{display:flex;flex:none;width:34px;height:34px;
+  border-radius:50%;align-items:center;justify-content:center;padding:0;
+  order:6;border:none;background:#d44c47;color:#fff}
+html.ios.turning #stopBtn svg{width:16px;height:16px;fill:currentColor}
+/* Her colours can sit right on top of the words. One tap puts her away,
+   another brings her back. */
+html.ios.avatar-hidden #stage,html.ios.avatar-hidden #vignette{opacity:0}
+/* ---- per-row actions ---------------------------------------------------
+   Quiet until wanted: a thread should read as a conversation, not as a
+   toolbar with text between the buttons. Touch a row and they appear. */
+html.ios .msg .rowacts{display:flex;gap:2px;margin:6px -4px -2px;
+  opacity:0;max-height:0;overflow:hidden;
+  transition:opacity 160ms ease,max-height 160ms ease}
+html.ios .msg.acts-open .rowacts{opacity:1;max-height:34px}
+html.ios .msg .rowacts button{width:30px;height:30px;padding:0;border:none;
+  background:none;color:inherit;opacity:.5;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  -webkit-tap-highlight-color:transparent}
+html.ios .msg .rowacts button svg{width:17px;height:17px;fill:currentColor}
+html.ios .msg .rowacts button.did{opacity:1;color:#1d9e75}
+html.ios #rail-hide.on{background:rgba(124,116,226,.42);color:#efeefe}
+/* ---- model picker ------------------------------------------------------
+   The status line already names the brain that is answering, so it is
+   the honest place to change it - Settings, Models, then a scroll, was
+   three moves to switch one word (owner, 2026-08-03). */
+html.ios #status{pointer-events:auto}
+html.ios #status::after{content:'\25BE';font-size:9px;opacity:.5;margin-left:2px}
+html.ios.live-on #status::after,html.ios.turning #status::after{content:''}
+#modelsheet{display:none}
+html.ios.models-open #modelsheet{display:block;position:fixed;z-index:80;
+  left:12px;right:12px;top:calc(46px + env(safe-area-inset-top,0px));
+  max-height:56vh;overflow-y:auto;border-radius:18px;padding:6px;
+  background:var(--card);border:1px solid var(--card-line);
+  -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
+  box-shadow:0 24px 60px rgba(0,0,0,.4)}
+html.ios #modellist button{display:block;width:100%;text-align:left;
+  padding:11px 14px;border:none;background:none;color:var(--card-ink);
+  font:inherit;font-size:15px;border-radius:12px;
+  -webkit-user-select:none;user-select:none}
+html.ios #modellist button.on{background:rgba(124,116,226,.22);font-weight:600}
+html.ios #modellist .note{padding:11px 14px;font-size:13px;opacity:.6}
 /* Never display:none - WebKit refuses a programmatic .click() on an
    unrendered file input, which is why the plus button did nothing on the
    phone. Rendered, one pixel, invisible, out of the way. */
@@ -633,10 +679,12 @@ html.ios #zoombox input{width:100%;flex:1}
   <button id="rail-mute" type="button" aria-label="Mute her voice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 5V4L8 9H4zm12.5 3a3.5 3.5 0 0 0-2-3.15v6.3a3.5 3.5 0 0 0 2-3.15z"/></svg></button>
   <button id="rail-skin" type="button" aria-label="Light or dark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg></button>
   <button id="rail-faces" type="button" aria-label="Switch avatar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3v10H4V7zm4.5-2h7v14h-7V5zM17 7h3v10h-3V7z"/></svg></button>
+  <button id="rail-hide" type="button" aria-label="Hide or show her"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-9 7s4 7 9 7 9-4.5 9-7-4-7-9-7zm0 2c3.6 0 6.5 3 7 5-.5 2-3.4 5-7 5s-6.5-3-7-5c.5-2 3.4-5 7-5zm0 1.8A3.2 3.2 0 1 0 12 15.2 3.2 3.2 0 0 0 12 8.8z"/></svg></button>
   <button id="rail-zoom" type="button" aria-label="Zoom"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12zm-1 3h2v2h2v2h-2v2H9v-2H7V9h2V7z"/></svg></button>
 </div>
 <div id="thread"></div>
 <div id="agentsheet"><div id="agentlist"></div></div>
+<div id="modelsheet"><div id="modellist"></div></div>
 <button id="threaddown" type="button" aria-label="Jump to newest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16.5 4.5 9l1.4-1.4L12 13.7l6.1-6.1L19.5 9 12 16.5z"/></svg></button>
 <div id="zoombox">
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12z"/></svg><input id="zoomrange" type="range" min="60" max="600" step="5" value="100" aria-label="Avatar zoom"></div>
@@ -680,6 +728,7 @@ html.ios #zoombox input{width:100%;flex:1}
       <button id="emojiBtn" type="button" aria-label="Emoji"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zM8.6 9.2a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6zm6.8 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6zM7.6 14.2h8.8a4.6 4.6 0 0 1-8.8 0z"/></svg></button>
       <button id="plusBtn" type="button" aria-label="Attach photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z"/></svg></button>
       <button id="sendBtn" type="button" aria-label="Send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l7 7-1.4 1.4L13 7.8V20h-2V7.8L6.4 12.4 5 11l7-7z"/></svg></button>
+      <button id="stopBtn" type="button" aria-label="Stop"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg></button>
       <input type="file" id="chatPhoto" accept="image/*">
     </div>
   </div>
@@ -1398,6 +1447,7 @@ async function soloNative(path,spec,seconds){
   const cap=(seconds||90)*1000;
   let timer=null;
   const call=fetch(path,{method:'POST',
+    signal:TURN.abort?TURN.abort.signal:undefined,
     headers:{'Content-Type':'application/json'},body:JSON.stringify(spec)})
     .then(response=>response.json());
   const bell=new Promise((_,fail)=>{
@@ -1641,6 +1691,7 @@ function soloCharTrack(alignment){
 
 let soloToldEnconvo=false;
 async function soloTurn(text){
+  turnBegin();
   history.push({role:'user',content:text});
   threadPush('user',text);
   if(window.ENCONVO&&ENCONVO.agent&&!soloToldEnconvo){
@@ -1667,11 +1718,17 @@ async function soloTurn(text){
     const p=soloLLM();
     setStatus('solo · '+(p?p.label:'ready'),'on');
   }catch(e){
-    const why=String(e.message||e).slice(0,110);
-    setCaption('(solo trouble: '+why+')');
-    threadPush('her','(solo trouble: '+why+')');
-    setStatus('solo · error','');
+    if(e.name==='AbortError'){
+      threadPush('her','· stopped ·');
+      const p=soloLLM();setStatus('solo · '+(p?p.label:'ready'),'on');
+    }else{
+      const why=String(e.message||e).slice(0,110);
+      setCaption('(solo trouble: '+why+')');
+      threadPush('her','(solo trouble: '+why+')');
+      setStatus('solo · error','');
+    }
   }
+  turnEnd();
 }
 function soloEnter(){
   if(SOLO.active)return;
@@ -3613,6 +3670,30 @@ function enconvoSlash(text){
   ptt.disabled=monitorEnabled;
   return true;
 }
+/* One handle on the turn in flight, whichever lane is carrying it. */
+const TURN={abort:null};
+function turnBegin(){
+  TURN.abort=new AbortController();
+  document.documentElement.classList.add('turning');
+  return TURN.abort.signal;
+}
+function turnEnd(){
+  TURN.abort=null;
+  document.documentElement.classList.remove('turning');
+}
+function turnStop(){
+  if(TURN.abort){try{TURN.abort.abort();}catch(e){}}
+  if(window.ENCONVO&&ENCONVO.abort){try{ENCONVO.abort.abort();}catch(e){}}
+  // Cut the voice too - stopping a reply you can still hear is not
+  // stopping it.
+  try{liveFlushAudio();}catch(e){}
+  turnEnd();
+}
+function liveFlushAudio(){
+  if(NATIVE_SPEECH())nativeFlush();
+  speaking=false;curV='sil';
+}
+
 async function turn(text,spoken=false){
   if(SOLO.active)return soloTurn(text);
   ptt.disabled=true;elYou.textContent=text;setCaption('');
@@ -3626,6 +3707,7 @@ async function turn(text,spoken=false){
     try{
       setStatus('asking '+(ENCONVO.title||'the agent'),'busy');
       ENCONVO.abort=new AbortController();
+      turnBegin();
       const r=await enconvoStream({agent:ENCONVO.agent,message:text,
         session_id:ENCONVO.sessions[ENCONVO.agent]||'',
         context_files:ENCONVO.pending||[]},work);
@@ -3652,13 +3734,15 @@ async function turn(text,spoken=false){
       }
     }
     ENCONVO.abort=null;
+    turnEnd();
     ptt.disabled=monitorEnabled;
     return;
   }
   history.push({role:'user',content:text});
   let llmRoute=null;
+  const signal=turnBegin();
   try{
-    const r=await(await fetch('reply',{method:'POST',
+    const r=await(await fetch('reply',{method:'POST',signal,
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({history})})).json();
     llmRoute=r.llm_route||null;
@@ -3673,8 +3757,12 @@ async function turn(text,spoken=false){
     threadAttachments(r.media);
     setStatus('speaking','on');
     await speak(r.audio,r.track);
-  }catch(e){setCaption('(something broke: '+e.message+')');
-    threadPush('her','(something broke: '+e.message+')');}
+  }catch(e){
+    if(e.name==='AbortError'){threadPush('her','· stopped ·');}
+    else{setCaption('(something broke: '+e.message+')');
+      threadPush('her','(something broke: '+e.message+')');}
+  }
+  turnEnd();
   if(monitorEnabled)renderMonitorStatus();else setStatus(routedStatus(llmRoute),'on');
   ptt.disabled=monitorEnabled;
 }
@@ -4591,6 +4679,59 @@ function threadToBottom(smooth){
   container.scrollTo({top:container.scrollHeight,
     behavior:smooth?'smooth':'auto'});
 }
+/* Per-row actions, the way every messenger has them: copy the words,
+   or hear them again in her voice (owner, 2026-08-03). They stay out of
+   the way until the row is touched, so the thread still reads as a
+   conversation and not as a toolbar with text between the buttons. */
+function threadActions(card,value,role){
+  const row=document.createElement('div');
+  row.className='rowacts';
+  const button=(label,glyph,go)=>{
+    const b=document.createElement('button');
+    b.type='button';b.setAttribute('aria-label',label);
+    b.innerHTML=glyph;
+    b.addEventListener('click',event=>{event.stopPropagation();go(b);});
+    row.append(b);
+    return b;
+  };
+  button('Copy','<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>',
+    b=>{
+      const done=()=>{b.classList.add('did');setTimeout(()=>b.classList.remove('did'),1200);};
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(value).then(done,()=>fallback());
+      }else fallback();
+      function fallback(){
+        // WKWebView refuses the async clipboard on an insecure origin;
+        // the old execCommand path still works there.
+        const pad=document.createElement('textarea');
+        pad.value=value;pad.style.position='fixed';pad.style.opacity='0';
+        document.body.append(pad);pad.select();
+        try{document.execCommand('copy');done();}catch(e){flashPrompt('could not copy');}
+        pad.remove();
+      }
+    });
+  // Only HER words are worth hearing again; your own you just said.
+  if(role!=='user')button('Play aloud','<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 5V4L8 9H4zm12.5 3a3.5 3.5 0 0 0-2-3.15v6.3a3.5 3.5 0 0 0 2-3.15zM14.5 3.2v2.06a6.5 6.5 0 0 1 0 13.48v2.06a8.5 8.5 0 0 0 0-17.6z"/></svg>',
+    b=>{b.classList.add('did');void replayAloud(value).finally(()=>b.classList.remove('did'));});
+  return row;
+}
+/* Say it again. Solo speaks with its own key; otherwise the Mac's voice
+   answers, the same one that spoke it the first time. */
+async function replayAloud(text){
+  try{
+    if(SOLO.active){
+      const voice=await soloTTS(text);
+      if(voice)await speak(voice.b64,voice.track||(d=>soloEstimateTrack(text,d)));
+      return;
+    }
+    const r=await(await fetch('say',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text})})).json();
+    if(r.audio)await speak(r.audio,r.track);
+    else flashPrompt('no voice came back');
+  }catch(e){flashPrompt('voice: '+String(e.message||e).slice(0,70));}
+}
+
 function threadPush(role,text){
   if(!IS_IOS)return null;
   const value=String(text||'').trim();
@@ -4607,6 +4748,14 @@ function threadPush(role,text){
     const settle=()=>{if(threadNearBottom(container)||stick)threadToBottom(false);};
     media.addEventListener('load',settle);
     media.addEventListener('loadedmetadata',settle);
+  });
+  card.append(threadActions(card,value,role));
+  // One row's actions at a time - two open sets read as clutter.
+  card.addEventListener('click',()=>{
+    const open=card.classList.contains('acts-open');
+    container.querySelectorAll('.msg.acts-open')
+      .forEach(other=>other.classList.remove('acts-open'));
+    card.classList.toggle('acts-open',!open);
   });
   container.append(card);
   while(container.children.length>40)container.firstChild.remove();
@@ -5140,6 +5289,106 @@ if(IS_IOS){
   // listening, instead of floating over it at a guessed offset.
   if(IS_IOS)document.getElementById('manual')
     .appendChild(document.getElementById('listenWave'));
+  // Stop: the one control that has to work when everything else is busy.
+  document.getElementById('stopBtn').addEventListener('click',turnStop);
+  // Hide her. Sometimes the words matter more than the face, and her
+  // colours can sit right on top of them (owner, 2026-08-03).
+  const railHide=document.getElementById('rail-hide');
+  railHide.addEventListener('click',()=>{
+    const away=document.documentElement.classList.toggle('avatar-hidden');
+    railHide.classList.toggle('on',away);
+    flashPrompt(away?'She is out of the way — tap again to bring her back'
+                    :'She is back');
+  });
+  // ---- model picker: the status line IS the switch --------------------
+  const modelSheet=document.getElementById('modelsheet');
+  const modelList=document.getElementById('modellist');
+  const closeModels=()=>document.documentElement.classList.remove('models-open');
+  const note=text=>{
+    const d=document.createElement('div');d.className='note';d.textContent=text;
+    modelList.append(d);
+  };
+  /* Solo asks the provider itself - the same key, the same catalogue the
+     Mac would have read. Online, the Mac answers, because only it knows
+     the whole configured lane. */
+  async function llmChoices(){
+    if(SOLO.active){
+      const p=soloLLM();
+      if(!p)return{provider:'',model:'',models:[]};
+      const r=await soloCall({url:p.base+'/models',method:'GET',key:p.key,
+        key_style:p.style,headers:{}},25);
+      const d=soloText(r);
+      const rows=(d.data||d.models||[]).map(m=>String(m.id||m.name||''))
+        .filter(Boolean).sort();
+      return{provider:p.label,model:p.model,models:rows,solo:true};
+    }
+    // /api/config answers {config, catalog, globals, routes, active} -
+    // the lane lives under .config, not at the top.
+    const top=await(await fetch('api/config')).json();
+    const cfg=top.config||{};
+    const llm=cfg.llm||{};
+    const r=await(await fetch('api/models',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({kind:'llm',cfg:llm})})).json();
+    return{provider:llm.provider||'',model:llm.model||'',
+      models:(r.models||[]).map(m=>String(m.id||m)),cfg,error:r.error};
+  }
+  async function pickModel(name,state){
+    if(state.solo){
+      await fetch('solo/pick',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({lane:'llm',model:name})});
+      await soloLoad();
+      const p=soloLLM();setStatus('solo · '+(p?p.label:'ready'),'on');
+    }else{
+      // Send the LANE only, never the whole document: an empty api_key
+      // means "unchanged" to the Mac, and posting catalog/globals back
+      // as if they were config is asking for a wipe.
+      const llm={...(state.cfg.llm||{}),model:name};
+      delete llm.api_key;delete llm.has_key;
+      await fetch('api/config',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({llm})});
+    }
+    flashPrompt('Now answering with '+name);
+    closeModels();
+  }
+  document.getElementById('status').addEventListener('click',async()=>{
+    if(!IS_IOS)return;
+    if(document.documentElement.classList.contains('models-open')){closeModels();return;}
+    // Mid-call or mid-turn the line is saying something else; leave it.
+    if(LIVE||document.documentElement.classList.contains('turning'))return;
+    document.documentElement.classList.add('models-open');
+    modelList.replaceChildren();note('Loading models…');
+    try{
+      const state=await llmChoices();
+      modelList.replaceChildren();
+      if(state.error)note(state.error);
+      if(!state.models.length){
+        note(state.provider?('no models listed for '+state.provider)
+                           :'no brain configured yet');
+        return;
+      }
+      state.models.forEach(name=>{
+        const row=document.createElement('button');
+        row.type='button';
+        row.className=(name===state.model?'on':'');
+        row.textContent=name;
+        row.addEventListener('click',()=>void pickModel(name,state));
+        modelList.append(row);
+      });
+    }catch(e){
+      modelList.replaceChildren();
+      note(String(e.message||e).slice(0,120));
+    }
+  });
+  addEventListener('pointerdown',event=>{
+    if(!document.documentElement.classList.contains('models-open'))return;
+    if(modelSheet.contains(event.target))return;
+    if(document.getElementById('status').contains(event.target))return;
+    closeModels();
+  },true);
+
   const railMove=document.getElementById('rail-move');
   const railIdle=document.getElementById('rail-idle');
   railMove.addEventListener('click',()=>toggleMoveShow());
