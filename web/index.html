@@ -2621,7 +2621,14 @@ function liveVitals(session){
 }
 function livePlay(session,b64,rate){
   actx=actx||new AudioContext();
-  if(actx.state==='suspended')actx.resume();
+  // Opening the microphone changes the iOS audio category, and that
+  // INTERRUPTS a running context - it comes back suspended and stays
+  // that way, so her live-talk voice was scheduled into a dead graph
+  // (owner, 2026-08-03). Resume on every packet; it is a no-op when
+  // already running.
+  if(actx.state!=='running')actx.resume().catch(()=>{});
+  audbg('live: ctx='+actx.state+' rate='+rate+' b='+b64.length
+    +' muted='+window.IOS_MUTED);
   if(!analyser){analyser=actx.createAnalyser();analyser.fftSize=2048;
     analyser.smoothingTimeConstant=0.6;analyser.connect(audioSink());}
   const bin=atob(b64),n=bin.length>>1;
@@ -2765,10 +2772,25 @@ function threadWorking(){
   };
   return card;
 }
-async function enconvoStream(body,work){
-  const response=await fetch('api/enconvo/chat',{method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(body),signal:ENCONVO.abort&&ENCONVO.abort.signal});
+async function enconvoStream(body,work,attempt=0){
+  let response;
+  try{
+    response=await fetch('api/enconvo/chat',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body),signal:ENCONVO.abort&&ENCONVO.abort.signal});
+  }catch(error){
+    // "Load failed" is WebKit's word for a dropped connection - a long
+    // agent turn over the LAN, a moment of Wi-Fi, a backgrounded app.
+    // The agent kept its session, so one quiet retry usually lands
+    // (owner, 2026-08-03).
+    if(attempt<1&&error.name!=='AbortError'){
+      work.addStep('reconnecting…');
+      await new Promise(r=>setTimeout(r,1200));
+      return enconvoStream(body,work,attempt+1);
+    }
+    throw new Error(error.name==='AbortError'?'stopped'
+      :'the line to the Mac dropped ('+(error.message||error)+')');
+  }
   if(!response.body)return await response.json();
   const reader=response.body.getReader(),decoder=new TextDecoder();
   let buffer='',result=null;

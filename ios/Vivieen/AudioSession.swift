@@ -18,12 +18,19 @@ enum AudioSession {
     }
 
     /// Live talk: mic in, her voice out - out loud, not at the ear.
+    ///
+    /// Mode stays .default on purpose. .voiceChat hands the route to the
+    /// system's voice-processing pipeline, which ducks everything that is
+    /// not its own uplink - and WebKit's WebAudio is exactly that, so her
+    /// live-talk replies arrived as text with silence attached while
+    /// ordinary chat (plain .playback) was fine (owner, 2026-08-03).
     static func speakAndListen() {
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playAndRecord, mode: .voiceChat,
+        try? session.setCategory(.playAndRecord, mode: .default,
                                  options: [.defaultToSpeaker,
                                            .allowBluetooth,
-                                           .allowBluetoothA2DP])
+                                           .allowBluetoothA2DP,
+                                           .mixWithOthers])
         try? session.setActive(true)
         // .defaultToSpeaker is a preference; this is the instruction.
         try? session.overrideOutputAudioPort(.speaker)
