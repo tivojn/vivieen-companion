@@ -385,6 +385,12 @@ html.ios .msg .rowacts button{width:30px;height:30px;padding:0;border:none;
 html.ios .msg .rowacts button svg{width:17px;height:17px;fill:currentColor}
 html.ios .msg .rowacts button.did{opacity:1;color:#1d9e75}
 html.ios #rail-hide.on{background:rgba(124,116,226,.42);color:#efeefe}
+/* Picture-in-picture was how she kept talking while you did something
+   else. Live talk holds its own socket natively now and runs with the
+   app in the background, so the little window has nothing left to do
+   (owner, 2026-08-04). The driver stays in the app, unused, so this is
+   one line to undo. */
+html.ios #rail-pip{display:none}
 /* ---- model picker ------------------------------------------------------
    The status line already names the brain that is answering, so it is
    the honest place to change it - Settings, Models, then a scroll, was
@@ -621,15 +627,20 @@ html.ios #vz{display:none}
 html.ios #petBubble{display:none}
 html.ios #txt{font-size:16px}
 #toast{display:none}
-html.ios #toast{display:block;position:fixed;left:16px;right:16px;
-  bottom:calc(96px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:8;
+html.ios #toast{display:block;position:static;width:100%;
+  box-sizing:border-box;margin:0 0 8px;z-index:8;
   padding:11px 14px;border-radius:13px;font-size:14px;line-height:1.4;
   color:#e9ecf1;text-align:center;background:rgba(18,20,24,.86);
   -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
   border:1px solid rgba(255,255,255,.14);
   opacity:0;transform:translateY(8px);pointer-events:none;
   transition:opacity 220ms ease,transform 220ms ease}
-html.ios #toast.on{opacity:1;transform:none}
+html.ios #toast{max-height:0;margin-bottom:0;padding-top:0;padding-bottom:0;
+  overflow:hidden;border-width:0;
+  transition:opacity 220ms ease,transform 220ms ease,max-height 220ms ease,
+             margin-bottom 220ms ease,padding 220ms ease}
+html.ios #toast.on{opacity:1;transform:none;max-height:120px;
+  margin-bottom:8px;padding-top:11px;padding-bottom:11px;border-width:1px}
 /* EnConvo agent sheet: every agent is a contact - portrait, name, blurb.
    Pick one and the thread talks to that brain through the Mac's gateway,
    spoken with her voice. */
@@ -4094,7 +4105,13 @@ function flashPrompt(message){
     if(!toast){
       toast=document.createElement('div');
       toast.id='toast';
-      document.body.appendChild(toast);
+      // INSIDE the bar, above the composer. Pinned to the viewport with a
+      // guessed offset it straddled the field the moment the composer
+      // grew a second row (owner screenshot). In flow it is simply above,
+      // whatever height the composer happens to be.
+      const bar=document.getElementById('bar');
+      const row=document.getElementById('row');
+      if(bar&&row)bar.insertBefore(toast,row);else document.body.appendChild(toast);
     }
     toast.textContent=message;
     toast.classList.add('on');

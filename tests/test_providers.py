@@ -353,6 +353,19 @@ class ProviderDefaultsTests(unittest.TestCase):
         # and the deck's faces are warmed the moment the roster is known
         self.assertIn("private func warmDeck(", swift)
 
+    def test_notices_sit_above_the_composer_and_pip_is_gone(self):
+        index_path = os.path.join(ROOT, "web", "index.html")
+        with open(index_path, encoding="utf-8") as handle:
+            html = handle.read()
+        # A toast pinned to the viewport straddled the field the moment
+        # the composer grew a second row. In flow it is simply above.
+        self.assertIn("html.ios #toast{display:block;position:static;", html)
+        self.assertIn("bar.insertBefore(toast,row)", html)
+        # and it must not hold a gap open while hidden
+        self.assertIn("html.ios #toast{max-height:0;", html)
+        # PiP retired: live talk keeps its own socket in the background
+        self.assertIn("html.ios #rail-pip{display:none}", html)
+
     def test_openai_lists_only_models_for_the_requested_modality(self):
         # Exclusion only, never a name allowlist: the old gpt-* prefix list
         # hid every newly-named family (a "luna-1" never appeared). Unknown
