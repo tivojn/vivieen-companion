@@ -129,6 +129,8 @@ struct CompanionWebView: UIViewRepresentable {
         configuration.userContentController.add(context.coordinator, name: "viv")
         configuration.userContentController.add(context.coordinator, name: "pip")
         configuration.userContentController.add(context.coordinator, name: "mic")
+        configuration.userContentController.add(context.coordinator, name: "audio")
+        configuration.userContentController.add(context.coordinator, name: "share")
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.uiDelegate = context.coordinator
         webView.navigationDelegate = context.coordinator
@@ -216,6 +218,21 @@ struct CompanionWebView: UIViewRepresentable {
                 else { pip.enqueue(dataURL: body) }
                 return
             }
+            if message.name == "audio" {
+                // The page asks what the OS actually did with the route.
+                let line = AudioSession.describe()
+                mic.webView?.evaluateJavaScript(
+                    "window.__vivAudioState&&__vivAudioState('\(line)')",
+                    completionHandler: nil)
+                return
+            }
+            if message.name == "share" {
+                // Anything she delivered - image, clip, pdf - handed to
+                // the system sheet, so it can be saved, aired or sent on.
+                guard let url = message.body as? String else { return }
+                share(urlString: url)
+                return
+            }
             if message.name == "mic" {
                 guard let body = message.body as? String else { return }
                 if body.hasPrefix("start:") {
@@ -226,6 +243,36 @@ struct CompanionWebView: UIViewRepresentable {
                 return
             }
             NSLog("[viv-web] %@", String(describing: message.body))
+        }
+
+        /// Pull the file off the Mac, then let iOS decide what can be done
+        /// with it: Save to Photos, Save to Files, AirDrop, Messages. One
+        /// path serves images, clips and documents alike.
+        private func share(urlString: String) {
+            guard let webView = mic.webView,
+                  let url = URL(string: urlString, relativeTo: webView.url)
+            else { return }
+            let task = URLSession.shared.dataTask(with: url) { data, response, _ in
+                guard let data else { return }
+                let suggested = response?.suggestedFilename
+                    ?? url.lastPathComponent
+                let file = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(suggested.isEmpty ? "vivieen" : suggested)
+                try? data.write(to: file)
+                DispatchQueue.main.async {
+                    guard let root = webView.window?.rootViewController
+                    else { return }
+                    let sheet = UIActivityViewController(
+                        activityItems: [file], applicationActivities: nil)
+                    // iPad needs an anchor or it refuses to present.
+                    sheet.popoverPresentationController?.sourceView = webView
+                    sheet.popoverPresentationController?.sourceRect = CGRect(
+                        x: webView.bounds.midX, y: webView.bounds.maxY - 80,
+                        width: 1, height: 1)
+                    root.present(sheet, animated: true)
+                }
+            }
+            task.resume()
         }
 
         func webView(_ webView: WKWebView,

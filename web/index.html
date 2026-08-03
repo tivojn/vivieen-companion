@@ -363,14 +363,25 @@ html.ios #rail #rail-live.on{background:rgba(212,76,71,.5);
    2026-08-02). Empty space passes taps through to her; scrolling works
    from any card. */
 #thread{display:none}
+/* No top edge: the box is exactly as tall as the conversation, growing
+   upward to a ceiling. A full-height container with pointer-events:none
+   could never be dragged - the finger met the dead container, not the
+   scroller, so old messages were unreachable (owner, 2026-08-03). Sized
+   to its content, it can own its own touches and still leave the sky
+   above her free. */
 html.ios #thread{display:flex;flex-direction:column;justify-content:flex-end;
   gap:8px;position:fixed;left:12px;right:12px;
-  top:calc(env(safe-area-inset-top,0px) + 40px);
+  max-height:calc(100vh - env(safe-area-inset-top,0px) - 100px
+    - var(--bar-h,88px) - var(--kb,0px));
   bottom:calc(var(--bar-h,88px) + 12px + var(--kb,0px));z-index:4;
-  overflow-y:auto;overflow-x:hidden;pointer-events:none;
+  overflow-y:auto;overflow-x:hidden;pointer-events:auto;
+  -webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+  touch-action:pan-y;
   transition:opacity 350ms ease;
   -webkit-mask-image:linear-gradient(to bottom,transparent,#000 8%);
   mask-image:linear-gradient(to bottom,transparent,#000 8%)}
+/* Empty thread must not swallow taps meant for her. */
+html.ios #thread:empty{pointer-events:none}
 html.ios #thread .msg{pointer-events:auto;align-self:stretch;
   /* flex:none, or a full thread SHRINKS every card to a sliver instead of
      scrolling - the "crammed up" screenshot (owner, 2026-08-03). */
@@ -390,6 +401,15 @@ html.ios #thread .msg img,html.ios #thread .msg video{display:block;
 html.ios #thread .msg.media{padding:5px}
 html.ios #thread .media-name{padding:6px 6px 2px;font-size:12.5px;
   color:#aab0bb;letter-spacing:.01em}
+/* Fullscreen picture: tap anywhere to close, pinch to look closer. */
+.lightbox{position:fixed;inset:0;z-index:120;display:flex;
+  align-items:center;justify-content:center;background:rgba(0,0,0,.94)}
+.lightbox img{max-width:100%;max-height:100%;object-fit:contain}
+.lightbox .lb-share{position:fixed;
+  bottom:calc(28px + env(safe-area-inset-bottom,0px));left:50%;
+  transform:translateX(-50%);height:44px;padding:0 24px;border-radius:22px;
+  border:1px solid rgba(255,255,255,.22);background:rgba(28,30,36,.9);
+  color:#eef1f5;font:600 15px/1 inherit}
 /* Working: three dots while she thinks, then one line per step she takes -
    the same narration a verbose EnConvo channel writes into Telegram. */
 html.ios #thread .msg.working{background:rgba(12,14,18,.6)}
@@ -425,7 +445,7 @@ html.ios #threaddown.on{display:flex;position:fixed;right:16px;
 /* Stage mode: a rail performance (dance, rest, closeup, zoom) brings HER
    to the front - the thread bows out and returns when the show ends. */
 html.ios.stage-mode #thread{opacity:0}
-html.ios.stage-mode #thread .msg{pointer-events:none}
+html.ios.stage-mode #thread,html.ios.stage-mode #thread .msg{pointer-events:none}
 html.ios #log{display:none}
 /* Desk chrome that has no business on the phone: the zoom badge and the
    roaming speech bubble (the thread IS her voice there). */
@@ -2699,6 +2719,14 @@ function audioSink(){
 const history=[];
 let localSource=null;
 
+/* The OS gets the last word on the route, so ask it rather than infer:
+   lip-sync keeps perfect time off the AudioContext clock even when the
+   speaker is silent, which is exactly how "she mouths but says nothing"
+   happens (owner, 2026-08-03). */
+window.__vivAudioState=line=>audbg('route: '+line);
+function askAudioState(){
+  try{webkit.messageHandlers.audio.postMessage('state');}catch(e){}
+}
 function audbg(line){
   if(!IS_IOS)return;
   let el=document.getElementById('audbg');
@@ -2728,6 +2756,7 @@ async function speak(b64,tr){
   speaking=true;src.start(audioT0);
   audbg('PLAYING '+buf.duration.toFixed(1)+'s ctx='+actx.state
     +' gain='+(masterGain?masterGain.gain.value:'?')+' muted='+window.IOS_MUTED);
+  askAudioState();
   await new Promise(r=>{src.onended=r});
   audbg('ended '+buf.duration.toFixed(1)+'s');
   if(localSource===src)localSource=null;
@@ -3696,6 +3725,54 @@ function threadMedia(card){
     }
   });
 }
+/* ---- what you can do with what she made -------------------------------
+   A delivered file should behave like a file: hold it to save, send or
+   AirDrop it through the system sheet; tap a picture to fill the screen
+   and pinch it. Video keeps its own fullscreen control, and a document
+   goes straight to the sheet, which is the only place iOS lets it be
+   opened or filed (owner, 2026-08-03). */
+function vivShare(url){
+  try{webkit.messageHandlers.share.postMessage(url);return true;}
+  catch(e){return false;}
+}
+function mediaGestures(node,url,name){
+  if(!IS_IOS)return;
+  // The native long-press menu already knows how to save an <img>; keep
+  // it, and add our sheet for everything else.
+  if(node.tagName==='IMG')node.style.webkitTouchCallout='default';
+  let hold=0,moved=false;
+  node.addEventListener('pointerdown',e=>{
+    moved=false;
+    hold=setTimeout(()=>{
+      hold=0;
+      if(!moved&&vivShare(url)){
+        if(navigator.vibrate)navigator.vibrate(8);
+        flashPrompt('Sharing '+(name||'file')+'…');
+      }
+    },520);
+  });
+  node.addEventListener('pointermove',()=>{moved=true;});
+  ['pointerup','pointercancel','pointerleave'].forEach(ev=>
+    node.addEventListener(ev,()=>{if(hold){clearTimeout(hold);hold=0;}}));
+  if(node.tagName==='IMG'){
+    node.addEventListener('click',()=>{if(!moved)lightbox(url,name);});
+  }
+  if(node.tagName==='A'){
+    node.addEventListener('click',e=>{e.preventDefault();vivShare(url);});
+  }
+}
+function lightbox(url,name){
+  const box=document.createElement('div');
+  box.className='lightbox';
+  const img=document.createElement('img');
+  img.src=url;img.alt=name||'';img.style.webkitTouchCallout='default';
+  const share=document.createElement('button');
+  share.type='button';share.className='lb-share';share.textContent='Save / Share';
+  share.addEventListener('click',e=>{e.stopPropagation();vivShare(url);});
+  box.append(img,share);
+  box.addEventListener('click',()=>box.remove());
+  document.body.append(box);
+}
 // A file the agent produced - a downloaded video, a rendered image - gets
 // its own card at the end of her reply: playable in place, never a path.
 function threadAttachments(list){
@@ -3723,6 +3800,7 @@ function threadAttachments(list){
     }
     node.src=url;node.dataset.src=url;
     if(node.tagName==='A')node.href=url;
+    mediaGestures(node,url,item.name||'');
     card.append(node);
     // She names what she hands over; show her name for it, not the uuid
     // the tool happened to write to disk.

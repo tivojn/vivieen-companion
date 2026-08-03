@@ -10,6 +10,20 @@ import AVFoundation
 /// (owner, real iPhone 2026-08-03). So: playback by default, record only
 /// while the microphone is genuinely open, and back to playback after.
 enum AudioSession {
+    /// What the OS actually decided, in one line. Lip-sync runs off the
+    /// AudioContext clock and keeps time even when nothing reaches the
+    /// speaker, so "her mouth moves but I hear nothing" needs the route
+    /// itself reported, not inferred (owner, 2026-08-03).
+    static func describe() -> String {
+        let s = AVAudioSession.sharedInstance()
+        let out = s.currentRoute.outputs.first
+        return "cat=\(s.category.rawValue.replacingOccurrences(of: "AVAudioSessionCategory", with: ""))"
+            + " mode=\(s.mode.rawValue.replacingOccurrences(of: "AVAudioSessionMode", with: ""))"
+            + " out=\(out?.portType.rawValue.replacingOccurrences(of: "AVAudioSessionPort", with: "") ?? "none")"
+            + " vol=\(String(format: "%.2f", s.outputVolume))"
+            + " other=\(s.isOtherAudioPlaying)"
+    }
+
     static func playbackOnly() {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default,
