@@ -2140,6 +2140,52 @@ class PocketBarAndToolsTests(unittest.TestCase):
         app_source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
         self.assertIn("import relay_agent", app_source)
 
+    def test_solo_answers_when_the_mac_does_not(self):
+        # Verified on the phone with the engine killed: status line
+        # "SOLO · GROK", she answered "Yes." and spoke it.
+        for piece in ("const SOLO={active:false", "function soloEnter()",
+                      "async function soloChat()", "async function soloTTS(",
+                      "async function soloSTT(", "async function soloImage("):
+            self.assertIn(piece, self.renderer)
+        # turn() must hand over BEFORE it reaches the Mac.
+        self.assertIn("if(SOLO.active)return soloTurn(text);", self.renderer)
+        # A dead Mac answers {offline:true} as valid JSON, so the poll has
+        # to inspect it rather than trust that .json() throwing means down.
+        self.assertIn("if(h.offline)throw new Error('offline')", self.renderer)
+        # EnConvo cannot follow her off the Mac, and says so once.
+        self.assertIn("EnConvo needs your Mac", self.renderer)
+
+    def test_solo_keys_never_enter_the_page(self):
+        # The page learns key NAMES; the native proxy injects values. A
+        # compromised script could spend a key but never read one.
+        scheme = (ROOT / "ios" / "Vivieen" / "VivScheme.swift").read_text()
+        self.assertIn("/solo/call", scheme)
+        self.assertIn('if name.lowercased() == "authorization" { continue }',
+                      scheme)
+        self.assertIn("SoloStore.shared.allowedHosts().contains(host)", scheme)
+        self.assertIn('url.scheme == "https"', scheme)
+        store = (ROOT / "ios" / "Vivieen" / "SoloStore.swift").read_text()
+        self.assertIn("kSecClassGenericPassword", store)
+        # Unsigned apps carry no entitlements, so every Keychain write
+        # failed -34018 and solo silently lost the keys it had decrypted.
+        project = (ROOT / "ios" / "project.yml").read_text()
+        self.assertIn('CODE_SIGN_IDENTITY: "-"', project)
+        self.assertIn("CODE_SIGN_ENTITLEMENTS", project)
+
+    def test_synced_secrets_cross_the_relay_sealed(self):
+        # The mailbox is blind to meaning but holds the bytes, so keys
+        # travel encrypted under a key derived from the pairing token -
+        # which the relay never sees.
+        source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('@app.get("/api/sync/solo")', source)
+        self.assertIn('salt=b"viv-solo-sync"', source)
+        self.assertIn("aead.encrypt(nonce, value.encode(), None)", source)
+        # The clear-text half must never carry a key.
+        self.assertIn('for field in ("api_key", "xai_api_key", "eleven_api_key"):',
+                      source)
+        store = (ROOT / "ios" / "Vivieen" / "SoloStore.swift").read_text()
+        self.assertIn('salt: Data("viv-solo-sync".utf8)', store)
+
     def test_two_fingers_resize_her_not_the_page(self):
         # Pinch her the way you pinch a photo. WebKit's own page zoom is
         # nailed shut (a double-tap once left the whole app panned and

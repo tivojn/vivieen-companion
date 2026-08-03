@@ -229,6 +229,9 @@ struct CompanionWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             pageLive(true)
+            // Every successful load is a chance to refresh solo's keys
+            // and config while the Mac is in reach.
+            scheme?.syncSolo()
         }
 
         func webView(_ webView: WKWebView,

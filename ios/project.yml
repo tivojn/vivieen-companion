@@ -14,11 +14,16 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         SWIFT_OBJC_BRIDGING_HEADER: Vivieen/Vivieen-Bridging-Header.h
+        CODE_SIGN_ENTITLEMENTS: Vivieen/Vivieen.entitlements
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Vivieen/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         MARKETING_VERSION: "0.9.1"
         CURRENT_PROJECT_VERSION: "1" 
-        CODE_SIGN_IDENTITY: ""
+        # Ad-hoc signed, not unsigned. An unsigned app carries NO
+        # entitlements, so every Keychain write fails -34018 and solo
+        # mode silently loses the keys it just decrypted (2026-08-03).
+        # TestFlight archives override all of this on the command line.
+        CODE_SIGN_IDENTITY: "-"
         CODE_SIGNING_REQUIRED: NO
-        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_ALLOWED: YES
