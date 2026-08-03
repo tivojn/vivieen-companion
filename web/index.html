@@ -3115,6 +3115,10 @@ function liveNativeMouth(session,seconds){
 }
 
 async function startLiveTalk(){
+  // The click reaches the button and nothing happens, so say WHICH gate
+  // turned it away. Every early return here is currently silent.
+  try{webkit.messageHandlers.viv.postMessage('LIVE start live='+Boolean(LIVE)
+    +' monitor='+Boolean(monitorEnabled)+' solo='+SOLO.active);}catch(e){}
   if(LIVE){stopLiveTalk('ended');return;}
   if(monitorEnabled){setCaption('De-couple from EnConvo first — live talk needs the voice channel.');return;}
   setStatus('connecting live…','busy');
