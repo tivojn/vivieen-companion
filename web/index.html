@@ -3077,8 +3077,10 @@ function nativeLiveSocket(){
     close(){shim.readyState=3;try{webkit.messageHandlers.live.postMessage('stop');}catch(e){}}};
   window.__vivLive=json=>{
     let m;try{m=JSON.parse(json);}catch(e){return;}
-    if(m.type==='closed'){shim.readyState=3;if(shim.onclose)shim.onclose();return;}
+    // Deliver first, THEN mark it shut: the page reads the reason off
+    // the message ("silence"), and onclose alone would lose it.
     if(shim.onmessage)shim.onmessage({data:json});
+    if(m.type==='closed')shim.readyState=3;
   };
   // The page assigns .onmessage AFTER this returns, so the app must not
   // be allowed to answer before then - hand it the request on the next

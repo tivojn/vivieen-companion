@@ -26,6 +26,13 @@ final class LiveTap: NSObject {
     /// is carrying the call.
     private var echoUntil = Date.distantPast
     private var wireRate: Double = 16000
+    /// A quiet line hangs itself up after this long. Only a VOICE resets
+    /// the clock: the stream never stops - zeroed frames while she speaks,
+    /// room tone while nobody does - so counting any audio at all would
+    /// mean the hangup could never fire. Ported from the Mac, which the
+    /// native leg had simply been missing (owner, 2026-08-03).
+    private static let silenceHangup: TimeInterval = 15
+    private var lastVoice = Date()
 
     var isLive: Bool { gate.lock(); defer { gate.unlock() }; return live }
 
@@ -112,11 +119,44 @@ final class LiveTap: NSObject {
         then()
     }
 
+    /// RMS of a little-endian 16-bit mono frame, 0...1.
+    private static func loudness(_ pcm: Data) -> Double {
+        let count = pcm.count / 2
+        guard count > 0 else { return 0 }
+        var sum = 0.0
+        pcm.withUnsafeBytes { raw in
+            let samples = raw.bindMemory(to: Int16.self)
+            for i in 0..<count {
+                let v = Double(Int16(littleEndian: samples[i])) / 32768.0
+                sum += v * v
+            }
+        }
+        return (sum / Double(count)).squareRoot()
+    }
+
+    /// Check in every few seconds; close a line nobody is speaking on.
+    private func watchSilence() {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, self.isLive else { return }
+            self.gate.lock()
+            let quietFor = Date().timeIntervalSince(self.lastVoice)
+            self.gate.unlock()
+            if quietFor > LiveTap.silenceHangup {
+                NSLog("[viv-live] quiet %.0fs - hanging up", quietFor)
+                self.close(reason: "silence")
+                return
+            }
+            self.watchSilence()
+        }
+    }
+
     private func ready(inputRate: Double) {
         // Her voice plays natively, so it survives the app going away.
         AudioSession.speakAndListen()
         MicDriver.shared.onPCM = { [weak self] pcm in self?.push(pcm) }
         MicDriver.shared.start(rate: inputRate)
+        gate.lock(); lastVoice = Date(); gate.unlock()
+        watchSilence()
         toPage(["type": "ready", "provider": provider,
                 "input_rate": inputRate, "output_rate": inputRate,
                 "native": true])
@@ -131,6 +171,9 @@ final class LiveTap: NSObject {
         guard up else { return }
         // Inside the echo window send SILENCE rather than nothing: the
         // provider's turn detector reads a gap in the stream as trouble.
+        if !quiet, LiveTap.loudness(pcm) > 0.012 {
+            gate.lock(); lastVoice = Date(); gate.unlock()
+        }
         let frame = quiet ? Data(count: pcm.count) : pcm
         let b64 = frame.base64EncodedString()
         if provider == "elevenlabs" {

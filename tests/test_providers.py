@@ -280,6 +280,23 @@ class ProviderDefaultsTests(unittest.TestCase):
                                         "VivScheme.swift"),
                            encoding="utf-8").read())
 
+    def test_native_live_talk_carries_both_providers_and_hangs_up_quiet(self):
+        # Live talk off the Mac. Both legs, because the owner chooses the
+        # provider in Settings and either must work; and the silence
+        # watchdog, which the native leg was simply missing - the line
+        # stayed open forever while she asked "are you still there?"
+        # (owner: 15s auto hangup not working, 2026-08-03).
+        tap = os.path.join(ROOT, "ios", "Vivieen", "LiveTap.swift")
+        with open(tap, encoding="utf-8") as handle:
+            swift = handle.read()
+        self.assertIn("api.elevenlabs.io/v1/convai/conversation", swift)
+        self.assertIn("api.x.ai/v1/realtime", swift)
+        # ElevenLabs drops the line if its keep-alive goes unanswered
+        self.assertIn('sendJSON(["type": "pong", "event_id": id ?? 0])', swift)
+        # only a VOICE resets the clock - the stream never stops
+        self.assertIn("silenceHangup: TimeInterval = 15", swift)
+        self.assertIn("if !quiet, LiveTap.loudness(pcm) > 0.012 {", swift)
+
     def test_openai_lists_only_models_for_the_requested_modality(self):
         # Exclusion only, never a name allowlist: the old gpt-* prefix list
         # hid every newly-named family (a "luna-1" never appeared). Unknown
