@@ -1372,10 +1372,11 @@ function soloLLM(){
    no log to read, so a stall reads exactly like a crash. Every provider
    call gets a ceiling and says which one it was (owner: it sat on
    "transcribing" forever, 2026-08-03). */
-async function soloCall(spec,seconds){
+async function soloCall(spec,seconds){return soloNative('solo/call',spec,seconds);}
+async function soloNative(path,spec,seconds){
   const cap=(seconds||90)*1000;
   let timer=null;
-  const call=fetch('solo/call',{method:'POST',
+  const call=fetch(path,{method:'POST',
     headers:{'Content-Type':'application/json'},body:JSON.stringify(spec)})
     .then(response=>response.json());
   const bell=new Promise((_,fail)=>{
@@ -1469,6 +1470,12 @@ async function soloTTS(text){
    Scribe / an OpenAI-shape Whisper. */
 function soloSTTPick(){
   const c=(SOLO.cfg&&SOLO.cfg.stt)||{};
+  // Soniox first, because it is the one the owner CHOSE. It is a
+  // WebSocket service, so it cannot ride the HTTPS proxy - the app opens
+  // the socket natively. Without this branch, picking Soniox for hearing
+  // fell silently through to whichever other key happened to be synced
+  // and failed with somebody else's error (owner, 2026-08-03).
+  if(c.provider==='soniox'&&soloHas('stt.api_key'))return{kind:'soniox'};
   if(c.provider==='deepgram'&&soloHas('stt.api_key'))
     return{kind:'deepgram',key:'stt.api_key'};
   if((c.provider==='openai'||c.provider==='groq')&&soloHas('stt.api_key'))
@@ -1482,6 +1489,10 @@ function soloSTTPick(){
 async function soloSTT(wavBytes){
   const pick=soloSTTPick();
   if(!pick)throw new Error('no speech key synced');
+  if(pick.kind==='soniox'){
+    const r=await soloNative('solo/soniox',{wav_b64:b64FromBytes(wavBytes)},60);
+    return(r.text||'').trim();
+  }
   if(pick.kind==='deepgram'){
     const r=await soloCall({url:'https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true',
       method:'POST',key:pick.key,key_style:'token',

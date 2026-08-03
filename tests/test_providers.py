@@ -256,6 +256,30 @@ class ProviderDefaultsTests(unittest.TestCase):
             spec = handle.read()
         self.assertIn("      configs:\n        Debug:", spec)
 
+    def test_solo_hears_through_soniox_natively(self):
+        # Soniox is a WebSocket service, so it cannot ride the HTTPS solo
+        # proxy at all. Without a branch of its own, choosing Soniox for
+        # hearing fell through to whichever other key happened to be
+        # synced and failed with somebody else's error (owner: I set ASR
+        # to Soniox and PTT still failed, 2026-08-03).
+        index_path = os.path.join(ROOT, "web", "index.html")
+        with open(index_path, encoding="utf-8") as handle:
+            html = handle.read()
+        self.assertIn("if(c.provider==='soniox'&&soloHas('stt.api_key'))"
+                      "return{kind:'soniox'};", html)
+        self.assertIn("soloNative('solo/soniox'", html)
+        tap = os.path.join(ROOT, "ios", "Vivieen", "SonioxTap.swift")
+        with open(tap, encoding="utf-8") as handle:
+            swift = handle.read()
+        # the finaliser that was measured, not documented
+        self.assertIn('task.send(.string("")) { _ in }', swift)
+        self.assertIn("stt-rt.soniox.com/transcribe-websocket", swift)
+        # the key never reaches the page
+        self.assertIn('SoloStore.shared.secret("stt.api_key")',
+                      open(os.path.join(ROOT, "ios", "Vivieen",
+                                        "VivScheme.swift"),
+                           encoding="utf-8").read())
+
     def test_openai_lists_only_models_for_the_requested_modality(self):
         # Exclusion only, never a name allowlist: the old gpt-* prefix list
         # hid every newly-named family (a "luna-1" never appeared). Unknown

@@ -439,8 +439,44 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             json(task, requested, ["started": true])
         case "/solo/call":
             soloCall(task, requested: requested, body: body)
+        case "/solo/soniox":
+            sonioxCall(task, requested: requested, body: body)
         default:
             json(task, requested, ["error": "unknown solo path"], status: 404)
+        }
+    }
+
+    /// Hearing through Soniox, which is a WebSocket and therefore cannot
+    /// go through the HTTPS proxy at all. The page sends the take; the key
+    /// and the model come from the synced store, never from the page.
+    private func sonioxCall(_ task: WKURLSchemeTask, requested: URL, body: Data?) {
+        guard let body,
+              let spec = try? JSONSerialization.jsonObject(with: body)
+                as? [String: Any],
+              let payload = spec["wav_b64"] as? String,
+              let wav = Data(base64Encoded: payload), !wav.isEmpty else {
+            json(task, requested, ["error": "no take to transcribe"], status: 400)
+            return
+        }
+        let key = SoloStore.shared.secret("stt.api_key")
+        guard !key.isEmpty else {
+            json(task, requested,
+                 ["error": "no Soniox key on this phone yet - open the app "
+                    + "near your Mac once to sync"], status: 401)
+            return
+        }
+        let block = (SoloStore.shared.config["stt"] as? [String: Any]) ?? [:]
+        SonioxTap.transcribe(
+            wav: wav, apiKey: key,
+            model: (block["model"] as? String) ?? "",
+            language: (block["language"] as? String) ?? ""
+        ) { [weak self] heard, error in
+            guard let self else { return }
+            if let error {
+                self.json(task, requested, ["error": error], status: 502)
+                return
+            }
+            self.json(task, requested, ["text": heard ?? ""])
         }
     }
 
