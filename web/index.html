@@ -1113,6 +1113,29 @@ async function poll(){
    graceful fallback if a track ever fails to arrive.                        */
 let actx=null,analyser=null,speaking=false,lvl=0;
 let track=[],tIdx=0,audioT0=0;
+/* iOS gate: a WKWebView AudioContext is born SUSPENDED and will only
+   resume inside a real touch. Her audio arrives a second or two after the
+   network reply - long past any gesture - so it never played and, with no
+   audio, nothing lip-synced (owner, real iPhone 2026-08-03). Unlock the
+   context on the very first touch and prime it with a silent tick; every
+   async play afterwards is allowed. */
+let audioUnlocked=false;
+function unlockAudio(){
+  if(audioUnlocked)return;
+  try{
+    actx=actx||new AudioContext();
+    const blip=actx.createBuffer(1,1,22050);
+    const src=actx.createBufferSource();
+    src.buffer=blip;src.connect(actx.destination);src.start(0);
+    const resume=()=>{audioUnlocked=actx.state==='running';};
+    actx.resume().then(resume,resume);
+    resume();
+  }catch(e){}
+}
+if(IS_IOS){
+  ['pointerdown','touchend','click'].forEach(ev=>
+    addEventListener(ev,unlockAudio,{capture:true}));
+}
 let curV='sil',prevV='sil',switchAt=0,switchFade=0.055,curReduce=1;
 /* ---- articulation dynamics ------------------------------------------------
    Real lips TRAVEL between shapes; a hard texture swap reads as a low-fps
@@ -2669,12 +2692,26 @@ function audioSink(){
 const history=[];
 let localSource=null;
 
+function audbg(line){
+  if(!IS_IOS)return;
+  let el=document.getElementById('audbg');
+  if(!el){el=document.createElement('div');el.id='audbg';
+    el.style.cssText='position:fixed;left:8px;top:44px;z-index:99;'
+      +'font:11px/1.4 monospace;color:#7CFF9E;background:rgba(0,0,0,.6);'
+      +'padding:3px 6px;border-radius:6px;max-width:80vw;pointer-events:none';
+    document.body.appendChild(el);}
+  el.textContent=line;
+}
+
 async function speak(b64,tr){
   actx=actx||new AudioContext();
+  audbg('speak: ctx='+actx.state+' unlocked='+audioUnlocked+' bytes='+b64.length);
   if(actx.state==='suspended')await actx.resume();
   const bin=atob(b64),u8=new Uint8Array(bin.length);
   for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
-  const buf=await actx.decodeAudioData(u8.buffer);
+  let buf;
+  try{buf=await actx.decodeAudioData(u8.buffer);}
+  catch(e){audbg('decode FAIL: '+e);return;}
   const src=actx.createBufferSource();src.buffer=buf;localSource=src;
   analyser=actx.createAnalyser();analyser.fftSize=2048;analyser.smoothingTimeConstant=0.6;
   src.connect(analyser);analyser.connect(audioSink());
@@ -2682,7 +2719,10 @@ async function speak(b64,tr){
   // Schedule slightly ahead so the audio clock and the first shape agree.
   audioT0=actx.currentTime+0.06;
   speaking=true;src.start(audioT0);
+  audbg('PLAYING '+buf.duration.toFixed(1)+'s ctx='+actx.state
+    +' gain='+(masterGain?masterGain.gain.value:'?')+' muted='+window.IOS_MUTED);
   await new Promise(r=>{src.onended=r});
+  audbg('ended '+buf.duration.toFixed(1)+'s');
   if(localSource===src)localSource=null;
   speaking=monitorEnabled&&externalAudio.active;track=[];curV='sil';
 }
@@ -2850,6 +2890,9 @@ async function startRec(force=false){
   // Monitor mode locks the chat button, but head push-to-talk on the pet
   // must still work while she lip-syncs EnConvo, so it forces past the lock.
   if(recording||(!force&&(monitorEnabled||ptt.disabled)))return;
+  // On the phone the page is an insecure origin, so getUserMedia is not
+  // there at all - the native microphone bridge is the only real one.
+  if(NATIVE_MIC()){startNativeRec();return;}
   recWanted=true;
   let stream;
   try{stream=await navigator.mediaDevices.getUserMedia({audio:true});}
@@ -3032,7 +3075,86 @@ async function interimTranscribe(){
   }catch(e){/* interim only; the final pass reports real failures */}
   interimBusy=false;
 }
+/* ---- hold-to-talk, natively ------------------------------------------
+   The phone loads the Mac over plain http on a LAN address, which is an
+   INSECURE ORIGIN: navigator.mediaDevices simply does not exist there, so
+   every hold fell into the getUserMedia catch and showed a macOS-worded
+   "microphone blocked" while iOS permission was plainly granted (owner
+   screenshot, 2026-08-03). The native bridge already has the real
+   microphone - use it, collect PCM, and post one WAV when the finger
+   lifts. */
+const NATIVE_MIC=()=>Boolean(window.webkit&&webkit.messageHandlers&&
+  webkit.messageHandlers.mic);
+const PTT={on:false,chunks:[],rate:16000};
+function wavFromPcm(chunks,rate){
+  let total=0;
+  chunks.forEach(c=>{total+=c.length;});
+  const pcm=new Int16Array(total);
+  let at=0;
+  chunks.forEach(c=>{pcm.set(c,at);at+=c.length;});
+  const bytes=pcm.length*2,buffer=new ArrayBuffer(44+bytes);
+  const view=new DataView(buffer);
+  const ascii=(off,text)=>{for(let i=0;i<text.length;i++)
+    view.setUint8(off+i,text.charCodeAt(i));};
+  ascii(0,'RIFF');view.setUint32(4,36+bytes,true);ascii(8,'WAVE');
+  ascii(12,'fmt ');view.setUint32(16,16,true);
+  view.setUint16(20,1,true);view.setUint16(22,1,true);
+  view.setUint32(24,rate,true);view.setUint32(28,rate*2,true);
+  view.setUint16(32,2,true);view.setUint16(34,16,true);
+  ascii(36,'data');view.setUint32(40,bytes,true);
+  new Int16Array(buffer,44).set(pcm);
+  return new Blob([buffer],{type:'audio/wav'});
+}
+function startNativeRec(){
+  PTT.on=true;PTT.chunks=[];
+  recording=true;recWanted=true;
+  document.documentElement.classList.add('listening');
+  ptt.classList.add('rec');txt.classList.add('rec');
+  window.__vivMicData=chunk=>{
+    if(!PTT.on)return;
+    const bin=atob(chunk),n=bin.length&~1;
+    const pcm=new Int16Array(n>>1);
+    let sum=0;
+    for(let i=0;i<pcm.length;i++){
+      pcm[i]=(bin.charCodeAt(2*i)|(bin.charCodeAt(2*i+1)<<8))<<16>>16;
+      const v=pcm[i]/32768;sum+=v*v;
+    }
+    window.MIC_LEVEL=Math.sqrt(sum/Math.max(1,pcm.length));
+    PTT.chunks.push(pcm);
+  };
+  webkit.messageHandlers.mic.postMessage('start:'+PTT.rate);
+}
+async function stopNativeRec(){
+  if(!PTT.on)return;
+  PTT.on=false;recording=false;recWanted=false;
+  window.MIC_LEVEL=0;
+  try{webkit.messageHandlers.mic.postMessage('stop');}catch(e){}
+  window.__vivMicData=null;
+  document.documentElement.classList.remove('listening');
+  ptt.classList.remove('rec');txt.classList.remove('rec');
+  const chunks=PTT.chunks;PTT.chunks=[];
+  if(recDiscard){recDiscard=false;setStatus('ready','on');return;}
+  let frames=0;
+  chunks.forEach(c=>{frames+=c.length;});
+  if(frames<PTT.rate*0.25){
+    flashPrompt('Too short · hold, speak, then release');
+    setStatus('ready','on');return;
+  }
+  setStatus('transcribing','busy');
+  try{
+    const body=new FormData();
+    body.append('audio',wavFromPcm(chunks,PTT.rate),'take.wav');
+    const r=await(await fetch('stt',{method:'POST',body})).json();
+    const heard=String(r.text||'').trim();
+    if(!heard){flashPrompt('I did not catch that');setStatus('ready','on');return;}
+    await turn(heard,true);
+  }catch(error){
+    flashPrompt('Could not transcribe: '+String(error.message||error).slice(0,70));
+    setStatus('ready','on');
+  }
+}
 function stopRec(){
+  if(PTT.on){void stopNativeRec();return;}
   recWanted=false;
   document.documentElement.classList.remove('listening');
   if(!recording)return;

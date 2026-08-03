@@ -7,14 +7,12 @@ import AVFoundation
 @main
 struct VivieenApp: App {
     init() {
-        // Live talk must survive backgrounding: with the audio background
-        // mode and a play-and-record session, the call's mic and her voice
-        // keep flowing while another app is in front.
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playAndRecord,
-                                 options: [.defaultToSpeaker, .allowBluetooth,
-                                           .mixWithOthers])
-        try? session.setActive(true)
+        // PLAYBACK, not playAndRecord. A record-capable session routes
+        // WebKit's output at the earpiece and wrestles WebKit for the
+        // session - her voice ran, and nobody heard it (owner, real
+        // iPhone 2026-08-03). MicDriver escalates to .playAndRecord only
+        // while the microphone is actually open, and drops back after.
+        AudioSession.playbackOnly()
     }
 
     @AppStorage("serverAddress") private var serverAddress = ""

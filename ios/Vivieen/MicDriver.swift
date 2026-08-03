@@ -15,6 +15,9 @@ final class MicDriver: NSObject {
 
     func start(rate: Double) {
         stop()
+        // Recording needs the record-capable session; forced to the
+        // speaker so she is heard across the room, not at the ear.
+        AudioSession.speakAndListen()
         let input = engine.inputNode
         let source = input.outputFormat(forBus: 0)
         guard source.sampleRate > 0, source.channelCount > 0,
@@ -78,6 +81,8 @@ final class MicDriver: NSObject {
         engine.stop()
         converter = nil
         running = false
+        // Hand the route back to plain playback so her replies stay loud.
+        AudioSession.playbackOnly()
     }
 
     private func report(_ line: String) {
