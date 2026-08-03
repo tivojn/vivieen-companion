@@ -71,7 +71,9 @@ class LiveDictationBridge(unittest.TestCase):
         # must be inside the endpoint, and the key stays server-side.
         marker = app.index('@app.websocket("/stt/stream")')
         window = app[marker:marker + 600]
-        self.assertIn("x-vivieen-token", window)
+        # _client_token reads the Electron header or the iOS pairing cookie.
+        self.assertIn("_client_token(client)", window)
+        self.assertIn("compare_digest", window)
         self.assertIn('"credentials|soniox"', app)
         # CSP: 'self' does not cover ws:, the local socket needs listing.
         self.assertIn("ws://127.0.0.1:*", app)

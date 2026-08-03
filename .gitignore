@@ -41,3 +41,8 @@ dist-electron/
 *.pid
 .DS_Store
 assets/icon.iconset/
+phone-uploads/
+
+# Xcode archives, .ipa exports and dSYMs - local build output only.
+build/
+ios/Vivieen.xcodeproj/

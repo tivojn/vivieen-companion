@@ -53,7 +53,7 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("function petTapReaction", renderer)
         self.assertIn("cv.addEventListener('pointercancel'", renderer)
         # Drag must never start once push-to-talk is live.
-        self.assertIn("if(gesture&&!dragging&&!gesture.ptt&&", renderer)
+        self.assertIn("if(SHELL&&gesture&&!dragging&&!gesture.ptt&&", renderer)
 
     def test_head_press_drives_enconvo_voice_hotkey(self):
         # A held head presses EnConvo's right-Option voice hotkey for real
@@ -96,7 +96,7 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("stopRec()", stop)
         # canPetTalk no longer requires the hotkey bridge when unfollowed.
         marker = renderer.index("function canPetTalk")
-        window = renderer[marker:marker + 220]
+        window = renderer[marker:marker + 420]
         self.assertIn("monitorEnabled?", window)
         # The menu row reflects that both modes talk from the head.
         main = (ROOT / "electron" / "main.cjs").read_text()
@@ -141,7 +141,9 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("classList.toggle('chat-visible'", renderer)
         self.assertIn("chat-open.chat-visible #bar{opacity:1", renderer)
         self.assertIn("!classes.contains('chat-visible'))return false", renderer)
-        self.assertIn("if(now-lastHitSentAt>500){lastHitSentAt=now;SHELL.setPetHit(petHit);}", renderer)
+        self.assertIn("if(now-lastHitSentAt>500){lastHitSentAt=now;\n"
+                      "      if(SHELL&&typeof SHELL.setPetHit==='function')"
+                      "SHELL.setPetHit(petHit);}", renderer)
         # Live dictation: timesliced recording streams interim transcripts
         # into the input field through the configured dictation model.
         self.assertIn("rec.start(280)", renderer)
@@ -255,9 +257,9 @@ class PetInputBridgeTests(unittest.TestCase):
             expression.GAZE_DX, expression.GAZE_DX[1:])])
         self.assertGreaterEqual(max(expression.GAZE_DY), 2.0)
         server = (ROOT / "server" / "app.py").read_text()
-        self.assertIn("RUNTIME_VERSION = 12", server)
+        self.assertIn("RUNTIME_VERSION = 15", server)
         export_source = (ROOT / "studio" / "export.py").read_text()
-        self.assertIn("dict(v=12,", export_source)
+        self.assertIn("dict(v=15,", export_source)
 
     def test_body_parts_are_classified_and_react(self):
         # Clicks resolve to the nearest baked bone segment (head stays
@@ -272,7 +274,7 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("function startLimbReaction", renderer)
         self.assertIn("drawLimbReaction(now);", renderer)
         self.assertIn("petTapReaction(part);", renderer)
-        self.assertIn("const part=active.part||'body';", renderer)
+        self.assertIn("let part=active.part||'body';", renderer)
         self.assertIn("M.body.reactions", renderer)
         self.assertIn("_publish_body_extras", export_source)
         self.assertIn("react_", export_source)
@@ -287,7 +289,7 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn("function standingIdleActive", renderer)
         self.assertIn("STANDING_IDLE_AFTER_MS=10000", renderer)
         self.assertIn("if(standingIdleActive(now)){", renderer)
-        self.assertIn("DOUBLE_TAP_MS=450", renderer)
+        self.assertIn("DOUBLE_TAP_MS=IS_IOS?650:450", renderer)
         self.assertIn("function petDoubleTap", renderer)
         # The old anywhere-on-her dblclick walk handler must stay gone: it
         # fired alongside the part verbs, so a chest double-tap meant to
@@ -438,7 +440,7 @@ class PetInputBridgeTests(unittest.TestCase):
         self.assertIn(
             'clip.get("sheets") or clip.get("alpha_stream")',
             (ROOT / "server" / "app.py").read_text())
-        self.assertIn("if(clip.alpha_stream){", renderer)
+        self.assertIn("for(const src of streams){", renderer)
         self.assertIn("if(clip.video){", renderer)
         self.assertIn("backgroundThrottling: false", main)
         self.assertNotIn("stride*direction*width", renderer)
@@ -1466,9 +1468,12 @@ class PetMatteTests(unittest.TestCase):
         renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn("session.sources.size>0||performance.now()<session.echoGuardUntil",
                       renderer)
-        self.assertIn("if(rms<0.09){session.ws.send(new ArrayBuffer(e.data.byteLength));return;}",
+        self.assertIn("if(guarded&&session.lastRms<0.09){", renderer)
+        self.assertIn("session.ws.send(new ArrayBuffer(data.byteLength));return;",
                       renderer)
-        self.assertIn("session.echoGuardUntil=performance.now()+350;", renderer)
+        # The guard opens when her audio ARRIVES - covering the playback
+        # race - and holds through a 450ms room tail.
+        self.assertIn("session.echoGuardUntil=Math.max(", renderer)
 
     def test_live_talk_rides_the_existing_speech_machinery(self):
         # Realtime conversation (2026-08-01): mic PCM streams to the server
@@ -1669,6 +1674,62 @@ class PetMatteTests(unittest.TestCase):
         self.assertGreaterEqual(main.count("fitPetZoomToArea("), 3)
         self.assertIn("fitPetZoomToArea(\n      PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom, area, PET_DOCK_MARGIN),\n    PET_ZOOM_RANGE);\n  const size = petZoomSize(PET_BASE_SIZE, PET_NORMAL_MINIMUM, state.petZoom);\n  mainWindow.setBounds(dockedPetBounds(size, area, PET_DOCK_MARGIN));", main)
 
+    def test_iphone_pairing_is_off_by_default_and_token_persists(self):
+        # Pocket Mirror (2026-08-02): the iOS app reaches the same server
+        # over the LAN. Remote access is opt-in (loopback-only otherwise),
+        # the auth token persists across launches so pairing survives a
+        # restart (0600 file, delete to revoke), and both websocket auth
+        # gates accept the pairing cookie alongside the Electron header.
+        main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
+        self.assertIn("remoteAccess: false,", main)
+        self.assertIn("state && state.remoteAccess ? '0.0.0.0' : HOST", main)
+        self.assertIn("function persistentBackendToken()", main)
+        self.assertIn("{ mode: 0o600 }", main)
+        self.assertIn("'iPhone on This Network'", main)
+        self.assertIn("'Pair iPhone…'", main)
+        server = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertEqual(server.count("_client_token(client)"), 2)
+        self.assertIn("_client_token(request)", server)
+
+    def test_phone_talks_wechat_style_and_struts_in_frame(self):
+        # Owner design talk (2026-08-02): head-hold is a desk idiom. On the
+        # phone the mic toggle swaps the field for one big hold-to-talk bar
+        # (press records, release sends, slide up cancels unheard); finger
+        # double-taps get a wider window and the whole head owns the dance;
+        # a leg double-tap plays the walk take in place (catwalk) since
+        # there is no desktop to roam; captions are glass, capped at 30vh,
+        # dimmed while she speaks; feet keep a lane above the input row.
+        renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="talkbar"', renderer)
+        self.assertIn('id="micmode"', renderer)
+        self.assertIn("recDiscard=holdCancel;", renderer)
+        self.assertIn("if(recDiscard){", renderer)
+        self.assertIn("DOUBLE_TAP_MS=IS_IOS?650:450;", renderer)
+        self.assertIn("if(IS_IOS&&part==='head')part='hair';", renderer)
+        self.assertIn("function toggleWalkShow()", renderer)
+        self.assertIn("if(IS_IOS)return false;",
+                      renderer)
+        self.assertIn("--caption-expanded-height:30vh", renderer)
+        self.assertIn("html.ios.her-speaking #her{opacity:.72}", renderer)
+        self.assertIn("if(!de.classList.contains('pet')&&!IS_IOS)return 0;",
+                      renderer)
+
+    def test_motion_video_ships_hevc_twin_and_never_hangs_boot(self):
+        # iOS WebKit cannot decode VP9-alpha webm, and an unsupported webm
+        # fires NEITHER canplaythrough nor error - boot hung at "booting"
+        # on the iPhone (Pocket Mirror, 2026-08-02). The runtime bundle
+        # carries the HEVC-alpha .mov twin, the renderer picks by
+        # canPlayType, and the probe times out instead of hanging.
+        export = (ROOT / "studio" / "export.py").read_text(encoding="utf-8")
+        self.assertIn('clip["alpha_stream_hevc"] = f"assets/{hevc_name}"',
+                      export)
+        server = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('clip.get("alpha_stream_hevc")', server)
+        self.assertIn("RUNTIME_VERSION = 15", server)
+        renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("canPlayType('video/mp4; codecs=\"hvc1\"')", renderer)
+        self.assertIn("const bail=setTimeout(()=>res(false),6000);", renderer)
+
     def test_motion_clips_always_fit_the_whole_figure(self):
         # Same report: under a partial view the clip camera scaled for the
         # crop while the bottom anchor pinned the full-body feet to the
@@ -1769,6 +1830,407 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("(xs - 0.38) / 0.22", source)
         self.assertIn("_seam_tone_match(\n            os.path.join(stage, \"body.png\")", source)
         self.assertIn("def masked_blur", source)
+
+
+class PocketBarAndToolsTests(unittest.TestCase):
+    """The phone's messenger bar and the coupled lane's hands."""
+
+    def setUp(self):
+        self.renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.settings = (ROOT / "web" / "settings.html").read_text(encoding="utf-8")
+
+    def test_the_emoji_panel_is_a_panel_not_a_squeezed_flex_sibling(self):
+        # Inside #row (display:flex) the strip was just another child,
+        # crushed to a sliver beside the buttons. It belongs under the bar,
+        # the way WeChat and Telegram put it.
+        photo = self.renderer.index('id="chatPhoto"')
+        panel = self.renderer.index('<div id="emojirow">')
+        # #manual and #row both close before the panel opens.
+        # #manual and #row both close before the panel opens, and the panel
+        # is the last thing in #bar.
+        self.assertEqual(self.renderer[photo:panel].count("</div>"), 2)
+        self.assertIn('<div id="emojirow"></div>\n</div>', self.renderer)
+
+    def test_the_file_input_stays_rendered_so_the_plus_can_click_it(self):
+        # WebKit refuses a programmatic .click() on a display:none input,
+        # which is why attaching a photo did nothing on the phone.
+        self.assertIn('<input type="file" id="chatPhoto" accept="image/*">',
+                      self.renderer)
+        self.assertIn("#chatPhoto{position:fixed;left:-9999px", self.renderer)
+
+    def test_the_rail_steps_aside_for_the_emoji_panel(self):
+        # A raised bar put the rail's lowest button on top of the plus -
+        # every attempt to attach opened the zoom sliders instead.
+        self.assertIn("html.ios.emoji-open #rail{opacity:0;pointer-events:none}",
+                      self.renderer)
+
+    def test_settings_knows_it_is_on_a_phone(self):
+        # Without the flag the tabs fell off the right edge and the sticky
+        # header scrolled away on the first swipe (height:100% caps the
+        # sticky containing block at one viewport).
+        self.assertIn("link.href='/settings?ios=1'", self.renderer)
+        self.assertIn("html.ios,html.ios body{height:auto;min-height:100%",
+                      self.settings)
+        # Fixed, not sticky: body needs overflow containment on a narrow
+        # screen, and that makes body its own scrollport - a sticky header
+        # then scrolls away on the first swipe and strands the tabs.
+        self.assertIn("html.ios header{position:fixed;top:0", self.settings)
+        self.assertIn("html.ios main{padding:calc(112px", self.settings)
+        self.assertIn("html.ios nav{", self.settings)
+        self.assertIn("html.ios input,html.ios textarea,html.ios select{font-size:16px}",
+                      self.settings)
+
+    def test_a_produced_file_becomes_a_card_the_thread_can_play(self):
+        self.assertIn("function threadAttachments(list)", self.renderer)
+        self.assertIn("threadAttachments(r.media);", self.renderer)
+
+    def test_only_media_under_known_roots_is_ever_served(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        import app
+
+        with tempfile.TemporaryDirectory() as home:
+            downloads = os.path.join(home, "Downloads")
+            os.makedirs(downloads)
+            good = os.path.join(downloads, "clip.mp4")
+            script = os.path.join(downloads, "run.sh")
+            for path in (good, script):
+                with open(path, "wb") as handle:
+                    handle.write(b"x")
+            # This is about who may be served, not about codecs.
+            with mock.patch.object(app, "_enconvo_roots",
+                                   return_value=[os.path.realpath(downloads)]), \
+                    mock.patch.object(app, "_phone_playable",
+                                      side_effect=lambda value: value):
+                self.assertTrue(app._enconvo_share(good))
+                # Not media: never served, whatever the agent claims.
+                self.assertIsNone(app._enconvo_share(script))
+                # Outside the roots, and files that do not exist.
+                self.assertIsNone(app._enconvo_share("/etc/passwd"))
+                self.assertIsNone(
+                    app._enconvo_share(os.path.join(downloads, "ghost.mp4")))
+
+                text, cards = app._enconvo_media(f"Saved to {good} for you.")
+                self.assertEqual(len(cards), 1)
+                self.assertIn(f"[clip.mp4]({cards[0]['url']})", text)
+                # An existing markdown link keeps its label, swaps its target.
+                linked, _ = app._enconvo_media(f"Here: [the clip]({good})")
+                self.assertIn(f"[the clip](api/enconvo/file/", linked)
+                self.assertNotIn("[clip.mp4](api", linked)
+
+    def test_the_pocket_app_talks_to_agents_the_way_a_channel_does(self):
+        # EnConvo's IM channels POST the agent's own command route -
+        # /<extension>/<command>, no /api - as an event stream. The agent
+        # then picks and runs its own tools. Nothing here tells it how.
+        source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('f"{ENCONVO_HOST}/{extension}/{command}"', source)
+        self.assertIn('"Accept": "text/event-stream"', source)
+        self.assertIn('"runType": "command"', source)
+        self.assertIn('"input_text": message', source)
+        # run_mode is THE switch. Mavis's saved config says "chat", which is
+        # a brain with no hands through every route - which is exactly why
+        # the lane looked toolless. "agent" is where the tool belt lives.
+        self.assertIn('"run_mode": "agent"', source)
+        # And no coaching: the coupled agent gets the owner's message
+        # VERBATIM - its tool belt is EnConvo's business. (Uncoupled
+        # Vivieen has her own directives; that brain is ours.)
+        self.assertIn("key, session, request.message, safe_files", source)
+        self.assertNotIn("request.message + _", source)
+
+    def test_a_command_key_is_understood_however_it_is_written(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        import app
+
+        for value in ("main", "agent|main", "agent/main"):
+            self.assertEqual(app._enconvo_command_key(value), "agent|main")
+        self.assertEqual(app._enconvo_command_key("agent|Gq3x"), "agent|Gq3x")
+
+    def test_delivered_files_are_read_from_the_delivery_call(self):
+        # EnConvo agents hand artifacts over through delivery/present_files
+        # and are told NOT to repeat the path in prose, so this is the only
+        # place a produced file is ever named.
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        import app
+
+        with tempfile.TemporaryDirectory() as home:
+            made = os.path.join(home, "shot.png")
+            with open(made, "wb") as handle:
+                handle.write(b"x")
+            steps = [
+                {"flowRunStatus": "success",
+                 "flowParams": json.dumps({
+                     "path": "image_create/features/open_ai/create"}),
+                 "output": {"paths": [made]}},
+                # Arguments stream in character by character; mid-flight the
+                # title is a single letter. Only the finished call counts.
+                {"flowRunStatus": "input-streaming",
+                 "flowParams": json.dumps({
+                     "path": "delivery/present_files",
+                     "params": {"deliverables": [
+                         {"type": "file", "url": made, "title": "W"}]}})},
+                {"flowRunStatus": "success",
+                 "flowParams": json.dumps({
+                     "path": "delivery/present_files",
+                     "params": {"deliverables": [
+                         {"type": "file", "url": made,
+                          "title": "Winter Greenhouse"}]}})},
+            ]
+            found = app._enconvo_step_files(steps)
+            self.assertEqual(len(found), 1)
+            # The tool reports a path; the delivery carries her name for it.
+            self.assertEqual(found[0]["title"], "Winter Greenhouse")
+            # A file that does not exist is not a deliverable...
+            self.assertEqual(app._enconvo_step_files(
+                [{"flowParams": json.dumps({
+                    "path": "delivery/present_files",
+                    "params": {"deliverables": [
+                        {"url": os.path.join(home, "ghost.png")}]}})}]),
+                [])
+            # ...and one outside the served roots never becomes a card,
+            # however confidently the agent hands it over.
+            self.assertIsNone(app._enconvo_share("/etc/passwd"))
+            self.assertIsNone(app._enconvo_share("/usr/bin/env"))
+
+    def test_the_thread_narrates_the_way_a_verbose_channel_does(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        import app
+
+        # EnConvo's own rule (launch_channel.js): announce a call that has
+        # STARTED, never a hidden one, never the channel's own plumbing,
+        # and label it with the agent's description of what it is doing.
+        running = {"type": "flow_step", "flowRunStatus": "running",
+                   "flowName": "local_api", "flowId": "a",
+                   "title": "Untitled",
+                   "flowParams": json.dumps({
+                       "description": "Generate fox in snow image",
+                       "path": "image_create/features/open_ai/create"})}
+        self.assertEqual(app._enconvo_step_note(running)["text"],
+                         "Generate fox in snow image")
+        # Not yet started, hidden, or the channel talking to itself.
+        for tweak in ({"flowRunStatus": "input-streaming"},
+                      {"hide": True},
+                      {"flowParams": json.dumps(
+                          {"path": "im_channels/reply"})}):
+            self.assertIsNone(app._enconvo_step_note({**running, **tweak}))
+        # Falls back to the step's own title when it has no description.
+        bare = {**running, "flowParams": json.dumps({"path": ""})}
+        self.assertEqual(app._enconvo_step_note(bare)["text"], "Untitled")
+
+        source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        # Verbose, like a Telegram channel - and streamed, so a long job
+        # reads as work rather than a frozen app.
+        self.assertIn('"im_verbose": True', source)
+        self.assertIn('media_type="text/event-stream"', source)
+        self.assertIn('{"type": "typing"}', source)
+        # Her sentence as she writes it, not one silent blob at the end.
+        self.assertIn('{"type": "say", "text": piece}', source)
+        self.assertIn("work.addText(event.text)", self.renderer)
+        # And a turn nobody is listening to gets cancelled, not orphaned.
+        self.assertIn("turn.cancel()", source)
+
+    def test_the_channel_takes_the_same_slash_commands(self):
+        # /new /stop /audio /verbose /status, exactly EnConvo's set.
+        for command in ("/new", "/newsession", "/stop", "/audio",
+                        "/verbose", "/status"):
+            self.assertIn(f"'{command}'", self.renderer, command)
+        # A command never reaches the agent.
+        self.assertIn("if(enconvoSlash(text)){", self.renderer)
+        # /stop actually aborts the request in flight.
+        self.assertIn("ENCONVO.abort=new AbortController();", self.renderer)
+        self.assertIn("ENCONVO.abort.abort();", self.renderer)
+        # The thread reads the stream rather than waiting for one blob.
+        self.assertIn("response.body.getReader()", self.renderer)
+        self.assertIn("work.addStep(event.text)", self.renderer)
+
+    def test_muted_means_muted_lips_included(self):
+        # No sound, no articulation - lips moving over silence read as a
+        # glitch, not a courtesy (owner, 2026-08-03).
+        self.assertIn("if(window.IOS_MUTED)return'sil';", self.renderer)
+
+    def test_live_talk_uses_the_native_microphone_bridge(self):
+        # WKWebView's getUserMedia in the Simulator is a MOCK device - a
+        # ~155Hz hum at 10% amplitude, never the real mic. "She can't hear
+        # me" was literally true: she was hearing a tone. AVAudioEngine is
+        # the real microphone on device AND in the Simulator.
+        self.assertIn("webkit.messageHandlers.mic", self.renderer)
+        self.assertIn("window.__vivMicData=", self.renderer)
+        self.assertIn("liveSendPcm(session,", self.renderer)
+        swift = (ROOT / "ios" / "Vivieen" / "MicDriver.swift").read_text()
+        self.assertIn("AVAudioEngine", swift)
+        self.assertIn("installTap", swift)
+        self.assertIn("AVAudioConverter", swift)
+        glue = (ROOT / "ios" / "Vivieen" / "CompanionWebView.swift").read_text()
+        self.assertIn('name: "mic"', glue)
+        self.assertIn('body.hasPrefix("start:")', glue)
+        # Hang-up also stops the native capture.
+        self.assertIn("webkit.messageHandlers.mic.postMessage('stop')",
+                      self.renderer)
+
+    def test_the_silence_hangup_measures_the_owner_not_the_line(self):
+        source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("LIVE_SILENCE_HANGUP_S = 15", source)
+        # Only a voice resets the clock: the phone streams continuously
+        # (zeroed frames while she speaks, room tone while nobody does) and
+        # counting those meant the quiet-line hangup could never fire.
+        self.assertIn("> 0.012", source)
+        # And her own speaker bleed must not look like a voice: the echo
+        # guard opens when audio ARRIVES, covering the playback race.
+        self.assertIn("session.echoGuardUntil=Math.max(", self.renderer)
+
+    def test_the_thread_never_crams_its_cards(self):
+        # flex:none, or a full thread SHRINKS every card to a sliver
+        # instead of scrolling (owner screenshot, 2026-08-03).
+        self.assertIn("flex:none;\n  width:100%", self.renderer)
+        # And an empty VAD turn - "…" - never earns a bubble.
+        self.assertIn("/[\\p{L}\\p{N}]/u.test(m.text)", self.renderer)
+
+    def test_the_wave_is_a_meter_not_a_loop(self):
+        # The Listening chip's bars follow the REAL microphone level -
+        # a loop that ignores the microphone is a lie about listening.
+        self.assertIn("window.MIC_LEVEL=0;", self.renderer)
+        self.assertIn("window.MIC_LEVEL=session.lastRms;", self.renderer)
+        # PTT rides an analyser on the same stream the recorder captures.
+        self.assertIn("meter.getByteTimeDomainData(sample);", self.renderer)
+        # And no keyframe loop remains on the bars.
+        self.assertNotIn("@keyframes listenWave", self.renderer)
+
+    def test_a_swipe_across_her_opens_the_avatar_deck(self):
+        # Two switchable looks, both owner-picked: noir (dark cascade)
+        # and sorbet (pastel arc fan). Cards come from the registry,
+        # tapping Use activates and reloads.
+        self.assertIn('id="avfan"', self.renderer)
+        self.assertIn("localStorage.getItem('viv-carousel')", self.renderer)
+        self.assertIn("rotate(${d*13}deg)", self.renderer)   # sorbet arc
+        self.assertIn("rotate(${d*-7}deg)", self.renderer)   # noir cascade
+        self.assertIn("api/avatar/activate", self.renderer)
+        self.assertIn("a.slug===feed.active", self.renderer)
+        # A swipe, not a tap: face play keeps taps, the deck takes drags.
+        self.assertIn("Math.abs(dx)>70&&Math.abs(dy)<48", self.renderer)
+
+    def test_the_relay_is_opt_in_allow_listed_and_blind(self):
+        # Internet reach, the OpenClaw way: both ends dial out to a dumb
+        # mailbox. Nothing starts unless the relay-url file exists, the
+        # Mac agent replays only an allow-list, and the relay never sees
+        # the pairing token - only a hash of it.
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        import relay_agent
+
+        with tempfile.TemporaryDirectory() as empty:
+            with mock.patch.object(relay_agent, "SUPPORT", empty):
+                self.assertIsNone(relay_agent.start("8777"))
+        # Wide enough to carry her whole self - page, sprites, API - so
+        # the phone works off Wi-Fi, but still an explicit list.
+        for prefix in ("/api/", "/assets/", "/files/"):
+            self.assertIn(prefix, relay_agent._ALLOWED_PREFIXES)
+        # Binary is base64, never utf-8 decoded: her sprites would be
+        # silently corrupted on the way through.
+        source = (ROOT / "server" / "relay_agent.py").read_text()
+        self.assertIn('message["b64"] = base64.b64encode(raw)', source)
+        source = (ROOT / "server" / "relay_agent.py").read_text()
+        self.assertIn('hashlib.sha256(b"viv-relay:" + token.encode())', source)
+        relay = (ROOT / "relay" / "api" / "relay.js").read_text()
+        # Trust-on-first-use pinning, and boxes that expire.
+        self.assertIn("channel claimed by another key", relay)
+        self.assertIn('"EXPIRE", key, "900"', relay)
+        # The engine only ever starts it behind the opt-in file.
+        app_source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("import relay_agent", app_source)
+
+    def test_secrets_live_in_the_vault_never_on_disk(self):
+        # EnConvo's leaf, the Mac's machinery: keys go to the Keychain
+        # (a JSON vault file under test), config.json keeps only the
+        # marker, load() weaves the real value back in memory, and
+        # __clear__ deletes the vault entry - not just the marker.
+        import importlib
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        with tempfile.TemporaryDirectory() as work:
+            environ = {"VIVIEEN_DATA_DIR": work,
+                       "VIVIEEN_CONFIG": os.path.join(work, "config.json"),
+                       "VIVIEEN_VAULT_FILE": os.path.join(work, "vault.json")}
+            with mock.patch.dict(os.environ, environ):
+                with open(environ["VIVIEEN_CONFIG"], "w") as handle:
+                    json.dump({"llm": {"provider": "openai",
+                                       "api_key": "sk-plain-42"}}, handle)
+                import credentials
+                import providers
+                importlib.reload(credentials)
+                importlib.reload(providers)
+                cfg = providers.load()
+                self.assertEqual(cfg["llm"]["api_key"], "sk-plain-42")
+                disk = json.load(open(environ["VIVIEEN_CONFIG"]))
+                self.assertEqual(disk["llm"]["api_key"], "@keychain")
+                providers.save({"llm": {"api_key": "__clear__"}})
+                self.assertEqual(providers.load()["llm"]["api_key"], "")
+                self.assertEqual(json.load(open(
+                    environ["VIVIEEN_VAULT_FILE"])), {})
+        importlib.reload(credentials)
+        importlib.reload(providers)
+
+    def test_the_catalogue_covers_the_market_in_every_slot(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        import providers
+
+        ids = {kind: {p["id"] for p in options}
+               for kind, options in providers.PROVIDERS.items()}
+        # Every slot leads with EnConvo Global Default...
+        for kind in ("llm", "tts", "stt", "image", "video"):
+            self.assertEqual(providers.PROVIDERS[kind][0]["id"], "enconvo",
+                             kind)
+        # ...and the market follows, on your own keys.
+        self.assertLessEqual({"mistral", "together", "fireworks", "perplexity",
+                              "moonshot", "qwen", "zhipu", "cerebras",
+                              "nvidia"}, ids["llm"])
+        self.assertLessEqual({"deepgram", "cartesia"}, ids["tts"])
+        self.assertLessEqual({"deepgram", "elevenlabs"}, ids["stt"])
+        self.assertLessEqual({"openai", "gemini", "xai", "stability", "bfl"},
+                             ids["image"])
+        self.assertLessEqual({"openai", "gemini", "luma", "runway"},
+                             ids["video"])
+        # The OpenAI-shape fleet actually routes through the one adapter.
+        for pid in ("mistral", "together", "qwen", "cerebras"):
+            self.assertIn(pid, providers.OPENAI_SHAPE)
+        # And the new slots exist in the defaults with EnConvo first.
+        self.assertEqual(providers.DEFAULTS["image"]["provider"], "enconvo")
+        self.assertEqual(providers.DEFAULTS["video"]["provider"], "enconvo")
+
+    def test_uncoupled_vivieen_has_her_own_hands(self):
+        # The directive-in-prompt design is legitimate HERE: this brain is
+        # ours, so its tool belt is ours to strap on.
+        source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("<<viv:image", source)
+        self.assertIn("<<viv:video", source)
+        self.assertIn('cfg["persona"]["system"] + _OWN_TOOLS', source)
+        self.assertIn("media_gen.generate_image", source)
+        self.assertIn("media_gen.generate_video", source)
+        # The result is a card, and a failure is a sentence - never silence.
+        self.assertIn('result["media"] = cards', source)
+        self.assertIn("but the provider said", source)
+        self.assertIn("threadAttachments(r.media);", self.renderer)
+        # EnConvo default naming quirk stays fixed: gemini-enconvo creates
+        # through features/gemini/create.
+        media = (ROOT / "server" / "media_gen.py").read_text(encoding="utf-8")
+        self.assertIn('name.replace("-enconvo", "")', media)
+
+    def test_media_tools_never_inherit_the_engines_stdin(self):
+        # ffmpeg and ffprobe read stdin; the engine's is a pipe nobody
+        # closes, and an inherited one hangs the probe until it times out.
+        source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn("stdin=subprocess.DEVNULL", source)
+        self.assertIn('"-nostdin"', source)
+        # And a probe that will not answer means re-encode, not ship an
+        # unplayable card.
+        self.assertIn("re-encoding to be safe", source)
+
+    def test_served_files_answer_range_requests(self):
+        # Safari refuses to scrub a video whose source ignores ranges.
+        source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('"Accept-Ranges": "bytes"', source)
 
 
 if __name__ == "__main__":

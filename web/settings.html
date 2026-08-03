@@ -675,7 +675,46 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 :root[data-design=atelier] .body-visual{border-right:0;border-left:1px solid var(--line)}
 :root[data-design=atelier] .rig-visual{border-right:0;border-left:1px solid var(--line)}
 :root[data-design=atelier] .body-visual:before{border-radius:0;opacity:.45}
+
+/* ---- Pocket Mirror: settings on a 402pt screen -------------------------
+   The desk layout overflowed sideways (the design chip fell off the right
+   edge) and the "sticky" header scrolled away on the first swipe, stranding
+   the tabs - html,body{height:100%} caps the sticky containing block at one
+   viewport, the same trap the Atelier rail fell into above. */
+html.ios,html.ios body{height:auto;min-height:100%}
+html.ios body{overflow-x:clip}
+/* Fixed, not sticky: body needs overflow containment on a narrow screen,
+   and any overflow value makes body its own scrollport - the "sticky"
+   header then scrolls away on the first swipe and strands the tabs. */
+html.ios header{position:fixed;top:0;left:0;right:0;
+  flex-wrap:wrap;gap:8px;padding:10px 14px;
+  padding-top:calc(10px + env(safe-area-inset-top,0px))}
+html.ios header h1{font-size:14px}
+html.ios nav{margin-left:0;order:3;width:100%;gap:6px;
+  overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+html.ios nav::-webkit-scrollbar{display:none}
+html.ios nav button{flex:none;padding:7px 14px;font-size:14px}
+html.ios .grow{flex:1}
+/* The app's own gear owns the top-right corner; keep clear of it. */
+html.ios .back{font-size:12px;padding:6px 4px;margin-right:34px}
+/* Clear of the fixed header above and the save bar below. */
+html.ios main{padding:calc(112px + env(safe-area-inset-top,0px)) 14px
+  calc(96px + env(safe-area-inset-bottom,0px))}
+html.ios .savebar{padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));
+  gap:8px;flex-wrap:wrap}
+html.ios .savebar .msg{font-size:12px;flex-basis:100%;margin:0 0 2px}
+/* 16px floor everywhere, or focusing a field makes iOS zoom the page and
+   the layout never comes back (the ghost that faked three chat bugs). */
+html.ios input,html.ios textarea,html.ios select{font-size:16px}
+html.ios .grid{grid-template-columns:1fr}
 </style>
+<script>if(new URLSearchParams(location.search).get('ios')==='1'){
+  document.documentElement.classList.add('ios');
+  addEventListener('DOMContentLoaded',()=>{
+    const back=document.querySelector('.back');
+    if(back)back.href='/?view=full&ios=1';
+  });
+}</script>
 <script>document.documentElement.dataset.theme=localStorage.getItem('vivieen-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
 document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==='atelier'?'atelier':'quiet';</script>
 
@@ -715,11 +754,16 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
       </div>
     </div>
     <input type="file" id="file" accept="image/*" class="hidden">
+    <!-- iPhone: the front camera IS the portrait studio - capture=user
+         opens it directly for a selfie; the plain input still offers the
+         photo library through the same sheet. -->
+    <input type="file" id="selfie" accept="image/*" capture="user" class="hidden">
     <input type="file" id="avtrFile" accept=".avtr" class="hidden">
     <div class="row" style="margin-top:14px">
       <div class="f"><label>Name</label><input id="newname" placeholder="Vivieen"></div>
       <div class="f" style="flex:none;align-self:flex-end;display:flex;gap:8px">
         <button class="btn pri hidden" id="createAvatar" type="button" title="Add the chosen portrait with this name">Add portrait</button>
+        <button class="btn hidden" id="takeSelfie" type="button" title="Open the front camera and shoot the source portrait right here">📷 Take a selfie</button>
         <button class="btn" id="importAvtr" type="button" title="Import a complete avatar (.avtr) — face, body, walk, and edge idle arrive ready to use">Import .avtr…</button>
       </div>
     </div>
@@ -1219,27 +1263,79 @@ function mappingRows(kind, mapped) {
 }
 
 function renderMediaDefault(kind) {
-  const element = $('#blk-' + kind), state = MEDIA_DEFAULTS[kind] || {};
-  const provider = state.provider;
-  if (!provider) {
-    element.innerHTML = `<div class="row"><div class="f" style="max-width:310px">
-      <label>Provider</label><select disabled><option>EnConvo global default</option></select></div></div>
-      <div class="res on"><span class="pill bad">unavailable</span> ${esc(state.error || 'Reading EnConvo’s selected provider…')}</div>
-      <div style="margin-top:12px"><button class="btn sm" data-refresh-media>Refresh EnConvo defaults</button></div>`;
+  // A full slot now, same grammar as llm/tts/stt: EnConvo Global Default
+  // first (inherited live, credentials stay in EnConvo), then the market
+  // on your own key. Keys go to the encrypted vault, write-only.
+  const element = $('#blk-' + kind);
+  const config = CFG && CFG[kind] ? CFG[kind] : { provider: 'enconvo' };
+  const list = (CAT && CAT[kind]) || [{ id: 'enconvo', label: 'EnConvo Global Default', managed: true }];
+  const provider = list.find(item => item.id === config.provider) || list[0];
+  const providerField = `<div class="row"><div class="f" style="max-width:310px">
+    <label>Provider</label><select data-media-provider="${kind}">
+      ${list.map(item => `<option value="${item.id}" ${item.id === provider.id ? 'selected' : ''}>${esc(item.label)}</option>`).join('')}
+    </select></div></div>`;
+
+  if (provider.managed) {
+    const state = MEDIA_DEFAULTS[kind] || {};
+    const mapped = state.provider;
+    element.innerHTML = `${providerField}<div class="inherit">
+      <div class="inherit-head"><div><span class="pill ${mapped ? 'ok' : 'bad'}">${mapped ? 'inherited live' : 'unavailable'}</span>
+        <b>${esc(mapped ? (mapped.title || mapped.name) : (state.error || 'Reading EnConvo’s selected provider…'))}</b></div></div>
+      ${mapped ? `<div class="mapping">${mappingRows(kind, {
+        provider_label: mapped.title || mapped.name,
+        model: mapped.model || 'Provider default'
+      })}</div>` : ''}
+      <p class="note">Managed in EnConvo Settings at <b>Global Providers → ${kind === 'image' ? 'Image Generation' : 'Video Generation'}</b>. Credentials never enter this app.</p>
+      <div class="row"><button class="btn sm" data-refresh-media>Refresh EnConvo defaults</button></div>
+    </div>`;
   } else {
-    element.innerHTML = `<div class="row"><div class="f" style="max-width:310px">
-      <label>Provider</label><select disabled><option>EnConvo global default</option></select></div></div>
-      <div class="inherit">
-        <div class="inherit-head"><div><span class="pill ok">inherited live</span>
-          <b>${esc(provider.title || provider.name)}</b></div></div>
-        <div class="mapping">${mappingRows(kind, {
-          provider_label: provider.title || provider.name,
-          model: provider.model || 'Provider default'
-        })}</div>
-        <p class="note">Managed in EnConvo Settings at <b>Global Providers → ${kind === 'image' ? 'Image Generation' : 'Video Generation'}</b>. Vivieen reads only the selected command and model metadata; credentials never enter this app.</p>
-        <div class="row"><button class="btn sm" data-refresh-media>Refresh EnConvo defaults</button></div>
-      </div>`;
+    const extra = kind === 'image'
+      ? `<div class="f" style="max-width:150px"><label>Size</label>
+          <input data-media-field="size" value="${esc(config.size || '1024x1024')}"></div>`
+      : `<div class="f" style="max-width:150px"><label>Seconds</label>
+          <input data-media-field="seconds" value="${esc(String(config.seconds || 5))}"></div>`;
+    element.innerHTML = `${providerField}
+      <div class="row" style="margin-top:14px">
+        <div class="f"><label>API key ${config.has_key ? '<span class="pill ok">stored</span>' : ''}</label>
+          <input type="password" data-media-key="${kind}" placeholder="${config.has_key ? '•••••••• leave blank to keep' : 'paste key'}"></div>
+        <div class="f"><label>Endpoint</label>
+          <input data-media-field="base_url" value="${esc(config.base_url || '')}" placeholder="${esc(provider.base || 'default')}"></div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <div class="f"><label>Model</label>
+          <input data-media-field="model" value="${esc(config.model || '')}" placeholder="provider default"></div>
+        ${extra}
+        <div style="display:flex;align-items:flex-end"><button class="btn sm" data-test-media="${kind}">Test</button></div>
+      </div>
+      ${provider.note ? `<p class="note">${esc(provider.note)}</p>` : ''}
+      ${kind === 'video' ? '<p class="note">Video tests only check credentials — a real render costs real money.</p>' : ''}
+      <div class="res" id="res-${kind}"></div>`;
   }
+
+  element.querySelector('[data-media-provider]').onchange = event => {
+    config.provider = event.target.value;
+    config.base_url = ''; config.model = '';
+    config.api_key = ''; config.has_key = false;
+    DIRTY = true; renderMediaDefault(kind);
+  };
+  element.querySelectorAll('[data-media-field]').forEach(input => {
+    input.oninput = () => { config[input.dataset.mediaField] = input.value; DIRTY = true; };
+  });
+  const keyInput = element.querySelector('[data-media-key]');
+  if (keyInput) keyInput.oninput = () => { config.api_key = keyInput.value; DIRTY = true; };
+  const testButton = element.querySelector('[data-test-media]');
+  if (testButton) testButton.onclick = async () => {
+    testButton.disabled = true;
+    const out = element.querySelector('#res-' + kind);
+    out.className = 'res on'; out.textContent = 'Testing…';
+    try {
+      const r = await api('/api/test', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind, cfg: config }) });
+      out.innerHTML = `<span class="pill ${r.ok ? 'ok' : 'bad'}">${r.ok ? 'works' : 'failed'}</span> ${esc(r.detail || '')}`;
+    } catch (error) { out.innerHTML = `<span class="pill bad">failed</span> ${esc(String(error))}`; }
+    testButton.disabled = false;
+  };
   const button = element.querySelector('[data-refresh-media]');
   if (button) button.onclick = () => refreshMediaDefaults(button);
 }
@@ -3532,6 +3628,14 @@ async function importAvatarFile(file) {
 $('#importAvtr').onclick = () => $('#avtrFile').click();
 $('#avtrFile').addEventListener('change', () => importAvatarFile($('#avtrFile').files[0]));
 file.onchange = () => stageUpload(file.files[0]);
+// iPhone: the camera is the handiest portrait source there is. The button
+// only appears on iOS - desktop browsers turn capture inputs into a plain
+// picker, which the drop zone already covers.
+if (/iPhone|iPad/.test(navigator.userAgent)) {
+  $('#takeSelfie').classList.remove('hidden');
+  $('#takeSelfie').addEventListener('click', () => $('#selfie').click());
+  $('#selfie').addEventListener('change', () => stageUpload($('#selfie').files[0]));
+}
 
 /* The naming step: a raw file name ("IMG_4032") is a bad avatar name, so a
    picked portrait is STAGED first - the name field gets a cleaned suggestion,
@@ -3673,6 +3777,7 @@ $('#save').onclick = async () => {
   DIRTY = false;
   note('Saved.');
   ['llm', 'tts', 'stt'].forEach(renderBlock);
+  ['image', 'video'].forEach(renderMediaDefault);
   renderLiveBlock();
   $('#live-xai-key').value = '';
   $('#live-eleven-key').value = '';

@@ -11,7 +11,7 @@ active slug on every request. Activating a face is therefore one atomic write
 to active.json, and no file is ever copied over another.
 """
 import os, sys, io, json, base64, tempfile, threading, time, shutil, subprocess, secrets, asyncio
-import datetime, re, zipfile
+import datetime, re, zipfile, hashlib, urllib.parse
 from contextlib import asynccontextmanager
 from posixpath import normpath as posix_normpath
 os.environ["PATH"] = os.pathsep.join(filter(None, (
@@ -27,7 +27,8 @@ sys.path.insert(0, ROOT)
 import numpy as np
 from fastapi import (FastAPI, UploadFile, File, Form, HTTPException, Query,
                      WebSocket, WebSocketDisconnect)
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, Response
+from fastapi.responses import (HTMLResponse, FileResponse, JSONResponse,
+                               Response, StreamingResponse)
 from pydantic import BaseModel, Field
 
 import providers as P
@@ -46,10 +47,16 @@ async def lifespan(_application):
 app = FastAPI(title="Vivieen", lifespan=lifespan)
 APP_ID = "com.vivieen.companion"
 AUTH_TOKEN = os.environ.get("VIVIEEN_AUTH_TOKEN", "")
+# Changes every engine start: the pocket page compares it and reloads
+# itself, so a long-lived phone session can never run yesterday's code.
+BOOT_ID = secrets.token_hex(4)
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 SLUG_PATTERN = r"^[a-z0-9](?:[a-z0-9-]{0,62})$"
-CSP = ("default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; "
+# img/media allow https so chat cards can show pictures and play video the
+# model links to; scripts stay same-origin only.
+CSP = ("default-src 'self'; img-src 'self' data: blob: https:; "
+       "media-src 'self' blob: https:; "
        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
        # 'self' does not cover the ws: scheme, and live dictation streams
        # over a local WebSocket to this same server.
@@ -59,6 +66,11 @@ CSP = ("default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; 
 
 
 def _security_headers(response):
+    # Pages are never cached: WKWebView happily served a stale renderer
+    # across three debugging rounds (2026-08-02). Assets carry their own
+    # cache-busting revs; the HTML must always be current.
+    if str(response.headers.get("content-type", "")).startswith("text/html"):
+        response.headers["Cache-Control"] = "no-store"
     response.headers["Content-Security-Policy"] = CSP
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -68,11 +80,24 @@ def _security_headers(response):
     return response
 
 
+def _client_token(source):
+    """The auth token from either the Electron-injected header or the
+    pairing cookie - iOS runs the renderer in a WKWebView, which cannot
+    add a header to every subresource and socket, but a cookie rides
+    along on all of them."""
+    supplied = source.headers.get("x-vivieen-token", "")
+    if not supplied:
+        try:
+            supplied = source.cookies.get("vivieen-token", "") or ""
+        except Exception:
+            supplied = ""
+    return supplied
+
+
 @app.middleware("http")
 async def security_headers(request, call_next):
     if AUTH_TOKEN:
-        supplied = request.headers.get("x-vivieen-token", "")
-        if not secrets.compare_digest(supplied, AUTH_TOKEN):
+        if not secrets.compare_digest(_client_token(request), AUTH_TOKEN):
             return _security_headers(JSONResponse({"error": "forbidden"}, status_code=403))
     origin = request.headers.get("origin", "")
     if request.method not in {"GET", "HEAD", "OPTIONS"} and origin:
@@ -170,6 +195,8 @@ def _validate_runtime_bundle(directory, expect_motion=None):
                 raise ValueError(f"runtime {kind} clip assets are missing")
             if clip.get("alpha_stream"):
                 _runtime_asset(directory, clip["alpha_stream"])
+            if clip.get("alpha_stream_hevc"):
+                _runtime_asset(directory, clip["alpha_stream_hevc"])
             for sheet in clip.get("sheets") or []:
                 _runtime_asset(directory, sheet.get("image"))
             if clip.get("poster"):
@@ -196,7 +223,7 @@ def active_slug():
         return None
 
 
-RUNTIME_VERSION = 12  # bundles below this are rebaked on activation
+RUNTIME_VERSION = 15  # v15: sheets ride along as the no-HEVC fallback (iOS simulator)
 
 
 def ensure_runtime(slug, log=print):
@@ -1903,6 +1930,44 @@ async def api_avatar_store():
         for item in AVATAR_STORE]}
 
 
+@app.get("/api/avatar/thumb")
+async def api_avatar_thumb(slug: str = Query(...), size: int = Query(320)):
+    """A card-sized face, made once and kept.
+
+    The carousel used to pull the full 1024px keyframe for every avatar -
+    well over a megabyte each, so opening the deck crawled (owner,
+    2026-08-03). This is the same face at card size, cached on disk after
+    the first request and immutable thereafter, which lets the phone keep
+    its own copy forever."""
+    import cv2
+    r = reg()
+    if slug not in {a["slug"] for a in r.list_avatars()}:
+        raise HTTPException(404, "no such avatar")
+    size = max(64, min(512, int(size)))
+    cache = os.path.join(r.AVATARS, slug, f"thumb-{size}.jpg")
+    if not os.path.isfile(cache):
+        source = None
+        for name in ("keyframe.png", "source-keyframe.png", "source.jpg"):
+            candidate = os.path.join(r.AVATARS, slug, name)
+            if os.path.isfile(candidate):
+                source = candidate
+                break
+        if not source:
+            raise HTTPException(404, "no face to show")
+        image = cv2.imread(source, cv2.IMREAD_COLOR)
+        if image is None:
+            raise HTTPException(404, "unreadable face")
+        height, width = image.shape[:2]
+        side = min(height, width)
+        # Square on the face, which sits in the upper middle of a portrait.
+        x0 = max(0, (width - side) // 2)
+        crop = image[0:side, x0:x0 + side]
+        thumb = cv2.resize(crop, (size, size), interpolation=cv2.INTER_AREA)
+        cv2.imwrite(cache, thumb, [int(cv2.IMWRITE_JPEG_QUALITY), 86])
+    return FileResponse(cache, media_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=604800"})
+
+
 @app.get("/api/avatar/store/art")
 async def api_avatar_store_art(id: str = Query(...),
                                kind: str = Query("face")):
@@ -2009,7 +2074,7 @@ async def api_config_set(body: dict):
     # An empty api_key from the UI means "unchanged", never "erase" - the browser
     # is never sent the stored key, so it cannot echo one back.
     cur = P.load()
-    for k in ("llm", "tts", "stt"):
+    for k in ("llm", "tts", "stt", "image", "video"):
         blk = body.get(k)
         if not isinstance(blk, dict):
             continue
@@ -2019,7 +2084,9 @@ async def api_config_set(body: dict):
         requested_key = blk.get("api_key")
         if blk.get("provider") == "enconvo" or requested_key == "__clear__" or \
            (provider_changed and not requested_key):
-            blk["api_key"] = ""
+            # "__clear__" rides through to the vault, which deletes the
+            # Keychain entry - not just the marker in the file.
+            blk["api_key"] = "__clear__"
         elif not requested_key:
             blk.pop("api_key", None)
     live = body.get("live")
@@ -2027,7 +2094,6 @@ async def api_config_set(body: dict):
         for field in ("xai_api_key", "eleven_api_key"):
             live.pop("has_" + field, None)
             if live.get(field) == "__clear__":
-                live[field] = ""
                 if field == "eleven_api_key":
                     live["eleven_agent_id"] = ""
             elif not live.get(field):
@@ -2131,6 +2197,30 @@ def _start():
         except Exception as e:
             print("[viv] runtime bundle missing:", e, flush=True)
     threading.Thread(target=_warm, daemon=True).start()
+    threading.Thread(target=_warm_media_tools, daemon=True).start()
+    # Internet reach, opt-in: the relay agent only exists while
+    # ~/Library/Application Support/Vivieen/relay-url does. Delete the
+    # file and restart to roll the whole feature back.
+    try:
+        import relay_agent
+        relay_agent.start(os.environ.get("VIVIEEN_PORT", "8777"))
+    except Exception as error:
+        print("[viv] relay agent skipped:", P.safe_error(error, 120), flush=True)
+
+
+def _warm_media_tools():
+    """The first run of a Homebrew binary can stall for a minute while the
+    system vets it - long enough that an agent's first video shipped as an
+    unplayable card. Pay that cost here, not inside somebody's first reply."""
+    for name in ("ffprobe", "ffmpeg"):
+        found = shutil.which(name)
+        if not found:
+            continue
+        try:
+            subprocess.run([found, "-version"], capture_output=True,
+                           timeout=240, stdin=subprocess.DEVNULL)
+        except Exception:
+            pass
 
 
 @app.get("/health")
@@ -2151,7 +2241,8 @@ async def health():
         detail = block.get("voice") if kind == "tts" else block.get("model")
         return f"{block.get('provider')} / {detail or 'default'}"
 
-    return {"app_id": APP_ID, "warm": _state["warm"], "warming": _state["warming"],
+    return {"app_id": APP_ID, "boot": BOOT_ID,
+            "warm": _state["warm"], "warming": _state["warming"],
             "ollama": cfg["llm"].get("provider") == "ollama" and ok,
             "provider_ok": ok, "llm_ok": ok,
             "llm": label("llm"), "voice": label("tts"), "ears": label("stt"),
@@ -2213,8 +2304,7 @@ async def stt_stream(client: WebSocket):
     # The http auth middleware does not run for websocket scopes, so the
     # token check happens here; Electron injects the header on the upgrade.
     if AUTH_TOKEN:
-        supplied = client.headers.get("x-vivieen-token", "")
-        if not secrets.compare_digest(supplied, AUTH_TOKEN):
+        if not secrets.compare_digest(_client_token(client), AUTH_TOKEN):
             await client.close(code=4403)
             return
     await client.accept()
@@ -2384,7 +2474,7 @@ async def live_worklet():
 
 XAI_REALTIME_URL = "wss://api.x.ai/v1/realtime"
 ELEVEN_CONVAI_URL = "wss://api.elevenlabs.io/v1/convai/conversation"
-LIVE_SILENCE_HANGUP_S = 30
+LIVE_SILENCE_HANGUP_S = 15
 
 
 # Live lines currently open. Saving a live-talk change in Settings sets
@@ -2455,8 +2545,7 @@ def _ensure_eleven_agent(settings):
 @app.websocket("/live/voice")
 async def live_voice(client: WebSocket):
     if AUTH_TOKEN:
-        supplied = client.headers.get("x-vivieen-token", "")
-        if not secrets.compare_digest(supplied, AUTH_TOKEN):
+        if not secrets.compare_digest(_client_token(client), AUTH_TOKEN):
             await client.close(code=4403)
             return
     await client.accept()
@@ -2568,7 +2657,14 @@ async def _live_pump(client, upstream, translate, last_audio, wrap_audio,
                 return
             data = message.get("bytes")
             if data:
-                last_audio[0] = time.time()
+                # Only a VOICE resets the silence clock. The phone streams
+                # continuously - zeroed frames while she speaks, room tone
+                # while nobody does - and counting those as "audio" meant
+                # the quiet-line hangup could never fire.
+                samples = np.frombuffer(data, dtype="<i2")
+                if samples.size and float(np.sqrt(np.mean(
+                        (samples.astype(np.float32) / 32768.0) ** 2))) > 0.012:
+                    last_audio[0] = time.time()
                 await upstream.send(wrap_audio(
                     base64.b64encode(data).decode("ascii")))
             elif message.get("text"):
@@ -2655,11 +2751,26 @@ class Turn(BaseModel):
     history: list
 
 
+# Uncoupled Vivieen's own hands. The directive-in-prompt design is
+# legitimate HERE, unlike in the coupled lane: this brain is ours, so its
+# tool belt is ours to strap on. One directive per turn, on its own line.
+_OWN_TOOLS = (
+    "\n\nYou can create media. To do it, put ONE of these on its own line "
+    "and end your reply there - the result is attached for you:\n"
+    "<<viv:image detailed description of the picture>>\n"
+    "<<viv:video detailed description of the clip>>\n"
+    "Use them only when the user asks for a picture/image/photo or a "
+    "video/clip. Never mention the directive syntax.")
+_OWN_TOOL_CALL = re.compile(r"<<viv:(image|video)\s+(.+?)>>", re.S)
+
+
 @app.post("/reply")
 async def reply(t: Turn):
+    import media_gen
     cfg = P.load()
     try:
-        text = await P.chat(t.history[-12:], cfg["llm"], system=cfg["persona"]["system"])
+        text = await P.chat(t.history[-12:], cfg["llm"],
+                            system=cfg["persona"]["system"] + _OWN_TOOLS)
     except Exception as e:
         print("[viv] llm failed:", P.safe_error(e), flush=True)
         hint = P.failure_hint(e)
@@ -2668,7 +2779,29 @@ async def reply(t: Turn):
                 "My model is not answering. Check the provider in Settings.")
     if not text:
         text = "I lost that thread for a second. Say it again?"
+    cards = []
+    call = _OWN_TOOL_CALL.search(text)
+    if call:
+        kind, prompt = call.group(1), call.group(2).strip()
+        text = _OWN_TOOL_CALL.sub("", text).strip()
+        try:
+            if kind == "image":
+                made = await media_gen.generate_image(prompt, cfg["image"])
+            else:
+                made = await media_gen.generate_video(prompt, cfg["video"])
+            url = await asyncio.to_thread(_enconvo_share, made)
+            if url:
+                cards.append({"url": url, "name": prompt[:60]})
+            if not text:
+                text = "Here it is." if kind == "image" else \
+                       "Here's the clip."
+        except Exception as error:
+            detail = P.safe_error(error, 140)
+            print("[viv] media generation failed:", detail, flush=True)
+            text = (text + " " if text else "") + \
+                f"(I tried to make the {kind}, but the provider said: {detail})"
     result = await _say(text, cfg)
+    result["media"] = cards
     result["llm_route"] = P.last_route("llm")
     return result
 
@@ -2680,6 +2813,527 @@ class Say(BaseModel):
 @app.post("/say")
 async def say(s: Say):
     return await _say(s.text, P.load())
+
+
+# ------------------------------------------------------------ enconvo lane
+# EnConvo's local gateway (port 54535) routes into every extension. The
+# pocket app couples to any EnConvo agent through here and behaves as one
+# more IM channel: the agent's brain and its whole tool belt, her face and
+# her voice. Sessions persist per agent; the agent does the work itself.
+def _enconvo_call(path, params, timeout=120):
+    import urllib.request
+    request = urllib.request.Request(
+        f"{ENCONVO_API}/{path}", method="POST",
+        data=json.dumps(params or {}).encode(),
+        headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=timeout) as feed:
+        return json.loads(feed.read().decode() or "{}")
+
+
+# Ask Mavis to fetch a video and she answers with a PATH on the Mac's disk -
+# useless to a phone. Every path she names that points at real media becomes
+# a served URL, so the reply lands in the thread as a card you can play
+# (owner: "I expect mavis download it and send the video in the thread").
+# Handles are opaque and minted only here: the phone can never name a file
+# the agent did not already hand it.
+_ENCONVO_FILES = {}
+_ENCONVO_MEDIA = {
+    ".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime",
+    ".webm": "video/webm", ".png": "image/png", ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
+    ".heic": "image/heic", ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
+    ".wav": "audio/wav", ".aac": "audio/aac", ".ogg": "audio/ogg",
+    ".pdf": "application/pdf",
+}
+# The folder every home lives in - "/Users" on a Mac - taken from this
+# machine rather than spelled out, so the pattern travels.
+_HOME_ROOT = os.path.dirname(os.path.expanduser("~")) or "/home"
+_PATH_IN_TEXT = re.compile(
+    r"(?:file://)?(?:~|" + re.escape(_HOME_ROOT) + r"/[^/\s]+"
+    r"|/private/var/folders|/tmp|/var/folders)"
+    r"(?:/[^\s()\[\]<>\"'`|]+)+")
+
+
+def _enconvo_roots():
+    home = os.path.expanduser("~")
+    roots = [os.path.join(home, part) for part in
+             (".enconvo", "Downloads", "Movies", "Pictures", "Documents",
+              "Desktop")]
+    roots.append(os.path.realpath(tempfile.gettempdir()))
+    roots.append(os.path.realpath(os.path.join(reg().AVATARS, "..")))
+    return [os.path.realpath(root) for root in roots]
+
+
+def _enconvo_share(path):
+    """Mint a handle for one on-disk file, or None if it is not ours to
+    serve. Returns the URL the renderer should link to."""
+    try:
+        real = os.path.realpath(os.path.expanduser(path))
+    except Exception:
+        return None
+    if not os.path.isfile(real):
+        return None
+    if os.path.splitext(real)[1].lower() not in _ENCONVO_MEDIA:
+        return None
+    if not any(real == root or real.startswith(root + os.sep)
+               for root in _enconvo_roots()):
+        return None
+    real = _phone_playable(real)
+    handle = hashlib.sha256(real.encode()).hexdigest()[:20]
+    _ENCONVO_FILES[handle] = real
+    name = urllib.parse.quote(os.path.basename(real))
+    return f"api/enconvo/file/{handle}/{name}"
+
+
+def _enconvo_media(text):
+    """Rewrite every servable path in her reply into a link, and report the
+    cards alongside so the phone can render them even if the prose does
+    not read like a link."""
+    cards = []
+    seen = {}
+
+    def swap(match):
+        raw = match.group(0)
+        # Trailing punctuation belongs to the sentence, not the filename.
+        trimmed = raw.rstrip(".,;:!?)")
+        target = trimmed[7:] if trimmed.startswith("file://") else trimmed
+        url = seen.get(target)
+        if url is None:
+            url = _enconvo_share(target) or ""
+            seen[target] = url
+            if url:
+                cards.append({"url": url, "name": os.path.basename(target)})
+        if not url:
+            return raw
+        # Already inside a markdown link - swap the destination, or the
+        # result nests brackets and renders as literal junk.
+        if match.string[max(0, match.start() - 2):match.start()] == "](":
+            return url + raw[len(trimmed):]
+        return f"[{os.path.basename(target)}]({url})" + raw[len(trimmed):]
+
+    return _PATH_IN_TEXT.sub(swap, text or ""), cards
+
+
+@app.get("/api/enconvo/file/{handle}/{name}")
+async def api_enconvo_file(handle: str, name: str):
+    path = _ENCONVO_FILES.get(handle)
+    if not path or not os.path.isfile(path):
+        raise HTTPException(404, "no such file")
+    media = _ENCONVO_MEDIA.get(os.path.splitext(path)[1].lower(),
+                               "application/octet-stream")
+    # Video needs ranges or iOS will not scrub, and Safari refuses to play
+    # a source that answers a range request with the whole file.
+    return FileResponse(path, media_type=media,
+                        headers={"Accept-Ranges": "bytes",
+                                 "Cache-Control": "private, max-age=600"})
+
+
+@app.get("/api/enconvo/agents")
+async def api_enconvo_agents():
+    try:
+        agents = await asyncio.to_thread(
+            _enconvo_call, "agent/list", {}, 15)
+    except Exception as error:
+        raise HTTPException(
+            503, f"EnConvo is not reachable - is it running? ({P.safe_error(error, 120)})")
+    out = []
+    for agent in agents if isinstance(agents, list) else []:
+        out.append({
+            "name": agent.get("name") or "",
+            "title": agent.get("title") or agent.get("name") or "",
+            "description": agent.get("description") or "",
+            "portrait": bool(str(agent.get("icon") or "").startswith("file:")),
+        })
+    return {"agents": out}
+
+
+@app.get("/api/enconvo/portrait")
+async def api_enconvo_portrait(name: str = Query(...)):
+    agents = await asyncio.to_thread(_enconvo_call, "agent/list", {}, 15)
+    for agent in agents if isinstance(agents, list) else []:
+        if agent.get("name") == name:
+            icon = str(agent.get("icon") or "")
+            if icon.startswith("file:"):
+                path = icon[len("file:"):]
+                base = os.path.expanduser("~/.enconvo/workspace")
+                real = os.path.realpath(path)
+                if real.startswith(os.path.realpath(base)) and os.path.isfile(real):
+                    media = "image/png" if real.endswith(".png") else "image/jpeg"
+                    with open(real, "rb") as handle:
+                        return Response(handle.read(), media_type=media,
+                                        headers={"Cache-Control": "max-age=3600"})
+    raise HTTPException(404, "no portrait")
+
+
+@app.post("/api/enconvo/photo")
+async def api_enconvo_photo(photo: UploadFile = File(...)):
+    """A phone photo, landed on the Mac so an EnConvo agent can actually
+    see it (agents take context_files by path)."""
+    uploads = os.path.join(reg().AVATARS, "..", "phone-uploads")
+    os.makedirs(uploads, exist_ok=True)
+    suffix = os.path.splitext(photo.filename or "photo.jpg")[1] or ".jpg"
+    name = f"phone-{int(time.time()*1000)}{suffix}"
+    destination = os.path.join(uploads, name)
+    total = 0
+    with open(destination, "wb") as handle:
+        while True:
+            chunk = await photo.read(1 << 20)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > 30 * 1024 * 1024:
+                handle.close()
+                os.unlink(destination)
+                raise HTTPException(413, "photo too large")
+            handle.write(chunk)
+    return {"path": destination}
+
+
+# The pocket app is a channel, and a channel talks to an agent the way
+# EnConvo's own IM channels do (launch_channel.js): POST the agent's
+# command route - /<extension>/<command>, no /api prefix - as an event
+# stream, with the session and the invoke source, and let EnConvo run its
+# whole flow. The agent picks its own tools, executes them itself, and
+# narrates the result. Nothing here tells it HOW to do anything.
+#
+# The one parameter that matters is run_mode. Mavis's saved config carries
+# run_mode "chat", which is a brain with no hands - through EVERY route,
+# which is why agent/messages looked broken. "agent" is the mode where the
+# tool belt is attached, and it is ours to ask for per request.
+ENCONVO_HOST = "http://127.0.0.1:54535"
+ENCONVO_API = f"{ENCONVO_HOST}/api"
+
+
+def _enconvo_command_key(agent):
+    """'main' and 'agent|main' and 'agent/main' all mean Mavis."""
+    key = (agent or "main").strip().replace("/", "|")
+    return key if "|" in key else f"agent|{key}"
+
+
+def _enconvo_agent_run(agent, session, message, files=None, source="vivieen",
+                       on_step=None, on_text=None):
+    """One turn through EnConvo's real flow. Returns (final text, steps)."""
+    import urllib.request
+    extension, _, command = _enconvo_command_key(agent).partition("|")
+    body = {
+        "sessionId": session,
+        "input_text": message,
+        "invoke_source": source,
+        "stream": True,
+        # Verbose, the way a Telegram channel runs: the thread narrates each
+        # step the agent takes instead of going quiet for three minutes.
+        "im_verbose": True,
+        # Hands on. Without this the agent answers from the model alone.
+        "run_mode": "agent",
+        "commandName": command,
+        "extensionName": extension,
+        "runType": "command",
+        "environment": {"sessionId": session},
+    }
+    if files:
+        body["context_files"] = list(files)
+    request = urllib.request.Request(
+        f"{ENCONVO_HOST}/{extension}/{command}", method="POST",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json",
+                 "Accept": "text/event-stream"})
+    # An agent that fetches a video or renders an image works for minutes.
+    with urllib.request.urlopen(request, timeout=900) as feed:
+        return _enconvo_read_stream(feed, on_step, on_text)
+
+
+def _enconvo_step_note(step):
+    """EnConvo's own rule for what a verbose channel announces, mirrored
+    from launch_channel.js: only a call that has actually started, never a
+    hidden one, never the channel plumbing talking to itself. The label is
+    the agent's description of what it is doing, in its words."""
+    if step.get("type") != "flow_step" or step.get("hide") is True:
+        return None
+    if step.get("flowRunStatus") != "running":
+        return None
+    flow = str(step.get("flowName") or "").strip("/").replace("|", "/")
+    params = step.get("flowParams")
+    if isinstance(params, str):
+        try:
+            params = json.loads(params)
+        except Exception:
+            params = {}
+    if not isinstance(params, dict):
+        params = {}
+    path = str(params.get("path") or "").strip("/").replace("|", "/") \
+        if flow == "local_api" else ""
+    # The channel's own tool calls are not news to the channel.
+    if flow.startswith("im_channels") or path.startswith("im_channels"):
+        return None
+    for candidate in (params.get("description"), step.get("title"), path, flow):
+        label = str(candidate or "").strip()
+        if label:
+            return {"key": f"{step.get('flowId') or ''}::{path or flow}",
+                    "text": label, "tool": path or flow}
+    return None
+
+
+def _enconvo_read_stream(feed, on_step=None, on_text=None):
+    """EnConvo streams the message as it is written: text arrives as deltas
+    under 'append_...' actions, and every so often a frame carries the whole
+    thing again. Rebuild per content id so either shape lands the same."""
+    order, chunks, steps = [], {}, []
+    announced = set()
+    last_text_id = None
+    for raw in feed:
+        line = raw.decode("utf-8", "replace").strip()
+        if not line.startswith("data:"):
+            continue
+        try:
+            frame = json.loads(line[5:].strip())
+        except Exception:
+            continue
+        action = frame.get("action") or ""
+        for message in (frame.get("messages") or []):
+            if message.get("role") != "assistant":
+                continue
+            for chunk in (message.get("content") or []):
+                kind = chunk.get("type")
+                if kind == "flow_step":
+                    steps.append(chunk)
+                    note = _enconvo_step_note(chunk)
+                    if on_step and note and note["key"] not in announced:
+                        announced.add(note["key"])
+                        on_step(note)
+                    continue
+                if kind != "text":
+                    continue
+                text = chunk.get("text") or ""
+                key = chunk.get("id") or last_text_id or "text"
+                last_text_id = key
+                if key not in chunks:
+                    order.append(key)
+                    chunks[key] = ""
+                before = chunks[key]
+                if action.startswith("append"):
+                    chunks[key] += text
+                elif len(text) >= len(chunks[key]):
+                    # A whole-message frame supersedes what we assembled.
+                    chunks[key] = text
+                # Her sentence as she writes it, the way a channel sends the
+                # reply in pieces instead of one silent blob at the end.
+                if on_text and chunks[key] != before:
+                    on_text(chunks[key][len(before):]
+                            if chunks[key].startswith(before) else chunks[key])
+    return "\n\n".join(chunks[key] for key in order if chunks[key]).strip(), steps
+
+
+def _enconvo_step_files(steps):
+    """What the agent chose to hand over. EnConvo agents deliver artifacts
+    through delivery/present_files - the same call that drops a photo into a
+    Telegram chat - and the tool tells them NOT to repeat the path in prose.
+    So this is the only place the file is ever named, and reading it is what
+    makes the pocket app a real channel rather than a transcript."""
+    found, seen = [], set()
+
+    def keep(path, title=""):
+        if not path:
+            return
+        real = os.path.expanduser(str(path))
+        if real.startswith("file://"):
+            real = real[7:]
+        if not os.path.isfile(real):
+            return
+        if real in seen:
+            # The tool that wrote it reports a path; the delivery that
+            # follows carries her name for it. Let the fuller name win.
+            for item in found:
+                if item["path"] == real and len(str(title)) > len(item["title"]):
+                    item["title"] = str(title)
+            return
+        seen.add(real)
+        found.append({"path": real, "title": str(title or "")})
+
+    for step in steps:
+        # A call is streamed argument by argument: mid-flight, a title of
+        # "Cat astronaut in orbit" is just "C". Read the finished call.
+        if step.get("flowRunStatus") not in ("success", "error", None):
+            continue
+        params = step.get("flowParams")
+        if isinstance(params, str):
+            try:
+                params = json.loads(params)
+            except Exception:
+                params = {}
+        if not isinstance(params, dict):
+            params = {}
+        inner = params.get("params") if isinstance(
+            params.get("params"), dict) else {}
+        if str(params.get("path") or "").strip("/") == "delivery/present_files":
+            for item in (inner.get("deliverables") or []):
+                if isinstance(item, dict):
+                    keep(item.get("url") or item.get("path"),
+                         item.get("title"))
+        # A tool that reports what it wrote, whether or not she delivered it.
+        output = step.get("output")
+        if isinstance(output, dict):
+            for path in (output.get("paths") or []):
+                keep(path)
+    return found
+
+
+def _viv_note(line):
+    """Engine stdout is swallowed by the shell; leave a readable trail."""
+    try:
+        with open(os.path.join(tempfile.gettempdir(), "vivieen-lane.log"),
+                  "a") as handle:
+            handle.write(f"{time.strftime('%H:%M:%S')} {line}\n")
+    except Exception:
+        pass
+
+
+def _phone_playable(path):
+    """WebKit will not play AV1 or Opus - the small streams a downloader
+    prefers - and renders them as a crossed-out play button. Hand back
+    something the phone can actually open, transcoding only if it must."""
+    ffmpeg = shutil.which("ffmpeg")
+    probe = shutil.which("ffprobe")
+    if not ffmpeg or not path.lower().endswith(
+            (".mp4", ".m4v", ".mov", ".webm", ".mkv")):
+        return path
+    found = []
+    try:
+        # stdin=DEVNULL is not optional: ffmpeg and ffprobe read stdin, and
+        # the engine's stdin is a pipe the shell never closes, so the probe
+        # blocked forever and the card shipped unplayable - which read as a
+        # renderer bug for an hour. If it still will not answer, re-encode
+        # rather than guess.
+        if probe:
+            found = subprocess.run(
+                [probe, "-v", "error", "-show_entries", "stream=codec_name",
+                 "-of", "csv=p=0", path],
+                capture_output=True, text=True, timeout=180,
+                stdin=subprocess.DEVNULL).stdout.split()
+    except Exception as error:
+        _viv_note(f"ffprobe gave up on {os.path.basename(path)}: "
+                  f"{P.safe_error(error, 120)} - re-encoding to be safe")
+    if found and all(name in ("h264", "aac", "mp3") for name in found) \
+            and path.lower().endswith((".mp4", ".m4v", ".mov")):
+        return path
+    safe = os.path.splitext(path)[0] + ".phone.mp4"
+    if os.path.isfile(safe):
+        return safe
+    try:
+        subprocess.run(
+            [ffmpeg, "-nostdin", "-y", "-i", path, "-c:v", "h264_videotoolbox",
+             "-b:v", "2M", "-c:a", "aac", "-movflags", "+faststart", safe],
+            capture_output=True, timeout=1800, check=True,
+            stdin=subprocess.DEVNULL)
+    except Exception as error:
+        # A silent fallback here ships an unplayable card and looks like a
+        # renderer bug; say what went wrong where it can be read.
+        detail = getattr(error, "stderr", b"") or b""
+        print("[viv] transcode failed:", P.safe_error(error, 160),
+              detail[-400:].decode("utf-8", "replace"), flush=True)
+        return path
+    return safe if os.path.isfile(safe) else path
+
+
+class EnconvoChat(BaseModel):
+    agent: str
+    message: str
+    session_id: str = ""
+    context_files: list = []
+
+
+@app.post("/api/enconvo/chat")
+async def api_enconvo_chat(request: EnconvoChat):
+    """An agent turn, streamed. A Telegram channel shows "typing" and then
+    narrates each step; the pocket thread does the same, so a three-minute
+    job reads as work in progress rather than a frozen app."""
+    uploads = os.path.realpath(os.path.join(reg().AVATARS, "..", "phone-uploads"))
+    safe_files = [path for path in (request.context_files or [])
+                  if isinstance(path, str)
+                  and os.path.realpath(path).startswith(uploads)
+                  and os.path.isfile(path)]
+
+    # The agent sees where it is answering from, the way an IM channel
+    # names itself - Telegram's handler passes "telegram-<chat>".
+    source = "vivieen-pocket"
+    events = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+
+    def emit(payload):
+        loop.call_soon_threadsafe(events.put_nowait, payload)
+
+    def run():
+        key = _enconvo_command_key(request.agent)
+        session = request.session_id
+        if not session:
+            fresh = _enconvo_call(
+                "agent/session/new",
+                {"agentId": key, "invokeSource": source}, 30)
+            session = fresh.get("sessionId") or fresh.get("id") or ""
+        text, steps = _enconvo_agent_run(
+            key, session, request.message, safe_files, source,
+            on_step=lambda note: emit({"type": "step", **note}),
+            on_text=lambda piece: emit({"type": "say", "text": piece}))
+        return session, text, _enconvo_step_files(steps)
+
+    async def feed():
+        turn = asyncio.create_task(asyncio.to_thread(run))
+        try:
+            yield _sse({"type": "typing"})
+            while True:
+                drain = asyncio.create_task(events.get())
+                done, _ = await asyncio.wait(
+                    {drain, turn}, return_when=asyncio.FIRST_COMPLETED,
+                    timeout=20)
+                if drain in done:
+                    yield _sse(drain.result())
+                    continue
+                drain.cancel()
+                if turn in done:
+                    break
+                # Nothing to report and still working: keep the pipe warm so
+                # a long job never looks like a dropped connection.
+                yield _sse({"type": "typing"})
+            while not events.empty():
+                yield _sse(events.get_nowait())
+            try:
+                payload = await _enconvo_finish(*turn.result())
+            except Exception as error:
+                payload = {"type": "error",
+                           "detail": f"EnConvo did not answer "
+                                     f"({P.safe_error(error, 160)})"}
+            yield _sse(payload)
+        finally:
+            # /stop, or the phone simply walked away: do not leave a turn
+            # running against an audience that has gone home.
+            turn.cancel()
+
+    return StreamingResponse(feed(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-store",
+                                      "X-Accel-Buffering": "no"})
+
+
+def _sse(payload):
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+async def _enconvo_finish(session, text, made):
+    if not text:
+        text = "…the agent finished without saying anything."
+    shown, cards = _enconvo_media(text)
+    # What she delivered is a card - and it carries the name SHE gave it,
+    # not a uuid off the disk.
+    seen = {card["url"] for card in cards}
+    for item in made:
+        url = await asyncio.to_thread(_enconvo_share, item["path"])
+        if url and url not in seen:
+            seen.add(url)
+            cards.append({"url": url,
+                          "name": item["title"] or os.path.basename(item["path"])})
+    # She SAYS the prose, not the URLs - a spoken file path is noise.
+    spoken = await _say(_PATH_IN_TEXT.sub("that file", text), P.load())
+    return {"type": "done", "session_id": session, "text": shown,
+            "media": cards, "audio": spoken.get("audio", ""),
+            "track": spoken.get("track", [])}
 
 
 async def _say(text, cfg):

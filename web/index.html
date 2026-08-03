@@ -6,7 +6,10 @@
 html,body{height:100%;background:#0b0d10;color:#f2efe9;
   font:400 15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,sans-serif;overflow:hidden}
 #stage{position:fixed;inset:0}
-canvas{width:100%;height:100%;display:block}
+canvas{width:100%;height:100%;display:block;
+  /* Touch: a held finger must be a gesture, never a text-selection loupe
+     or a scroll - the head-hold talk dies otherwise (iOS, 2026-08-02). */
+  touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 #vignette{position:fixed;inset:0;pointer-events:none;
   background:radial-gradient(120% 90% at 50% 35%,transparent 45%,rgba(0,0,0,.55) 100%)}
 #bar{position:fixed;left:0;right:0;bottom:0;padding:20px 24px 26px;
@@ -31,6 +34,11 @@ canvas{width:100%;height:100%;display:block}
 #her:focus-visible{outline:1px solid #8b93a0;outline-offset:2px}
 #her .caption-summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #her .caption-markdown{display:grid;gap:.72em;overflow-wrap:anywhere}
+/* `display:grid` outranks the UA rule behind the hidden attribute, so the
+   folded caption drew BOTH the summary and the full markdown - every
+   reply looked doubled with its second copy clipped (owner screenshot,
+   2026-08-02). Hidden means hidden. */
+#her .caption-markdown[hidden],#her .caption-summary[hidden]{display:none}
 #her .caption-markdown h1,#her .caption-markdown h2,#her .caption-markdown h3,
 #her .caption-markdown h4,#her .caption-markdown h5,#her .caption-markdown h6{
   color:#fff;font-weight:680;line-height:1.22;letter-spacing:-.025em}
@@ -134,14 +142,10 @@ html.listening #listenWave{display:flex}
   animation:listenDot 1.6s ease-in-out infinite}
 @keyframes listenDot{50%{opacity:.35}}
 #listenWaveBars{display:flex;align-items:center;gap:2.5px;height:16px}
-#listenWaveBars span{width:2px;height:4px;border-radius:1px;
-  background:rgba(255,255,255,.82);
-  animation:listenWave .9s ease-in-out infinite alternate}
-#listenWaveBars span:nth-child(2){animation-delay:-.14s}
-#listenWaveBars span:nth-child(3){animation-delay:-.28s}
-#listenWaveBars span:nth-child(4){animation-delay:-.42s}
-#listenWaveBars span:nth-child(5){animation-delay:-.56s}
-@keyframes listenWave{to{height:13px}}
+/* The bars are driven by the REAL microphone level (owner: a static loop
+   is a hint, not a meter) - heights come from script, not keyframes. */
+#listenWaveBars span{width:2px;height:3px;border-radius:1px;
+  background:rgba(255,255,255,.82);transition:height 80ms ease}
 #listenWaveText{color:rgba(255,255,255,.6);font-family:inherit;font-size:11px;
   font-weight:500;line-height:1;letter-spacing:.02em}
 #status{position:fixed;top:20px;left:24px;font-size:12px;letter-spacing:.08em;
@@ -231,6 +235,265 @@ html[data-design=atelier] #monitorTip{border-radius:0;
   border-color:rgba(201,168,106,.3);background:rgba(22,20,17,.95)}
 html[data-design=atelier] #petBubble{border-radius:0;
   border-color:rgba(201,168,106,.32);background:rgba(22,20,17,.85)}
+/* ---- Pocket Mirror (iOS) ------------------------------------------------
+   Phone ergonomics: captions are frosted glass capped at her lower thigh
+   (her face and lip-sync stay visible while she speaks), the caption dims
+   during speech and brightens for re-reading, and the WeChat-style talk
+   bar replaces head-holding as the advertised way to speak. */
+html.ios #bar{padding:10px 18px calc(24px + env(safe-area-inset-bottom,0px));
+  background:none;bottom:var(--kb,0px);
+  /* Above the thread (z-index 4) - the bar always owns its own space. */
+  z-index:6}
+html.ios #log,html.ios #row{width:100%}
+html.ios #her{--caption-expanded-height:30vh;font-size:15px;
+  background:rgba(8,10,13,.55);transition:max-height 400ms cubic-bezier(.22,1,.36,1),opacity 300ms ease}
+html.ios.her-speaking #her{opacity:.72}
+html.ios #monitor{display:none}
+#micmode{display:none}
+html.ios #micmode{display:flex;flex:none;width:40px;height:40px;border-radius:50%;
+  align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.16);
+  background:rgba(255,255,255,.06);color:#cfd3da;padding:0}
+html.ios #micmode svg{width:19px;height:19px;fill:currentColor}
+#emojiBtn,#plusBtn{display:none}
+html.ios #emojiBtn,html.ios #plusBtn{display:flex;flex:none;width:40px;height:40px;
+  border-radius:50%;align-items:center;justify-content:center;padding:0;
+  border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#cfd3da}
+html.ios #emojiBtn svg,html.ios #plusBtn svg{width:20px;height:20px;fill:currentColor}
+/* Never display:none - WebKit refuses a programmatic .click() on an
+   unrendered file input, which is why the plus button did nothing on the
+   phone. Rendered, one pixel, invisible, out of the way. */
+#chatPhoto{position:fixed;left:-9999px;bottom:0;width:1px;height:1px;opacity:0}
+#emojirow{display:none}
+html.ios.emoji-open #emojirow{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;
+  width:100%;margin-top:8px;padding:10px;border-radius:14px;
+  background:rgba(20,22,26,.7);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,.14)}
+html.ios #emojirow button{font-size:24px;line-height:1.5;background:none;border:none;padding:4px}
+/* A held finger on a control is a press, not a text selection - the long
+   press meant for Paste was selecting the emoji glyph instead. */
+html.ios #emojirow button,html.ios #rail button,html.ios #gear{
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+html.ios.talk-mode #micmode{background:rgba(124,116,226,.28);border-color:rgba(124,116,226,.6)}
+#talkbar{display:none}
+html.ios.talk-mode #txt{display:none}
+html.ios.talk-mode #talkbar{display:block;flex:1;height:44px;border-radius:12px;
+  border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);
+  color:#e8e9ec;font-size:15px;font-weight:600;letter-spacing:.02em;
+  touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+html.ios.talk-mode #talkbar.rec{background:rgba(124,116,226,.4);border-color:rgba(124,116,226,.8)}
+html.ios.talk-mode #talkbar.cancel{background:rgba(212,76,71,.4);border-color:rgba(212,76,71,.8)}
+/* ---- avatar carousel --------------------------------------------------
+   Swipe across her, and the wardrobe opens: every installed face as a
+   card. Two switchable looks - noir stacks a dark diagonal cascade, the
+   chosen card stepping forward like a marquee; sorbet fans pastel cards
+   in an arc and slides the chosen one up front. */
+#avfan{position:fixed;inset:0;z-index:80;display:flex;align-items:center;
+  justify-content:center;background:rgba(5,7,10,.82);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+#avfan[hidden]{display:none}
+#avfanClose,#avfanStyle{position:absolute;z-index:6;height:38px;
+  border-radius:19px;border:1px solid rgba(255,255,255,.2);
+  background:rgba(20,22,26,.6);color:#dfe3ea;font:600 13px/1 inherit}
+#avfanClose{top:calc(14px + env(safe-area-inset-top,0px));left:16px;width:38px}
+#avfanStyle{top:calc(14px + env(safe-area-inset-top,0px));right:16px;
+  padding:0 16px;letter-spacing:.04em;text-transform:uppercase;font-size:11px}
+#avfanDeck{position:absolute;inset:0;overflow:hidden}
+#avfanDeck .avcard{position:absolute;left:50%;top:44%;width:200px;
+  aspect-ratio:3/4;margin:-140px 0 0 -100px;border-radius:18px;
+  overflow:hidden;border:1px solid rgba(255,255,255,.16);
+  box-shadow:0 18px 48px rgba(0,0,0,.5);
+  transition:transform 420ms cubic-bezier(.22,1,.36,1),opacity 420ms ease;
+  will-change:transform;touch-action:none}
+#avfanDeck .avcard img{width:100%;height:100%;object-fit:cover;display:block;
+  pointer-events:none;-webkit-user-select:none;user-select:none}
+#avfanDeck .avcard .name{position:absolute;left:0;right:0;bottom:0;
+  padding:22px 12px 10px;font-size:13.5px;font-weight:600;color:#fff;
+  background:linear-gradient(transparent,rgba(0,0,0,.72));
+  letter-spacing:.01em;pointer-events:none}
+/* sorbet: the photo floats in a porthole on a pastel card */
+#avfan.sorbet #avfanDeck .avcard{background:var(--card,#8ecfd4);
+  border:none;box-shadow:0 14px 34px rgba(0,0,0,.35)}
+#avfan.sorbet #avfanDeck .avcard img{width:112px;height:112px;
+  border-radius:50%;margin:26px auto 0;border:4px solid rgba(255,255,255,.85)}
+#avfan.sorbet #avfanDeck .avcard .name{background:none;color:rgba(20,26,30,.85);
+  text-align:center;bottom:auto;top:150px;font-size:14.5px}
+#avfanDetail{position:absolute;left:50%;bottom:calc(30px + env(safe-area-inset-bottom,0px));
+  transform:translateX(-50%);z-index:5;display:flex;gap:12px;align-items:center;
+  padding:12px 16px;border-radius:16px;background:rgba(16,18,22,.78);
+  border:1px solid rgba(255,255,255,.14);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+#avfan.sorbet #avfanDetail{background:rgba(255,255,255,.9);border:none}
+#avfan.sorbet #avfanDetail .avname{color:#20262b}
+#avfanDetail .avname{font-size:15px;font-weight:700;color:#eef1f5;
+  max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#avfanDetail .avuse{height:40px;padding:0 22px;border-radius:20px;border:none;
+  background:#e2483a;color:#fff;font:700 14px/1 inherit;letter-spacing:.02em}
+#avfanDetail .avuse[disabled]{opacity:.55}
+/* Action rail: one-tap shortcuts beside her - live call on top, then
+   dance, walk, rest. Desk builds never show it (hover and gestures own
+   those verbs there). */
+#rail{display:none}
+html.ios #rail{display:flex;flex-direction:column;gap:14px;position:fixed;
+  right:10px;top:50%;transform:translateY(-58%);z-index:5;
+  opacity:1;transition:opacity 500ms ease}
+html.ios #rail.dim{opacity:.26}
+/* The rail's lowest button sat right on top of the plus once a panel
+   raised the bar - every attempt to attach a photo opened the zoom
+   sliders instead. When a panel is up, the rail steps aside. */
+html.ios.emoji-open #rail{opacity:0;pointer-events:none}
+/* The gear's word "SETTINGS" is a desk affordance; on the phone it lands
+   across the status line. The icon says it alone - and it stands clear of
+   the app's own gear in the very corner. */
+html.ios #gearWord{display:none}
+html.ios #gear{top:calc(8px + env(safe-area-inset-top,0px));right:52px;padding:8px}
+html.ios #rail button{width:44px;height:44px;border-radius:50%;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(255,255,255,.14);background:rgba(20,22,26,.55);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:#c9cdd4;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+html.ios #rail svg{width:20px;height:20px;fill:currentColor}
+html.ios #rail button.on{background:rgba(124,116,226,.42);
+  border-color:rgba(124,116,226,.8);color:#efeefe}
+html.ios #rail #rail-live.on{background:rgba(212,76,71,.5);
+  border-color:rgba(212,76,71,.9);color:#ffe9e8}
+/* Pocket thread: the conversation stacks left-aligned above the input,
+   both voices as glass cards with full markdown - and media cards that
+   actually play. She is the BACKGROUND, full figure, dimmable via the
+   opacity slider - never cropped, never fighting the text (owner,
+   2026-08-02). Empty space passes taps through to her; scrolling works
+   from any card. */
+#thread{display:none}
+/* No top edge: the box is exactly as tall as the conversation, growing
+   upward to a ceiling. A full-height container with pointer-events:none
+   could never be dragged - the finger met the dead container, not the
+   scroller, so old messages were unreachable (owner, 2026-08-03). Sized
+   to its content, it can own its own touches and still leave the sky
+   above her free. */
+html.ios #thread{display:flex;flex-direction:column;justify-content:flex-end;
+  gap:8px;position:fixed;left:12px;right:12px;
+  max-height:calc(100vh - env(safe-area-inset-top,0px) - 100px
+    - var(--bar-h,88px) - var(--kb,0px));
+  bottom:calc(var(--bar-h,88px) + 12px + var(--kb,0px));z-index:4;
+  overflow-y:auto;overflow-x:hidden;pointer-events:auto;
+  -webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+  touch-action:pan-y;
+  transition:opacity 350ms ease;
+  -webkit-mask-image:linear-gradient(to bottom,transparent,#000 8%);
+  mask-image:linear-gradient(to bottom,transparent,#000 8%)}
+/* Empty thread must not swallow taps meant for her. */
+html.ios #thread:empty{pointer-events:none}
+html.ios #thread .msg{pointer-events:auto;align-self:stretch;
+  /* flex:none, or a full thread SHRINKS every card to a sliver instead of
+     scrolling - the "crammed up" screenshot (owner, 2026-08-03). */
+  flex:none;
+  width:100%;min-width:0;max-width:100%;box-sizing:border-box;
+  padding:9px 12px;border-radius:13px;
+  font-size:14.5px;line-height:1.5;color:#e9ecf1;overflow-wrap:anywhere;
+  overflow:hidden;background:rgba(12,14,18,.72);
+  border:1px solid rgba(255,255,255,.10);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+html.ios #thread .msg.user{background:rgba(63,60,112,.55);
+  border-color:rgba(124,116,226,.38)}
+html.ios #thread .msg img,html.ios #thread .msg video{display:block;
+  width:100%;max-width:100%;height:29vh;object-fit:contain;
+  background:#0a0c10;border-radius:9px;margin:4px 0}
+/* A file card is the file - no prose padding around it. */
+html.ios #thread .msg.media{padding:5px}
+html.ios #thread .media-name{padding:6px 6px 2px;font-size:12.5px;
+  color:#aab0bb;letter-spacing:.01em}
+/* Fullscreen picture: tap anywhere to close, pinch to look closer. */
+.lightbox{position:fixed;inset:0;z-index:120;display:flex;
+  align-items:center;justify-content:center;background:rgba(0,0,0,.94)}
+.lightbox img{max-width:100%;max-height:100%;object-fit:contain}
+.lightbox .lb-share{position:fixed;
+  bottom:calc(28px + env(safe-area-inset-bottom,0px));left:50%;
+  transform:translateX(-50%);height:44px;padding:0 24px;border-radius:22px;
+  border:1px solid rgba(255,255,255,.22);background:rgba(28,30,36,.9);
+  color:#eef1f5;font:600 15px/1 inherit}
+/* Working: three dots while she thinks, then one line per step she takes -
+   the same narration a verbose EnConvo channel writes into Telegram. */
+html.ios #thread .msg.working{background:rgba(12,14,18,.6)}
+html.ios #thread .typing{display:flex;gap:5px;align-items:center;height:18px}
+html.ios #thread .typing span{width:6px;height:6px;border-radius:50%;
+  background:#8e96a6;animation:vivType 1.15s infinite ease-in-out}
+html.ios #thread .typing span:nth-child(2){animation-delay:.16s}
+html.ios #thread .typing span:nth-child(3){animation-delay:.32s}
+@keyframes vivType{0%,60%,100%{opacity:.25;transform:translateY(0)}
+  30%{opacity:1;transform:translateY(-3px)}}
+html.ios #thread .msg.working .step{margin-top:7px;padding-left:15px;
+  position:relative;font-size:13px;color:#9aa2b1;line-height:1.45}
+html.ios #thread .msg.working .step:before{content:'';position:absolute;
+  left:3px;top:7px;width:5px;height:5px;border-radius:50%;
+  background:rgba(124,116,226,.85)}
+html.ios #thread .msg.working .live{margin-top:8px;font-size:14.5px;
+  line-height:1.5;color:#e9ecf1;white-space:pre-wrap}
+html.ios #thread .msg.media img,html.ios #thread .msg.media video{margin:0}
+html.ios #thread .msg audio{display:block;width:100%;margin:4px 0}
+html.ios #thread .msg pre{overflow-x:auto;padding:8px 10px;border-radius:8px;
+  background:#171a20;border:1px solid #262b33}
+html.ios #thread .msg a{color:#aeb7ff}
+/* ChatGPT-style: the thread scrolls like any messenger, and when you're
+   away from the newest message a ↓ pill floats above the bar - one tap
+   returns to the freshest reply, fully in view. */
+#threaddown{display:none}
+html.ios #threaddown.on{display:flex;position:fixed;right:16px;
+  bottom:calc(104px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:9;
+  width:40px;height:40px;border-radius:50%;align-items:center;justify-content:center;
+  background:rgba(24,26,32,.85);border:1px solid rgba(255,255,255,.2);color:#e8eaee;
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+#threaddown svg{width:18px;height:18px;fill:currentColor}
+/* Stage mode: a rail performance (dance, rest, closeup, zoom) brings HER
+   to the front - the thread bows out and returns when the show ends. */
+html.ios.stage-mode #thread{opacity:0}
+html.ios.stage-mode #thread,html.ios.stage-mode #thread .msg{pointer-events:none}
+html.ios #log{display:none}
+/* Desk chrome that has no business on the phone: the zoom badge and the
+   roaming speech bubble (the thread IS her voice there). */
+html.ios #vz{display:none}
+html.ios #petBubble{display:none}
+html.ios #txt{font-size:16px}
+#toast{display:none}
+html.ios #toast{display:block;position:fixed;left:16px;right:16px;
+  bottom:calc(96px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:8;
+  padding:11px 14px;border-radius:13px;font-size:14px;line-height:1.4;
+  color:#e9ecf1;text-align:center;background:rgba(18,20,24,.86);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  border:1px solid rgba(255,255,255,.14);
+  opacity:0;transform:translateY(8px);pointer-events:none;
+  transition:opacity 220ms ease,transform 220ms ease}
+html.ios #toast.on{opacity:1;transform:none}
+/* EnConvo agent sheet: every agent is a contact - portrait, name, blurb.
+   Pick one and the thread talks to that brain through the Mac's gateway,
+   spoken with her voice. */
+#agentsheet{display:none}
+html.ios.agents-open #agentsheet{display:block;position:fixed;left:16px;right:16px;
+  bottom:calc(96px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:7;
+  max-height:52vh;overflow-y:auto;border-radius:16px;padding:8px;
+  background:rgba(16,18,22,.82);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,.14)}
+#agentsheet .agent{display:flex;align-items:center;gap:12px;width:100%;
+  padding:10px;border:none;background:none;border-radius:12px;color:#e9ecf1;
+  text-align:left;font-size:15px}
+#agentsheet .agent.on{background:rgba(124,116,226,.28)}
+#agentsheet .agent img{width:44px;height:44px;border-radius:50%;object-fit:cover;
+  background:#20242b;flex:none}
+#agentsheet .agent .who{min-width:0}
+#agentsheet .agent .who b{display:block;font-weight:600}
+#agentsheet .agent .who span{display:block;font-size:12.5px;color:#9aa1ab;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html.ios #rail #rail-enconvo.on{background:rgba(29,158,117,.4);
+  border-color:rgba(93,202,165,.7);color:#dff6ec}
+html.ios #rail #rail-mute.on{background:rgba(212,76,71,.42);
+  border-color:rgba(212,76,71,.8);color:#ffe9e8}
+#zoombox{display:none}
+html.ios.zoom-open #zoombox{display:flex;flex-direction:column;gap:10px;
+  position:fixed;left:16px;right:70px;
+  bottom:calc(96px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:6;padding:12px 14px;
+  background:rgba(20,22,26,.6);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,.14);border-radius:14px}
+html.ios #zoombox .zrow{display:flex;align-items:center;gap:10px}
+html.ios #zoombox svg{flex:none;width:16px;height:16px;fill:#aeb3bc}
+html.ios #zoombox input{width:100%;flex:1}
 </style></head><body>
 <div id="shell"><div id="drag"></div><div id="shellBtns">
   <button class="shellBtn" id="shellPin" title="Always on top">◇</button>
@@ -238,6 +501,33 @@ html[data-design=atelier] #petBubble{border-radius:0;
   <button class="shellBtn" id="shellHide" title="Hide avatar">×</button>
 </div></div>
 <div id="stage"><canvas id="cv"></canvas></div><div id="vignette"></div>
+<div id="rail">
+  <button id="rail-live" type="button" aria-label="Live talk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.5 2.9 3.7 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z"/></svg></button>
+  <button id="rail-move" type="button" aria-label="Dance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.6c-.6-.4-1.3-.6-2-.6-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4V7h4V3h-6z"/></svg></button>
+  <button id="rail-idle" type="button" aria-label="Rest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-1-.1-1.4A7 7 0 0 1 12.6 3.1L12 3z"/></svg></button>
+  <button id="rail-close" type="button" aria-label="Closeup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6h-2V6.4l-4.3 4.3-1.4-1.4L17.6 5H15V3zM3 15h2v2.6l4.3-4.3 1.4 1.4L6.4 19H9v2H3v-6z"/></svg></button>
+  <button id="rail-pip" type="button" aria-label="Picture in picture"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3V5zm2 2v10h14V7H5zm7 4h5v4h-5v-4z"/></svg></button>
+  <button id="rail-enconvo" type="button" aria-label="EnConvo agents"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3 4 14h6l-1 7 9-11h-6l1-7z"/></svg></button>
+  <button id="rail-mute" type="button" aria-label="Mute her voice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 5V4L8 9H4zm12.5 3a3.5 3.5 0 0 0-2-3.15v6.3a3.5 3.5 0 0 0 2-3.15z"/></svg></button>
+  <button id="rail-faces" type="button" aria-label="Switch avatar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3v10H4V7zm4.5-2h7v14h-7V5zM17 7h3v10h-3V7z"/></svg></button>
+  <button id="rail-zoom" type="button" aria-label="Zoom"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12zm-1 3h2v2h2v2h-2v2H9v-2H7V9h2V7z"/></svg></button>
+</div>
+<div id="thread"></div>
+<div id="agentsheet"><div id="agentlist"></div></div>
+<button id="threaddown" type="button" aria-label="Jump to newest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16.5 4.5 9l1.4-1.4L12 13.7l6.1-6.1L19.5 9 12 16.5z"/></svg></button>
+<div id="zoombox">
+  <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12z"/></svg><input id="zoomrange" type="range" min="60" max="600" step="5" value="100" aria-label="Avatar zoom"></div>
+  <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2s6 7.1 6 12a6 6 0 0 1-12 0c0-4.9 6-12 6-12zm0 16a4 4 0 0 0 4-4c0-.6-.1-1.2-.4-1.9L8.4 15.3A4 4 0 0 0 12 18z"/></svg><input id="alpharange" type="range" min="25" max="100" step="5" value="100" aria-label="Avatar opacity"></div>
+</div>
+<!-- Avatar carousel: horizontal swipe across her opens the deck. Two
+     looks, both owner-picked: "noir" (dark cascade, Netflix) and
+     "sorbet" (pastel arc fan, Spy). -->
+<div id="avfan" hidden>
+  <button id="avfanClose" type="button" aria-label="Close">&#10005;</button>
+  <button id="avfanStyle" type="button" aria-label="Switch carousel style">sorbet</button>
+  <div id="avfanDeck"></div>
+  <div id="avfanDetail"></div>
+</div>
 <div id="petBubble" role="status" aria-live="polite"></div>
 <div id="listenWave" aria-hidden="true"><span id="listenWaveDot"></span><span id="listenWaveBars"><span></span><span></span><span></span><span></span><span></span></span><span id="listenWaveText">Listening…</span></div>
 <div id="emptyState" hidden><div id="emptyCard">
@@ -249,7 +539,7 @@ html[data-design=atelier] #petBubble{border-radius:0;
 <div id="vz"></div>
 <a id="gear" href="/settings" title="Avatar, models and voice">
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 15a1.6 1.6 0 0 0 .32 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-.97 1.47V21a2 2 0 1 1-4 0v-.11a1.6 1.6 0 0 0-1.05-1.46 1.6 1.6 0 0 0-1.77.32l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.6 1.6 0 0 0 .32-1.77 1.6 1.6 0 0 0-1.47-.97H3a2 2 0 1 1 0-4h.11a1.6 1.6 0 0 0 1.46-1.05 1.6 1.6 0 0 0-.32-1.77l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.6 1.6 0 0 0 1.77.32H9a1.6 1.6 0 0 0 .97-1.47V3a2 2 0 1 1 4 0v.11a1.6 1.6 0 0 0 .97 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.6 1.6 0 0 0-.32 1.77V9a1.6 1.6 0 0 0 1.47.97H21a2 2 0 1 1 0 4h-.11a1.6 1.6 0 0 0-1.47.97z"/></svg>
-Settings</a>
+<span id="gearWord">Settings</span></a>
 <div id="bar">
   <div id="log"><div id="you"></div><div id="her" tabindex="0" role="log" aria-live="polite" aria-expanded="false" aria-label="Assistant response; hover to expand"></div></div>
   <div id="row">
@@ -261,9 +551,18 @@ Settings</a>
     </button>
     <div id="manual">
       <button id="ptt" disabled hidden>Hold to talk</button>
+      <button id="micmode" type="button" aria-label="Switch between typing and talking" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg></button>
+      <button id="talkbar" type="button">Hold to talk</button>
       <textarea id="txt" rows="1" placeholder="Hold her head to talk, or type…" autocomplete="off" enterkeyhint="send"></textarea>
+      <button id="emojiBtn" type="button" aria-label="Emoji"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zM8.6 9.2a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6zm6.8 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6zM7.6 14.2h8.8a4.6 4.6 0 0 1-8.8 0z"/></svg></button>
+      <button id="plusBtn" type="button" aria-label="Attach photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z"/></svg></button>
+      <input type="file" id="chatPhoto" accept="image/*">
     </div>
   </div>
+  <!-- The emoji panel is a PANEL, under the bar the way WeChat and
+       Telegram put it - inside #row it was just another flex sibling,
+       squeezed to a sliver beside the buttons. -->
+  <div id="emojirow"></div>
 </div>
 <script>
 // The chosen design (Quiet / Atelier) is shared with Settings through
@@ -278,6 +577,26 @@ addEventListener('storage',event=>{
 const SHELL=window.vivieen;
 const HAS_GLOBAL_PET_POINTER=Boolean(SHELL&&SHELL.onPetPointer);
 const PET_PREVIEW=new URLSearchParams(location.search).has('pet-preview');
+// The iOS shell (Pocket Mirror): no Electron SHELL, but her body gestures
+// - hold the head to talk, tap for a nod, double-tap the hair to dance -
+// must work from a finger. Window-level verbs (drag, roam, opacity) stay
+// desk-only.
+const IS_IOS=new URLSearchParams(location.search).has('ios');
+if(IS_IOS){
+  document.documentElement.classList.add('ios');
+  // iOS auto-zooms the page whenever a sub-16px input takes focus - THE
+  // hidden hand behind every 'giant video / clipped card / runaway mic'
+  // sighting today. The app is its own viewport; it never scales.
+  const viewportMeta=document.querySelector('meta[name="viewport"]');
+  if(viewportMeta)viewportMeta.content=
+    'width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no';
+  // Settings has its own phone layout, but only if it knows it is on a
+  // phone - without the flag the tabs fell off the right edge and the
+  // sticky header scrolled away on the first swipe.
+  document.querySelectorAll('a[href="/settings"]').forEach(link=>{
+    link.href='/settings?ios=1';
+  });
+}
 // A second on-desk avatar loads this same page at /c/<slug>/?side=left: it
 // idles against the LEFT screen edge while the active avatar keeps the right.
 const PET_SIDE=new URLSearchParams(location.search).get('side')==='left'?'left':'right';
@@ -644,6 +963,11 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshAss
 // "Hold her head to talk" wrapped mid-word (owner screenshot 2026-08-01).
 function fitTxtPlaceholder(){
   if(!txt)return;
+  if(typeof IS_IOS!=='undefined'&&IS_IOS){
+    // The mic toggle advertises talking on the phone; the field just types.
+    txt.placeholder='Type a message…';
+    return;
+  }
   const width=txt.clientWidth||0;
   txt.placeholder=width>=260?'Hold her head to talk, or type…':
     width>=150?'Hold head to talk…':'Type…';
@@ -698,15 +1022,29 @@ function routedStatus(route,fallback=''){
     i.src=`${src}${src.includes('?')?'&':'?'}v=${assetRev}`;});
   const loadMotion=async kind=>{
     const clip=M.motion&&M.motion[kind];if(!clip)return;
-    if(clip.alpha_stream){
-      // GPU-decoded VP9-alpha video instead of a decoded PNG atlas.
+    // Two encodings of the same take: VP9-alpha webm (Chromium) and
+    // HEVC-alpha mov (WebKit/iOS). Pick by what the engine claims to
+    // decode; a probe that stalls silently - iOS fires NEITHER canplay
+    // nor error on an unsupported webm - times out instead of hanging
+    // the whole boot at "booting" (Pocket Mirror, 2026-08-02).
+    const caps=document.createElement('video');
+    const streams=[];
+    if(clip.alpha_stream&&caps.canPlayType('video/webm; codecs="vp9"'))
+      streams.push(clip.alpha_stream);
+    if(clip.alpha_stream_hevc&&(caps.canPlayType('video/mp4; codecs="hvc1"')
+       ||caps.canPlayType('video/quicktime')))
+      streams.push(clip.alpha_stream_hevc);
+    if(!streams.length&&clip.alpha_stream)streams.push(clip.alpha_stream);
+    for(const src of streams){
+      // GPU-decoded alpha video instead of a decoded PNG atlas.
       const video=document.createElement('video');
       video.muted=true;video.loop=true;video.playsInline=true;
       video.preload='auto';
       const okay=await new Promise(res=>{
-        video.oncanplaythrough=()=>res(true);
-        video.onerror=()=>res(false);
-        video.src=`${clip.alpha_stream}?v=${assetRev}`;
+        const bail=setTimeout(()=>res(false),6000);
+        video.oncanplaythrough=()=>{clearTimeout(bail);res(true);};
+        video.onerror=()=>{clearTimeout(bail);res(false);};
+        video.src=`${src}?v=${assetRev}`;
         video.load();
       });
       if(okay&&video.videoWidth){MOTION[kind]={...clip,video};return;}
@@ -796,6 +1134,29 @@ async function poll(){
    graceful fallback if a track ever fails to arrive.                        */
 let actx=null,analyser=null,speaking=false,lvl=0;
 let track=[],tIdx=0,audioT0=0;
+/* iOS gate: a WKWebView AudioContext is born SUSPENDED and will only
+   resume inside a real touch. Her audio arrives a second or two after the
+   network reply - long past any gesture - so it never played and, with no
+   audio, nothing lip-synced (owner, real iPhone 2026-08-03). Unlock the
+   context on the very first touch and prime it with a silent tick; every
+   async play afterwards is allowed. */
+let audioUnlocked=false;
+function unlockAudio(){
+  if(audioUnlocked)return;
+  try{
+    actx=actx||new AudioContext();
+    const blip=actx.createBuffer(1,1,22050);
+    const src=actx.createBufferSource();
+    src.buffer=blip;src.connect(actx.destination);src.start(0);
+    const resume=()=>{audioUnlocked=actx.state==='running';};
+    actx.resume().then(resume,resume);
+    resume();
+  }catch(e){}
+}
+if(IS_IOS){
+  ['pointerdown','touchend','click'].forEach(ev=>
+    addEventListener(ev,unlockAudio,{capture:true}));
+}
 let curV='sil',prevV='sil',switchAt=0,switchFade=0.055,curReduce=1;
 /* ---- articulation dynamics ------------------------------------------------
    Real lips TRAVEL between shapes; a hard texture swap reads as a low-fps
@@ -1472,6 +1833,9 @@ function timedPose(){
   return track[tIdx][1];
 }
 function wanted(now=performance.now()/1000){
+  // Muted means muted: no sound, no articulation. Lips moving over
+  // silence read as a glitch, not a courtesy (owner, 2026-08-03).
+  if(window.IOS_MUTED)return'sil';
   // Her own reply owns the mouth while it plays, even in monitor mode:
   // a push-to-talk answer must not be mimed to EnConvo's audio.
   if(localSource&&track.length)return timedPose();
@@ -1544,6 +1908,15 @@ function renderFaceSurface(ref,eyes,mix,h,lids,gv,bv,ck,jawPx,ts,mouthWarp){
     plate(idleWash.img,mouthWarp?mouthWarp.cur:0);
     ctx.globalAlpha=1;
   }
+  // Face play: a mouth tap breaks into a quick smile through the same
+  // wash mechanism - the parted 'E' plate at higher opacity than idle
+  // life ever runs it, so it reads as a real grin, then melts away.
+  const fpNow=performance.now();
+  if(FACEPLAY.smileUntil>fpNow&&!speaking&&IMG.E&&IMG.E.open){
+    ctx.globalAlpha=0.8*Math.sin(Math.PI*(1-(FACEPLAY.smileUntil-fpNow)/950));
+    plate(IMG.E.open,mouthWarp?mouthWarp.cur:0);
+    ctx.globalAlpha=1;
+  }
   if(M.eyes){ctx.translate(0,dy);drawFace(lids,gv,bv,ck);}
   ctx.setTransform(1,0,0,1,0,0);
   if(CUTOUT){
@@ -1599,29 +1972,47 @@ function viewCrop(meta,width,height,forceView){
 let petLaneNow=0;
 function petBottomReserve(){
   const de=document.documentElement;
-  if(!de.classList.contains('pet'))return 0;
+  if(!de.classList.contains('pet')&&!IS_IOS)return 0;
   let want=0;
-  if(de.classList.contains('chat-open')){
+  if(IS_IOS){
+    // Feet above the input row, always visible and tappable. Only the
+    // input row is reserved - captions are glass and allowed to overlap
+    // her legs up to the lower thigh.
+    const rowBox=document.getElementById('row');
+    want=Math.max(want,(rowBox?rowBox.getBoundingClientRect().height:44)+16);
+  }
+  if(!IS_IOS&&de.classList.contains('chat-open')){
     const barBox=document.getElementById('bar');
     const barHeight=barBox?barBox.getBoundingClientRect().height:0;
     want=Math.max(want,barHeight+18);
   }
-  if(de.classList.contains('listening'))want=Math.max(want,88);
+  if(!IS_IOS&&de.classList.contains('listening'))want=Math.max(want,88);
   return want*cvScale();
 }
+let IOS_ZOOM=1,IOS_HEAD_ANCHOR=false,IOS_ALPHA=1;
 function petCamera(meta,width,height,forceView){
   const crop=viewCrop(meta,width,height,forceView);
   petLaneNow+=(petBottomReserve()-petLaneNow)*0.22;
   const lane=petLaneNow<1?0:petLaneNow;
   const avail=Math.max(cv.height*0.35,cv.height-lane);
   const margin=PET.roam?0.985:(PET.view==='full'?0.94:0.98);
-  const scale=Math.min(cv.width/crop.w,avail/crop.h)*margin;
-  const x=cv.width/2-(crop.x+crop.w/2)*scale;
+  let scale=Math.min(cv.width/crop.w,avail/crop.h)*margin;
+  let x=cv.width/2-(crop.x+crop.w/2)*scale;
   // Roam: the crop bottom IS the feet, and the shell rests the window
   // bottom on the Dock's top edge - anchor them exactly there, no float
   // (the old 0.5% reserve read as hovering above the Dock).
-  const y=PET.roam?avail-(crop.y+crop.h)*scale:
+  let y=PET.roam?avail-(crop.y+crop.h)*scale:
     avail/2-(crop.y+crop.h/2)*scale;
+  // Phone zoom: the slider scales her in place; the closeup preset (the
+  // rail's Cmd+Shift+9 cousin) anchors her crown near the top so the face
+  // fills the screen and the body runs off the bottom - never cropped by
+  // a view, only by the glass.
+  if(IS_IOS&&!PET.roam&&IOS_ZOOM!==1){
+    scale*=IOS_ZOOM;
+    x=cv.width/2-(crop.x+crop.w/2)*scale;
+    y=IOS_HEAD_ANCHOR?cv.height*0.05-crop.y*scale:
+      avail/2-(crop.y+crop.h/2)*scale;
+  }
   return {scale,x,y,crop};
 }
 const ROAM_BOX={width:250,height:340};
@@ -1744,6 +2135,7 @@ function showDomVideo(kind,edgeOverride){
     hideDomVideo();
     video.style.position='fixed';video.style.left='0';video.style.top='0';
     video.style.pointerEvents='none';video.style.transformOrigin='top left';
+    if(IS_IOS)video.style.opacity=String(IOS_ALPHA);
     video.style.zIndex='1';
     document.body.appendChild(video);
     domVideo.el=video;domVideo.kind=kind;
@@ -1763,6 +2155,9 @@ function hideDomVideo(){
   domVideo.el=null;domVideo.kind=null;
 }
 function drawPetScene(now){
+  // Phone captions dim while she speaks (eyes on her lips, not the text)
+  // and brighten when she finishes, for re-reading.
+  if(IS_IOS)document.documentElement.classList.toggle('her-speaking',Boolean(speaking));
   ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
   ctx.clearRect(0,0,cv.width,cv.height);
   const motionKind=PET.roam&&ROAM.enabled?
@@ -1772,6 +2167,10 @@ function drawPetScene(now){
   if(moveShowActive(now)&&showDomVideo('move'))return;
   if(moveShowActive(now)&&drawMotionClip('move',now)){hideDomVideo();return;}
   if(moveShowUntil&&now>=moveShowUntil)moveShowUntil=0;
+  if(walkShowActive(now)&&drawMotionClip('walk',now)){hideDomVideo();return;}
+  if(walkShowUntil&&now>=walkShowUntil)walkShowUntil=0;
+  if(idleShowActive(now)&&(showDomVideo('idle',PET_SIDE)||drawMotionClip('idle',now,PET_SIDE)))return;
+  if(idleShowUntil&&now>=idleShowUntil){idleShowUntil=0;hideDomVideo();}
   if(standingIdleActive(now)){
     // She settles in her bottom corner above the Dock and leans on the screen
     // edge, like a colleague stepping aside; the window docks once per
@@ -1834,7 +2233,7 @@ function syncPetEngagement(now=performance.now()){
 let lastFrameAt=0,lastRectsAt=0;
 function frameInterval(now){
   const lively=speaking||recording||dragging||gesture||REACT||
-    externalAudio.active||now<moveShowUntil||
+    externalAudio.active||now<moveShowUntil||now<walkShowUntil||
     (ROAM.enabled&&ROAM.mode==='walk');
   if(lively)return 1000/(powerOnBattery?30:60)-2;
   // Clip mode: the compositor is playing the video; this loop only runs
@@ -1869,7 +2268,7 @@ function loop(now){
   // attention brings the live standing avatar straight back. An OPEN chat
   // bar is not attention by itself - head-talk leaves it open for follow-ups
   // and she must still step aside - but typing in it is.
-  if(petHit||speaking||recording||dragging||REACT||gesture||now<moveShowUntil||
+  if(petHit||speaking||recording||dragging||REACT||gesture||now<moveShowUntil||now<walkShowUntil||
      (document.hasFocus()&&document.activeElement===txt)||txt.value.trim())lastEngagedAt=now;
   const ts=now/1000;
   lvl=lvl*0.55+level()*0.45;
@@ -1934,6 +2333,24 @@ function loop(now){
   foreheadFor(bv);
   const c0=cheekFor(now,(lids.l+lids.r)/2,mix);
   const ck={l:c0*CHEEK_ASYM,r:c0};
+  // Face play: tap-triggered pulses ride the same channels the idle life
+  // owns - a sine envelope in, back out, nothing to clean up.
+  if(FACEPLAY.winkUntil>now){
+    const p=Math.sin(Math.PI*Math.min(1,1-(FACEPLAY.winkUntil-now)/560));
+    lids[FACEPLAY.winkSide]=Math.max(lids[FACEPLAY.winkSide],p);
+  }
+  if(FACEPLAY.browUntil>now){
+    const e=Math.sin(Math.PI*(1-(FACEPLAY.browUntil-now)/750));
+    bv.l=Math.min(1,bv.l+0.6*e);bv.r=Math.min(1,bv.r+0.6*e);
+  }
+  if(FACEPLAY.scrunchUntil>now){
+    const e=Math.sin(Math.PI*(1-(FACEPLAY.scrunchUntil-now)/520));
+    bv.l=Math.max(0,bv.l-0.5*e);bv.r=Math.max(0,bv.r-0.5*e);
+  }
+  if(FACEPLAY.cheekUntil>now){
+    const e=Math.sin(Math.PI*(1-(FACEPLAY.cheekUntil-now)/750));
+    ck.l=Math.min(1.5,ck.l+0.65*e);ck.r=Math.min(1.5,ck.r+0.65*e);
+  }
   const jawPx=jawFor(now,mix);
   /* Aperture-aligned dissolve: both plates warp to one shared lip gap, and
      the current plate breathes with loudness on held vowels so a long "aa"
@@ -2063,10 +2480,20 @@ async function startLiveTalk(){
       document.documentElement.classList.add('listening');
       if(SHELL&&typeof SHELL.setLiveTalk==='function')SHELL.setLiveTalk(true);
     }else if(m.type==='audio')livePlay(session,m.data,m.rate||24000);
-    else if(m.type==='user_text'&&m.text)elYou.textContent=m.text;
+    else if(m.type==='user_text'&&m.text){
+      elYou.textContent=m.text;
+      // An empty VAD turn arrives as bare punctuation - "…", "." - and
+      // every one was becoming its own hollow card (owner screenshot,
+      // 2026-08-03). Only words earn a bubble.
+      if(IS_IOS&&/[\p{L}\p{N}]/u.test(m.text)){
+        if(liveUserCard)liveUserCard.textContent=m.text;
+        else liveUserCard=threadPush('user',m.text);
+      }
+    }
     else if(m.type==='agent_text'&&m.text){
       session.agentText=m.final?m.text:session.agentText+m.text;
       setCaption(session.agentText);
+      if(m.final){threadPush('her',m.text);liveUserCard=null;}
     }else if(m.type==='interrupt')liveFlush(session);
     else if(m.type==='switching'){
       // Provider leg is reconnecting with new settings; the line stays up.
@@ -2078,7 +2505,79 @@ async function startLiveTalk(){
   };
   ws.onclose=()=>{if(LIVE===session)stopLiveTalk('ended');};
 }
+/* ---- the wave is a meter --------------------------------------------
+   Both mics (live talk, hold-to-talk) publish their level here, and the
+   Listening chip's bars FOLLOW it - quiet room, low bars; speech, tall
+   bars. A loop that ignores the microphone is a lie about listening. */
+window.MIC_LEVEL=0;
+(function waveMeter(){
+  const bars=document.querySelectorAll('#listenWaveBars span');
+  const profile=[0.55,0.85,1,0.8,0.6];
+  let shown=0;
+  (function tick(){
+    requestAnimationFrame(tick);
+    if(!document.documentElement.classList.contains('listening')){
+      if(shown){shown=0;bars.forEach(b=>b.style.height='3px');}
+      return;
+    }
+    // Fast attack, slow release - speech flickers, the eye needs a beat.
+    const target=Math.min(1,window.MIC_LEVEL*7);
+    shown+=(target-shown)*(target>shown?0.55:0.18);
+    bars.forEach((bar,i)=>{
+      const wobble=1+0.22*Math.sin(performance.now()/90+i*1.7)*shown;
+      bar.style.height=Math.max(3,Math.round(
+        3+shown*13*profile[i]*wobble))+'px';
+    });
+  })();
+})();
+// One packet leaves the phone: guard against her own echo, then send.
+// Both capture paths - native bridge and getUserMedia - end here.
+function liveSendPcm(session,data){
+  if(LIVE!==session||session.ws.readyState!==1)return;
+  {
+    const pcm=new Int16Array(data);
+    let sum=0,lo=32767,hi=-32768,flips=0;
+    for(let i=0;i<pcm.length;i++){
+      const s=pcm[i];
+      if(s<lo)lo=s;if(s>hi)hi=s;
+      if(i&&(s>=0)!==(pcm[i-1]>=0))flips++;
+      if(!(i&3)){const v=s/32768;sum+=v*v;}
+    }
+    session.lastRms=Math.sqrt(sum/Math.max(1,pcm.length>>2));
+    session.lastShape=lo+'..'+hi+' flips='+flips+'/'+pcm.length;
+    window.MIC_LEVEL=session.lastRms;
+  }
+  const guarded=session.sources.size>0||performance.now()<session.echoGuardUntil;
+  if(guarded&&session.lastRms<0.09){
+    session.ws.send(new ArrayBuffer(data.byteLength));return;
+  }
+  session.ws.send(data);
+  session.sentLoud=(session.sentLoud||0)+1;
+}
 async function liveStartMic(session,rate){
+  // WKWebView's getUserMedia in the Simulator is a MOCK device - a 155 Hz
+  // hum at 10% amplitude, never the real mic - and "she can't hear me"
+  // was literally true (vitals, 2026-08-03). When the native bridge is
+  // there, the real microphone arrives through it, already at wire rate.
+  if(window.webkit&&webkit.messageHandlers.mic){
+    session.nativeMic=true;
+    session.wireRate=rate;session.micRate=rate;session.ratio=1;
+    window.__vivMicData=chunk=>{
+      const bin=atob(chunk),n=bin.length&~1;
+      const pcm=new Int16Array(n>>1);
+      for(let i=0;i<pcm.length;i++)
+        pcm[i]=(bin.charCodeAt(2*i)|(bin.charCodeAt(2*i+1)<<8))<<16>>16;
+      liveSendPcm(session,pcm.buffer);
+    };
+    window.__vivMicNote=note=>{
+      try{webkit.messageHandlers.viv.postMessage('MIC '+note);}catch(e){}
+      if(String(note).startsWith('mic-error'))
+        setCaption('(live talk: microphone failed - '+note+')');
+    };
+    webkit.messageHandlers.mic.postMessage('start:'+rate);
+    liveVitals(session);
+    return;
+  }
   // Re-entrant: a hot swap (provider/voice change mid-call) sends a fresh
   // 'ready', possibly at a different sample rate. Keep the mic stream,
   // rebuild the capture context only when the rate actually changes.
@@ -2092,38 +2591,71 @@ async function liveStartMic(session,rate){
   }
   session.micRate=rate;
   session.ctx=new AudioContext({sampleRate:rate});
+  // iOS does NOT always honour the requested rate (the hardware often
+  // insists on 48k). Sending 48k frames labelled 24k makes the provider
+  // hear slowed garble and answer nothing - "she can't hear me", owner
+  // 2026-08-02. Resample to the wire rate whenever they differ.
+  session.wireRate=rate;
+  session.ratio=session.ctx.sampleRate/rate;
   // A blob: module URL is blocked by the page CSP - the worklet is a
   // real same-origin file instead.
   await session.ctx.audioWorklet.addModule('/live-worklet.js');
   const source=session.ctx.createMediaStreamSource(session.stream);
   session.cap=new AudioWorkletNode(session.ctx,'viv-live-capture');
   session.cap.port.onmessage=e=>{
-    if(LIVE!==session||session.ws.readyState!==1)return;
-    // Echo guard: while her own voice is coming out of the speakers (and
-    // a short tail after), the mic hears her and the provider answers
-    // itself (owner, 2026-08-02). Send SILENCE during playback - the
-    // stream stays continuous for the server's VAD clock - unless the
-    // mic is decisively louder than speaker bleed, which is a real
-    // interruption and passes through for barge-in.
-    const guarded=session.sources.size>0||performance.now()<session.echoGuardUntil;
-    if(guarded){
-      const pcm=new Int16Array(e.data);
-      let sum=0;
-      for(let i=0;i<pcm.length;i+=4){const v=pcm[i]/32768;sum+=v*v;}
-      const rms=Math.sqrt(sum/Math.max(1,pcm.length>>2));
-      if(rms<0.09){session.ws.send(new ArrayBuffer(e.data.byteLength));return;}
+    let data=e.data;
+    if(session.ratio&&Math.abs(session.ratio-1)>0.01){
+      const src=new Int16Array(data);
+      const out=new Int16Array(Math.max(1,Math.floor(src.length/session.ratio)));
+      for(let i=0;i<out.length;i++){
+        const p=i*session.ratio,i0=Math.floor(p),f=p-i0;
+        const a=src[i0]||0,b=src[Math.min(src.length-1,i0+1)]||0;
+        out[i]=a+(b-a)*f;
+      }
+      data=out.buffer;
     }
-    session.ws.send(e.data);
+    liveSendPcm(session,data);
   };
   source.connect(session.cap);
+  liveVitals(session);
+}
+// Live-line vitals, readable in the device log: is the mic producing
+// signal at all - and is it a voice, or the Simulator's synthetic hum?
+function liveVitals(session){
+  clearInterval(session.vitals);
+  session.vitals=setInterval(()=>{
+    if(LIVE!==session)return clearInterval(session.vitals);
+    try{
+      const t=session.stream&&session.stream.getAudioTracks()[0];
+      window.webkit&&webkit.messageHandlers.viv.postMessage(
+        'LIVE src='+(session.nativeMic?'native':'gum')+
+        ' wire='+session.wireRate+
+        ' ratio='+(session.ratio||1).toFixed(3)+
+        ' loud='+(session.sentLoud||0)+
+        ' rms='+(session.lastRms||0).toFixed(4)+
+        ' shape='+(session.lastShape||'?')+
+        ' track='+(t?t.readyState+(t.muted?'/muted':'/open'):'bridge')+
+        ' guard='+(session.sources.size>0||performance.now()<session.echoGuardUntil)+
+        ' ws='+session.ws.readyState);
+    }catch(x){}
+  },2000);
 }
 function livePlay(session,b64,rate){
   actx=actx||new AudioContext();
-  if(actx.state==='suspended')actx.resume();
+  // Opening the microphone changes the iOS audio category, and that
+  // INTERRUPTS a running context - it comes back suspended and stays
+  // that way, so her live-talk voice was scheduled into a dead graph
+  // (owner, 2026-08-03). Resume on every packet; it is a no-op when
+  // already running.
+  if(actx.state!=='running')actx.resume().catch(()=>{});
+  audbg('live: ctx='+actx.state+' rate='+rate+' b='+b64.length
+    +' muted='+window.IOS_MUTED);
   if(!analyser){analyser=actx.createAnalyser();analyser.fftSize=2048;
-    analyser.smoothingTimeConstant=0.6;analyser.connect(actx.destination);}
+    analyser.smoothingTimeConstant=0.6;analyser.connect(audioSink());}
   const bin=atob(b64),n=bin.length>>1;
   if(!n)return;
+  // Live talk already ships PCM16 - hand it straight to the app.
+  if(NATIVE_SPEECH())nativeSpeak(b64,rate);
   const pcm=new Int16Array(n);
   for(let i=0;i<n;i++)pcm[i]=(bin.charCodeAt(2*i)|(bin.charCodeAt(2*i+1)<<8))<<16>>16;
   const buf=actx.createBuffer(1,n,rate);
@@ -2132,6 +2664,12 @@ function livePlay(session,b64,rate){
   const src=actx.createBufferSource();src.buffer=buf;src.connect(analyser);
   const at=Math.max(actx.currentTime+0.04,session.queueT||0);
   session.queueT=at+buf.duration;
+  // Guard from the moment her audio ARRIVES, not from when the source
+  // registers: in that race a frame of speaker bleed passed as "voice",
+  // reset the silence clock, and her own "are you still there?" kept the
+  // idle line alive forever (vitals, 2026-08-03).
+  session.echoGuardUntil=Math.max(session.echoGuardUntil||0,
+    (at+buf.duration-actx.currentTime)*1000+performance.now()+450);
   session.sources.add(src);
   localSource=src;speaking=true;track=[];
   src.onended=()=>{
@@ -2145,6 +2683,9 @@ function livePlay(session,b64,rate){
 }
 function liveFlush(session){
   for(const src of session.sources){try{src.stop();}catch(e){}}
+  // Barge-in has to reach the app's queue too, or she keeps talking over
+  // you from a buffer the page no longer owns.
+  if(NATIVE_SPEECH())nativeFlush();
   session.sources.clear();session.queueT=0;session.agentText='';
   localSource=null;speaking=false;curV='sil';
 }
@@ -2156,9 +2697,14 @@ function stopLiveTalk(reason){
   try{session.cap&&session.cap.disconnect();}catch(e){}
   try{session.stream&&session.stream.getTracks().forEach(t=>t.stop());}catch(e){}
   try{session.ctx&&session.ctx.close();}catch(e){}
+  if(session.nativeMic){
+    try{webkit.messageHandlers.mic.postMessage('stop');}catch(e){}
+    window.__vivMicData=null;
+  }
+  clearInterval(session.vitals);
   document.documentElement.classList.remove('listening');
   if(SHELL&&typeof SHELL.setLiveTalk==='function')SHELL.setLiveTalk(false);
-  setStatus(reason==='silence'?'live talk ended — 30 quiet seconds':'ready',
+  setStatus(reason==='silence'?'live talk ended — 15 quiet seconds':'ready',
     reason==='error'?'':'on');
 }
 // Escape is the universal hang-up while a live line is open.
@@ -2167,30 +2713,257 @@ addEventListener('keydown',event=>{
 });
 
 /* ================= conversation ================= */
+// One master tap for her voice: mute keeps the lips moving (captions and
+// lip-sync live on the analyser BEFORE this gain) but the room goes quiet.
+let masterGain=null;
+window.IOS_MUTED=false;
+/* WKWebView runs WebAudio on its OWN audio session - one that answers to
+   the ring/silent switch and ignores the category the app sets - so on a
+   real iPhone her voice decoded, scheduled and lip-synced in perfect time
+   with nothing reaching the speaker. The Simulator hid it entirely.
+   Where the native player exists, WebAudio keeps the job it is good at,
+   the CLOCK that drives her mouth, and the samples go to the app.  */
+const NATIVE_SPEECH=()=>Boolean(window.webkit&&webkit.messageHandlers&&
+  webkit.messageHandlers.speech);
+function nativeSpeak(pcmBase64,rate){
+  try{webkit.messageHandlers.speech.postMessage(rate+':'+pcmBase64);}catch(e){}
+}
+function nativeFlush(){
+  try{webkit.messageHandlers.speech.postMessage('flush');}catch(e){}
+}
+function audioSink(){
+  if(!masterGain){masterGain=actx.createGain();masterGain.connect(actx.destination);}
+  // Silent graph when the app is doing the talking - otherwise a device
+  // that DOES let WebAudio through would say everything twice.
+  masterGain.gain.value=(window.IOS_MUTED||NATIVE_SPEECH())?0:1;
+  return masterGain;
+}
+/* WAV in, raw PCM16 out plus the rate THE FILE declares.
+   Not buf.sampleRate: decodeAudioData resamples to the context rate
+   (48k on the phone), so trusting it labelled 24k samples as 48k and she
+   answered like a chipmunk (owner, 2026-08-03). */
+function wavInfo(bytes){
+  const u32=at=>bytes[at]|(bytes[at+1]<<8)|(bytes[at+2]<<16)|(bytes[at+3]<<24);
+  let at=12,rate=24000,data=null;
+  while(at+8<=bytes.length){
+    const id=String.fromCharCode(bytes[at],bytes[at+1],bytes[at+2],bytes[at+3]);
+    const size=u32(at+4);
+    if(id==='fmt ')rate=u32(at+12)||rate;
+    else if(id==='data'){
+      data=bytes.subarray(at+8,Math.min(bytes.length,at+8+size));
+      break;
+    }
+    at+=8+size+(size&1);
+  }
+  return{rate,data:data||bytes.subarray(44)};
+}
+function b64FromBytes(bytes){
+  let binary='';
+  for(let i=0;i<bytes.length;i+=0x8000)
+    binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));
+  return btoa(binary);
+}
 const history=[];
 let localSource=null;
 
+/* The OS gets the last word on the route, so ask it rather than infer:
+   lip-sync keeps perfect time off the AudioContext clock even when the
+   speaker is silent, which is exactly how "she mouths but says nothing"
+   happens (owner, 2026-08-03). */
+window.__vivAudioState=line=>audbg('route: '+line);
+function askAudioState(){
+  try{webkit.messageHandlers.audio.postMessage('state');}catch(e){}
+}
+function audbg(line){
+  if(!IS_IOS)return;
+  let el=document.getElementById('audbg');
+  if(!el){el=document.createElement('div');el.id='audbg';
+    el.style.cssText='position:fixed;left:8px;top:44px;z-index:99;'
+      +'font:11px/1.4 monospace;color:#7CFF9E;background:rgba(0,0,0,.6);'
+      +'padding:3px 6px;border-radius:6px;max-width:80vw;pointer-events:none';
+    document.body.appendChild(el);}
+  el.textContent=line;
+}
+
 async function speak(b64,tr){
   actx=actx||new AudioContext();
+  audbg('speak: ctx='+actx.state+' unlocked='+audioUnlocked+' bytes='+b64.length);
   if(actx.state==='suspended')await actx.resume();
   const bin=atob(b64),u8=new Uint8Array(bin.length);
   for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
-  const buf=await actx.decodeAudioData(u8.buffer);
+  let buf;
+  try{buf=await actx.decodeAudioData(u8.buffer.slice(0));}
+  catch(e){audbg('decode FAIL: '+e);return;}
+  // The app says it out loud; WebAudio below only keeps the time.
+  if(NATIVE_SPEECH()){
+    const wav=wavInfo(u8);
+    nativeSpeak(b64FromBytes(wav.data),wav.rate);
+  }
   const src=actx.createBufferSource();src.buffer=buf;localSource=src;
   analyser=actx.createAnalyser();analyser.fftSize=2048;analyser.smoothingTimeConstant=0.6;
-  src.connect(analyser);analyser.connect(actx.destination);
+  src.connect(analyser);analyser.connect(audioSink());
   track=stabiliseTrack(tr,buf.duration);tIdx=0;
   // Schedule slightly ahead so the audio clock and the first shape agree.
   audioT0=actx.currentTime+0.06;
   speaking=true;src.start(audioT0);
+  audbg('PLAYING '+buf.duration.toFixed(1)+'s ctx='+actx.state
+    +' gain='+(masterGain?masterGain.gain.value:'?')+' muted='+window.IOS_MUTED);
+  askAudioState();
   await new Promise(r=>{src.onended=r});
+  audbg('ended '+buf.duration.toFixed(1)+'s');
   if(localSource===src)localSource=null;
   speaking=monitorEnabled&&externalAudio.active;track=[];curV='sil';
 }
 
+/* ---- the coupled channel ----------------------------------------------
+   An EnConvo agent can work for minutes. Telegram's channel shows "typing"
+   and, in verbose mode, narrates each step; the pocket thread does exactly
+   that, and takes the same slash commands. */
+function threadWorking(){
+  const container=document.getElementById('thread');
+  const card=document.createElement('div');
+  card.className='msg her working';
+  const dots=document.createElement('div');
+  dots.className='typing';
+  dots.innerHTML='<span></span><span></span><span></span>';
+  card.append(dots);
+  if(IS_IOS){container.append(card);threadToBottom(false);}
+  card.addStep=label=>{
+    if(ENCONVO.verbose===false)return;
+    const line=document.createElement('div');
+    line.className='step';line.textContent=label;
+    card.append(line);
+    if(threadNearBottom(container))threadToBottom(false);
+  };
+  // Her sentence as she writes it - a channel sends the reply in pieces,
+  // it does not sit silent and then paste a wall.
+  let live=null,written='';
+  card.addText=piece=>{
+    // A step after some prose starts a NEW paragraph; she is narrating in
+    // order, so the card has to read in order too.
+    if(live&&live!==card.lastElementChild){live=null;written='';}
+    written+=piece;
+    if(!live){
+      live=document.createElement('div');
+      live.className='live';card.append(live);
+      dots.remove();
+    }
+    live.textContent=written;
+    if(threadNearBottom(container))threadToBottom(false);
+  };
+  return card;
+}
+async function enconvoStream(body,work,attempt=0){
+  let response;
+  try{
+    response=await fetch('api/enconvo/chat',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body),signal:ENCONVO.abort&&ENCONVO.abort.signal});
+  }catch(error){
+    // "Load failed" is WebKit's word for a dropped connection - a long
+    // agent turn over the LAN, a moment of Wi-Fi, a backgrounded app.
+    // The agent kept its session, so one quiet retry usually lands
+    // (owner, 2026-08-03).
+    if(attempt<1&&error.name!=='AbortError'){
+      work.addStep('reconnecting…');
+      await new Promise(r=>setTimeout(r,1200));
+      return enconvoStream(body,work,attempt+1);
+    }
+    throw new Error(error.name==='AbortError'?'stopped'
+      :'the line to the Mac dropped ('+(error.message||error)+')');
+  }
+  if(!response.body)return await response.json();
+  const reader=response.body.getReader(),decoder=new TextDecoder();
+  let buffer='',result=null;
+  for(;;){
+    const{done,value}=await reader.read();
+    if(done)break;
+    buffer+=decoder.decode(value,{stream:true});
+    let cut;
+    while((cut=buffer.indexOf('\n\n'))>=0){
+      const frame=buffer.slice(0,cut);buffer=buffer.slice(cut+2);
+      if(!frame.startsWith('data:'))continue;
+      let event;try{event=JSON.parse(frame.slice(5).trim());}catch(x){continue;}
+      if(event.type==='step')work.addStep(event.text);
+      else if(event.type==='say')work.addText(event.text);
+      else if(event.type==='error')throw new Error(event.detail||'agent failed');
+      else if(event.type==='done')result=event;
+    }
+  }
+  if(!result)throw new Error('the agent closed without answering');
+  return result;
+}
+// The same commands EnConvo's own channels take (launch_channel.js):
+// /new · /stop · /audio · /verbose · /status.
+function enconvoSlash(text){
+  const[word,...rest]=String(text).trim().toLowerCase().split(/\s+/);
+  const onOff=value=>value==='off'?false:value==='on'?true:null;
+  const say=line=>{threadPush('her',line);setCaption(line);};
+  if(word==='/new'||word==='/newsession'){
+    ENCONVO.sessions[ENCONVO.agent]='';
+    say('· new session with '+(ENCONVO.title||ENCONVO.agent)+' ·');
+  }else if(word==='/stop'){
+    if(ENCONVO.abort){ENCONVO.abort.abort();}
+    else say('· nothing running ·');
+  }else if(word==='/audio'){
+    const want=onOff(rest[0]);
+    ENCONVO.audio=want===null?ENCONVO.audio===false:want;
+    say('· voice '+(ENCONVO.audio===false?'off':'on')+' ·');
+  }else if(word==='/verbose'){
+    const want=onOff(rest[0]);
+    ENCONVO.verbose=want===null?ENCONVO.verbose===false:want;
+    say('· step updates '+(ENCONVO.verbose===false?'off':'on')+' ·');
+  }else if(word==='/status'){
+    say(['**'+(ENCONVO.title||ENCONVO.agent)+'**','',
+      '- session · '+(ENCONVO.sessions[ENCONVO.agent]?'open':'new on next message'),
+      '- voice · '+(ENCONVO.audio===false?'off':'on'),
+      '- step updates · '+(ENCONVO.verbose===false?'off':'on'),
+      '- running · '+(ENCONVO.abort?'yes':'no')].join('\n'));
+  }else return false;
+  ptt.disabled=monitorEnabled;
+  return true;
+}
 async function turn(text,spoken=false){
   ptt.disabled=true;elYou.textContent=text;setCaption('');
+  threadPush('user',text);
   setStatus('thinking','busy');
+  // Coupled to an EnConvo agent: the message goes to that brain through
+  // the Mac's gateway, and the reply comes home in HER voice.
+  if(window.ENCONVO&&ENCONVO.agent){
+    if(enconvoSlash(text)){ptt.disabled=monitorEnabled;return;}
+    const work=threadWorking();
+    try{
+      setStatus('asking '+(ENCONVO.title||'the agent'),'busy');
+      ENCONVO.abort=new AbortController();
+      const r=await enconvoStream({agent:ENCONVO.agent,message:text,
+        session_id:ENCONVO.sessions[ENCONVO.agent]||'',
+        context_files:ENCONVO.pending||[]},work);
+      ENCONVO.pending=[];
+      work.remove();
+      if(r.detail)throw new Error(r.detail);
+      if(r.session_id)ENCONVO.sessions[ENCONVO.agent]=r.session_id;
+      setCaption(r.text);
+      threadPush('her',r.text);
+      // Anything she made or fetched arrives as a card you can play right
+      // here - the prose may never have read like a link.
+      threadAttachments(r.media);
+      if(r.audio&&ENCONVO.audio!==false){
+        setStatus('speaking','on');await speak(r.audio,r.track);}
+      setStatus('coupled · '+(ENCONVO.title||ENCONVO.agent),'on');
+    }catch(e){
+      work.remove();
+      if(e.name==='AbortError'){
+        threadPush('her','· stopped ·');setStatus('coupled','on');
+      }else{
+        setCaption('(agent trouble: '+e.message+')');
+        threadPush('her','(agent trouble: '+e.message+')');
+        setStatus('ready','on');
+      }
+    }
+    ENCONVO.abort=null;
+    ptt.disabled=monitorEnabled;
+    return;
+  }
   history.push({role:'user',content:text});
   let llmRoute=null;
   try{
@@ -2203,9 +2976,14 @@ async function turn(text,spoken=false){
     // monitor is lip-syncing EnConvo; only unspoken chat turns defer to it.
     if(monitorEnabled&&!spoken){renderMonitorStatus();return;}
     setCaption(r.text);
+    threadPush('her',r.text);
+    // Her own hands, uncoupled: an image or clip she made this turn
+    // arrives as a playable card, same as the coupled lane.
+    threadAttachments(r.media);
     setStatus('speaking','on');
     await speak(r.audio,r.track);
-  }catch(e){setCaption('(something broke: '+e.message+')');}
+  }catch(e){setCaption('(something broke: '+e.message+')');
+    threadPush('her','(something broke: '+e.message+')');}
   if(monitorEnabled)renderMonitorStatus();else setStatus(routedStatus(llmRoute),'on');
   ptt.disabled=monitorEnabled;
 }
@@ -2215,6 +2993,9 @@ async function startRec(force=false){
   // Monitor mode locks the chat button, but head push-to-talk on the pet
   // must still work while she lip-syncs EnConvo, so it forces past the lock.
   if(recording||(!force&&(monitorEnabled||ptt.disabled)))return;
+  // On the phone the page is an insecure origin, so getUserMedia is not
+  // there at all - the native microphone bridge is the only real one.
+  if(NATIVE_MIC()){startNativeRec();return;}
   recWanted=true;
   let stream;
   try{stream=await navigator.mediaDevices.getUserMedia({audio:true});}
@@ -2244,6 +3025,29 @@ async function startRec(force=false){
     return;
   }
   rec=new MediaRecorder(stream);chunks=[];
+  // The chip's bars follow the real take: a light analyser rides the same
+  // stream the recorder captures, feeding MIC_LEVEL until the take ends.
+  try{
+    actx=actx||new AudioContext();
+    const meterSrc=actx.createMediaStreamSource(stream);
+    const meter=actx.createAnalyser();meter.fftSize=512;
+    meterSrc.connect(meter);
+    const sample=new Uint8Array(meter.fftSize);
+    const pump=()=>{
+      if(!rec||rec.state!=='recording'&&rec.state!=='paused'){
+        try{meterSrc.disconnect();}catch(e){}
+        window.MIC_LEVEL=0;return;
+      }
+      meter.getByteTimeDomainData(sample);
+      let sum=0;
+      for(let i=0;i<sample.length;i+=2){
+        const v=(sample[i]-128)/128;sum+=v*v;
+      }
+      window.MIC_LEVEL=Math.sqrt(sum/(sample.length>>1));
+      requestAnimationFrame(pump);
+    };
+    setTimeout(pump,60);
+  }catch(e){}
   openDictationStream();
   rec.ondataavailable=e=>{
     chunks.push(e.data);
@@ -2256,6 +3060,15 @@ async function startRec(force=false){
   };
   rec.onstop=async()=>{
     stream.getTracks().forEach(t=>t.stop());
+    if(recDiscard){
+      // Slide-up cancel on the talk bar: the take dies here, nothing is
+      // transcribed, nothing is sent.
+      recDiscard=false;
+      closeDictationStream();
+      txt.value='';autoSizeTxt();
+      setStatus('ready','on');ptt.disabled=monitorEnabled;
+      return;
+    }
     const blob=new Blob(chunks,{type:rec.mimeType||'audio/webm'});
     if(blob.size<3000){
       closeDictationStream();
@@ -2365,7 +3178,86 @@ async function interimTranscribe(){
   }catch(e){/* interim only; the final pass reports real failures */}
   interimBusy=false;
 }
+/* ---- hold-to-talk, natively ------------------------------------------
+   The phone loads the Mac over plain http on a LAN address, which is an
+   INSECURE ORIGIN: navigator.mediaDevices simply does not exist there, so
+   every hold fell into the getUserMedia catch and showed a macOS-worded
+   "microphone blocked" while iOS permission was plainly granted (owner
+   screenshot, 2026-08-03). The native bridge already has the real
+   microphone - use it, collect PCM, and post one WAV when the finger
+   lifts. */
+const NATIVE_MIC=()=>Boolean(window.webkit&&webkit.messageHandlers&&
+  webkit.messageHandlers.mic);
+const PTT={on:false,chunks:[],rate:16000};
+function wavFromPcm(chunks,rate){
+  let total=0;
+  chunks.forEach(c=>{total+=c.length;});
+  const pcm=new Int16Array(total);
+  let at=0;
+  chunks.forEach(c=>{pcm.set(c,at);at+=c.length;});
+  const bytes=pcm.length*2,buffer=new ArrayBuffer(44+bytes);
+  const view=new DataView(buffer);
+  const ascii=(off,text)=>{for(let i=0;i<text.length;i++)
+    view.setUint8(off+i,text.charCodeAt(i));};
+  ascii(0,'RIFF');view.setUint32(4,36+bytes,true);ascii(8,'WAVE');
+  ascii(12,'fmt ');view.setUint32(16,16,true);
+  view.setUint16(20,1,true);view.setUint16(22,1,true);
+  view.setUint32(24,rate,true);view.setUint32(28,rate*2,true);
+  view.setUint16(32,2,true);view.setUint16(34,16,true);
+  ascii(36,'data');view.setUint32(40,bytes,true);
+  new Int16Array(buffer,44).set(pcm);
+  return new Blob([buffer],{type:'audio/wav'});
+}
+function startNativeRec(){
+  PTT.on=true;PTT.chunks=[];
+  recording=true;recWanted=true;
+  document.documentElement.classList.add('listening');
+  ptt.classList.add('rec');txt.classList.add('rec');
+  window.__vivMicData=chunk=>{
+    if(!PTT.on)return;
+    const bin=atob(chunk),n=bin.length&~1;
+    const pcm=new Int16Array(n>>1);
+    let sum=0;
+    for(let i=0;i<pcm.length;i++){
+      pcm[i]=(bin.charCodeAt(2*i)|(bin.charCodeAt(2*i+1)<<8))<<16>>16;
+      const v=pcm[i]/32768;sum+=v*v;
+    }
+    window.MIC_LEVEL=Math.sqrt(sum/Math.max(1,pcm.length));
+    PTT.chunks.push(pcm);
+  };
+  webkit.messageHandlers.mic.postMessage('start:'+PTT.rate);
+}
+async function stopNativeRec(){
+  if(!PTT.on)return;
+  PTT.on=false;recording=false;recWanted=false;
+  window.MIC_LEVEL=0;
+  try{webkit.messageHandlers.mic.postMessage('stop');}catch(e){}
+  window.__vivMicData=null;
+  document.documentElement.classList.remove('listening');
+  ptt.classList.remove('rec');txt.classList.remove('rec');
+  const chunks=PTT.chunks;PTT.chunks=[];
+  if(recDiscard){recDiscard=false;setStatus('ready','on');return;}
+  let frames=0;
+  chunks.forEach(c=>{frames+=c.length;});
+  if(frames<PTT.rate*0.25){
+    flashPrompt('Too short · hold, speak, then release');
+    setStatus('ready','on');return;
+  }
+  setStatus('transcribing','busy');
+  try{
+    const body=new FormData();
+    body.append('audio',wavFromPcm(chunks,PTT.rate),'take.wav');
+    const r=await(await fetch('stt',{method:'POST',body})).json();
+    const heard=String(r.text||'').trim();
+    if(!heard){flashPrompt('I did not catch that');setStatus('ready','on');return;}
+    await turn(heard,true);
+  }catch(error){
+    flashPrompt('Could not transcribe: '+String(error.message||error).slice(0,70));
+    setStatus('ready','on');
+  }
+}
 function stopRec(){
+  if(PTT.on){void stopNativeRec();return;}
   recWanted=false;
   document.documentElement.classList.remove('listening');
   if(!recording)return;
@@ -2382,11 +3274,31 @@ function autoSizeTxt(){
   txt.style.height=Math.min(txt.scrollHeight+2,132)+'px';
   // The listening chip floats just above the field, however tall it grows.
   document.documentElement.style.setProperty('--txt-h',txt.offsetHeight+'px');
+  // ...and so does the thread's floor. A pasted URL grew the field to
+  // three lines and the top two were drawn behind the newest card.
+  const bar=document.getElementById('bar');
+  if(bar)document.documentElement.style.setProperty(
+    '--bar-h',Math.round(bar.getBoundingClientRect().height)+'px');
 }
 txt.addEventListener('input',autoSizeTxt);
 let promptFlashTimer=0;
 function flashPrompt(message){
   clearTimeout(promptFlashTimer);
+  // A one-line input field clipped every message longer than its width
+  // (owner screenshot, 2026-08-02). Notices ride their own toast above
+  // the bar, where they can wrap; the field keeps its own placeholder.
+  if(IS_IOS){
+    let toast=document.getElementById('toast');
+    if(!toast){
+      toast=document.createElement('div');
+      toast.id='toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent=message;
+    toast.classList.add('on');
+    promptFlashTimer=setTimeout(()=>toast.classList.remove('on'),5200);
+    return;
+  }
   txt.placeholder=message;
   promptFlashTimer=setTimeout(()=>{txt.placeholder=TXT_PLACEHOLDER;},6000);
 }
@@ -2450,7 +3362,8 @@ function reportControlRects(){
   SHELL.setPetControlRects(rects);
 }
 function updatePetHit(force=false){
-  if(!SHELL||!SHELL.isElectron||!PET.enabled)return;
+  if((!SHELL||!SHELL.isElectron)&&!IS_IOS)return;
+  if(!PET.enabled)return;
   const now=performance.now();if(!force&&now-lastHitCheck<34)return;lastHitCheck=now;
   // `recording` pins the claim: mid-hold the cursor may slip off the body,
   // and losing interactivity there loses the release that ends the take.
@@ -2486,12 +3399,14 @@ function updatePetHit(force=false){
     // change" and stays silent - which once left the input field dead until
     // a drag jolted things. Re-sending the unchanged flag is free (the
     // shell ignores no-ops) and heals any desync within half a second.
-    if(now-lastHitSentAt>500){lastHitSentAt=now;SHELL.setPetHit(petHit);}
+    if(now-lastHitSentAt>500){lastHitSentAt=now;
+      if(SHELL&&typeof SHELL.setPetHit==='function')SHELL.setPetHit(petHit);}
     return;
   }
   petHit=hit;if(hit)petHoverUntil=now+1400;
   lastHitSentAt=now;
-  SHELL.setPetHit(hit);syncPetEngagement(now);
+  if(SHELL&&typeof SHELL.setPetHit==='function')SHELL.setPetHit(hit);
+  syncPetEngagement(now);
   // Hovering her mid-walk brings her home to the standing avatar: a short
   // dwell so a cursor merely passing through does not end the stroll.
   clearTimeout(roamHoverStop);
@@ -2532,7 +3447,7 @@ addEventListener('pointermove',event=>{
 },{passive:true});
 cv.addEventListener('pointermove',event=>{
   if(!HAS_GLOBAL_PET_POINTER)pointer={x:event.clientX,y:event.clientY};
-  if(gesture&&!dragging&&!gesture.ptt&&
+  if(SHELL&&gesture&&!dragging&&!gesture.ptt&&
      Math.hypot(event.clientX-gesture.x0,event.clientY-gesture.y0)>TAP_SLOP_PX){
     if(gesture.timer){clearTimeout(gesture.timer);gesture.timer=0;}
     dragging=true;document.documentElement.classList.add('dragging');
@@ -2596,6 +3511,7 @@ function pointerOnHead(x,y){
    and the chat bar (Hold to talk + a text field) opens under her feet for
    typed follow-ups. */
 function canPetTalk(){
+  // Phone voice lives in the talk bar; head push-to-talk is desk-only.
   if(!SHELL||!SHELL.isElectron)return false;
   return monitorEnabled?typeof SHELL.petVoiceKey==='function':true;
 }
@@ -2688,7 +3604,10 @@ function petBodyPart(x,y){
    the box and stamps the tile; first and last states ARE the plate. */
 let REACT=null;
 let lastEngagedAt=performance.now(),lastTap={part:'',at:0},roamHoverStop=0,idleDocked=false;
-const STANDING_IDLE_AFTER_MS=10000,ROAM_HOVER_STOP_MS=260,DOUBLE_TAP_MS=450;
+// Fingers double-tap slower than mice - 450ms read as two singles on the
+// phone and the hair dance "didn't respond" (owner, 2026-08-02).
+const STANDING_IDLE_AFTER_MS=10000,ROAM_HOVER_STOP_MS=260,
+  DOUBLE_TAP_MS=IS_IOS?650:450;
 /* Double taps are the deliberate verbs: legs start the Horizon Walk, the
    chest raises opacity, a foot lowers it. Returns true when the part had a
    double-tap action, so the second tap never also fires a reaction. */
@@ -2712,7 +3631,39 @@ function toggleMoveShow(){
   moveShowUntil=now+seconds*4000;
   return true;
 }
+/* Catwalk: on the phone there is no desktop to roam, so a leg double-tap
+   plays the same office-walk take in place - a short strut on her own
+   stage, then back to standing (owner design talk, 2026-08-02). */
+let walkShowUntil=0;
+function walkShowActive(now=performance.now()){
+  return Boolean(MOTION.walk&&!PET.roam&&now<walkShowUntil);
+}
+function toggleWalkShow(){
+  const now=performance.now();
+  if(walkShowActive(now)){walkShowUntil=0;return true;}
+  if(!MOTION.walk)return false;
+  const clip=MOTION.walk;
+  const seconds=Math.max(2,(Number(clip.frames)||1)/Math.max(1,Number(clip.fps)||24));
+  walkShowUntil=now+seconds*3000;
+  return true;
+}
+/* Rest: the edge-idle take leaning on the phone's own right edge, held
+   until something touches her - the rail's third verb. */
+let idleShowUntil=0;
+function idleShowActive(now=performance.now()){
+  return Boolean(MOTION.idle&&!PET.roam&&now<idleShowUntil);
+}
+function toggleIdleShow(){
+  const now=performance.now();
+  if(idleShowActive(now)){idleShowUntil=0;hideDomVideo();return true;}
+  if(!MOTION.idle)return false;
+  idleShowUntil=now+120000;
+  return true;
+}
 function petDoubleTap(part){
+  // Phone: the rail owns dance/walk/rest and opacity is a desk concept -
+  // double-taps do nothing there, single taps stay reactive.
+  if(IS_IOS)return false;
   if(part==='hair'&&toggleMoveShow())return true;
   if((part==='leg_l'||part==='leg_r')&&MOTION.walk&&
      SHELL&&typeof SHELL.setPetRoam==='function'){
@@ -2763,7 +3714,7 @@ function startPetTalk(){
   // hidden chat button's disabled flag stays latched in pet mode until a
   // health poll lands - the head must not wait for it.
   document.documentElement.classList.add('chat-open');
-  if(typeof SHELL.setPetHit==='function')SHELL.setPetHit(true);
+  if(SHELL&&typeof SHELL.setPetHit==='function')SHELL.setPetHit(true);
   // Optimistic wave: microphone acquisition can take a beat (or fail), and
   // the hold needs feedback NOW; startRec's failure paths take it back down.
   document.documentElement.classList.add('listening');
@@ -2775,14 +3726,196 @@ function stopPetTalk(){
   stopRec();
   updatePetHit(true);
 }
+/* ---- face play --------------------------------------------------------
+   Tap her face and it answers in kind (owner, 2026-08-02): an eye winks,
+   the brows flash, a cheek pops, the nose scrunches with a tiny double
+   nod, the mouth breaks into a quick smile. Pure fun, both platforms -
+   the overrides ride the SAME lid/brow/cheek/wash channels the idle life
+   uses, so nothing new is drawn, just asked for. */
+const FACEPLAY={winkUntil:0,winkSide:'l',browUntil:0,scrunchUntil:0,
+  cheekUntil:0,smileUntil:0};
+function faceRegionAt(clientX,clientY){
+  const body=canvasToBody(clientX,clientY);
+  if(!body||!(M.body&&M.body.alignment))return null;
+  const face=M.body.alignment.face_bounds;
+  if(!face||!(face[2]>0&&face[3]>0))return null;
+  const u=(body.x-face[0])/face[2],v=(body.y-face[1])/face[3];
+  if(u<-0.15||u>1.15||v<-0.35||v>1.3)return null;
+  if(v<0.42)return 'brow';
+  if(v<0.62)return u<0.5?'eye_l':'eye_r';
+  if(v<0.8)return (u>0.34&&u<0.66)?'nose':(u<=0.34?'cheek_l':'cheek_r');
+  return (u>0.3&&u<0.7)?'mouth':(u<=0.3?'cheek_l':'cheek_r');
+}
+function facePlayAt(clientX,clientY){
+  const region=faceRegionAt(clientX,clientY);
+  if(!region)return false;
+  const now=performance.now();
+  if(region==='brow')FACEPLAY.browUntil=now+750;
+  else if(region==='eye_l'||region==='eye_r'){
+    FACEPLAY.winkSide=region==='eye_l'?'l':'r';
+    FACEPLAY.winkUntil=now+560;
+  }else if(region==='cheek_l'||region==='cheek_r')FACEPLAY.cheekUntil=now+750;
+  else if(region==='nose'){
+    FACEPLAY.scrunchUntil=now+520;
+    nods.push({t0:now,a:3.2,d:210,n:2});
+  }else if(region==='mouth')FACEPLAY.smileUntil=now+950;
+  return true;
+}
+/* ---- pocket thread ---------------------------------------------------- */
+let liveUserCard=null;
+function threadMedia(card){
+  card.querySelectorAll('a').forEach(anchor=>{
+    const href=anchor.getAttribute('href')||'';
+    if(/\.(mp4|mov|m4v|webm)([?#]|$)/i.test(href)){
+      const video=document.createElement('video');
+      video.controls=true;video.playsInline=true;video.preload='metadata';
+      video.src=href;video.dataset.src=href;anchor.replaceWith(video);
+    }else if(/\.(png|jpe?g|gif|webp)([?#]|$)/i.test(href)){
+      const image=document.createElement('img');
+      image.loading='lazy';image.src=href;image.dataset.src=href;
+      anchor.replaceWith(image);
+    }
+  });
+}
+/* ---- what you can do with what she made -------------------------------
+   A delivered file should behave like a file: hold it to save, send or
+   AirDrop it through the system sheet; tap a picture to fill the screen
+   and pinch it. Video keeps its own fullscreen control, and a document
+   goes straight to the sheet, which is the only place iOS lets it be
+   opened or filed (owner, 2026-08-03). */
+function vivShare(url){
+  try{webkit.messageHandlers.share.postMessage(url);return true;}
+  catch(e){return false;}
+}
+function mediaGestures(node,url,name){
+  if(!IS_IOS)return;
+  // The native long-press menu already knows how to save an <img>; keep
+  // it, and add our sheet for everything else.
+  if(node.tagName==='IMG')node.style.webkitTouchCallout='default';
+  let hold=0,moved=false;
+  node.addEventListener('pointerdown',e=>{
+    moved=false;
+    hold=setTimeout(()=>{
+      hold=0;
+      if(!moved&&vivShare(url)){
+        if(navigator.vibrate)navigator.vibrate(8);
+        flashPrompt('Sharing '+(name||'file')+'…');
+      }
+    },520);
+  });
+  node.addEventListener('pointermove',()=>{moved=true;});
+  ['pointerup','pointercancel','pointerleave'].forEach(ev=>
+    node.addEventListener(ev,()=>{if(hold){clearTimeout(hold);hold=0;}}));
+  if(node.tagName==='IMG'){
+    node.addEventListener('click',()=>{if(!moved)lightbox(url,name);});
+  }
+  if(node.tagName==='A'){
+    node.addEventListener('click',e=>{e.preventDefault();vivShare(url);});
+  }
+}
+function lightbox(url,name){
+  const box=document.createElement('div');
+  box.className='lightbox';
+  const img=document.createElement('img');
+  img.src=url;img.alt=name||'';img.style.webkitTouchCallout='default';
+  const share=document.createElement('button');
+  share.type='button';share.className='lb-share';share.textContent='Save / Share';
+  share.addEventListener('click',e=>{e.stopPropagation();vivShare(url);});
+  box.append(img,share);
+  box.addEventListener('click',()=>box.remove());
+  document.body.append(box);
+}
+// A file the agent produced - a downloaded video, a rendered image - gets
+// its own card at the end of her reply: playable in place, never a path.
+function threadAttachments(list){
+  if(!IS_IOS||!Array.isArray(list)||!list.length)return;
+  const container=document.getElementById('thread');
+  const stick=threadNearBottom(container);
+  list.forEach(item=>{
+    if(!item||!item.url)return;
+    const url=String(item.url);
+    if(container.querySelector('[data-src="'+CSS.escape(url)+'"]'))return;
+    const card=document.createElement('div');
+    card.className='msg her media';
+    let node;
+    if(/\.(mp4|mov|m4v|webm)$/i.test(url)){
+      node=document.createElement('video');
+      node.controls=true;node.playsInline=true;node.preload='metadata';
+    }else if(/\.(png|jpe?g|gif|webp|heic)$/i.test(url)){
+      node=document.createElement('img');node.loading='lazy';
+    }else if(/\.(mp3|m4a|wav|aac|ogg)$/i.test(url)){
+      node=document.createElement('audio');node.controls=true;
+    }else{
+      node=document.createElement('a');
+      node.textContent='⤓ '+(item.name||'file');
+      node.download=item.name||'';
+    }
+    node.src=url;node.dataset.src=url;
+    if(node.tagName==='A')node.href=url;
+    mediaGestures(node,url,item.name||'');
+    card.append(node);
+    // She names what she hands over; show her name for it, not the uuid
+    // the tool happened to write to disk.
+    if(item.name&&node.tagName!=='A'&&!/^[0-9a-f-]{16,}\./i.test(item.name)){
+      const caption=document.createElement('div');
+      caption.className='media-name';caption.textContent=item.name;
+      card.append(caption);
+    }
+    const settle=()=>{if(threadNearBottom(container)||stick)threadToBottom(false);};
+    node.addEventListener('load',settle);
+    node.addEventListener('loadedmetadata',settle);
+    container.append(card);
+  });
+  while(container.children.length>40)container.firstChild.remove();
+  threadToBottom(false);
+}
+function threadNearBottom(container){
+  return container.scrollHeight-container.scrollTop-container.clientHeight<70;
+}
+function threadToBottom(smooth){
+  const container=document.getElementById('thread');
+  container.scrollTo({top:container.scrollHeight,
+    behavior:smooth?'smooth':'auto'});
+}
+function threadPush(role,text){
+  if(!IS_IOS)return null;
+  const value=String(text||'').trim();
+  if(!value)return null;
+  const container=document.getElementById('thread');
+  const stick=threadNearBottom(container);
+  const card=document.createElement('div');
+  card.className='msg '+(role==='user'?'user':'her');
+  renderMarkdown(value,card);
+  threadMedia(card);
+  // Media settle AFTER the push and grow the card - re-stick when each
+  // one loads or the newest reply ends up clipped (owner, 2026-08-02).
+  card.querySelectorAll('img,video').forEach(media=>{
+    const settle=()=>{if(threadNearBottom(container)||stick)threadToBottom(false);};
+    media.addEventListener('load',settle);
+    media.addEventListener('loadedmetadata',settle);
+  });
+  container.append(card);
+  while(container.children.length>40)container.firstChild.remove();
+  if(stick||role==='user'){
+    threadToBottom(false);
+    // Tall cards finish layout a beat later - settle twice or the last
+    // line hides behind the fold (owner, 2026-08-02).
+    requestAnimationFrame(()=>threadToBottom(false));
+    setTimeout(()=>threadToBottom(false),280);
+  }
+  return card;
+}
 function petTapReaction(part){
   const now=performance.now();
   if(now-lastTapAt<700)return;
   lastTapAt=now;
-  // Every tap gets an acknowledging nod; arms raise their hand and the torso
-  // shrugs. Legs and feet only nod on a single tap - their whole-body tilt
-  // was cancelled by taste - and answer properly on a double tap instead.
+  // A tap on the face answers with that part - wink, brow flash, cheek
+  // pop, scrunch, smile - and skips the generic nod. Everywhere else:
+  // every tap gets an acknowledging nod; arms raise their hand and the
+  // torso shrugs. Legs and feet only nod on a single tap - their
+  // whole-body tilt was cancelled by taste.
   const headTap=part==='head'||part==='hair';
+  if(headTap&&pointer.x>=0&&facePlayAt(pointer.x,pointer.y))return;
   nods.push({t0:now,a:headTap?7.6:5.6,d:headTap?460:400,n:1});
   nextNod=now+2400+Math.random()*2000;
   if(part==='arm_l'||part==='arm_r'){
@@ -2796,7 +3929,7 @@ function clearGesture(){
   gesture=null;
 }
 cv.addEventListener('pointerdown',event=>{
-  if(!SHELL||!PET.enabled||event.button!==0||PET.locked||PET.roam||!confirmPetEventHit(event))return;
+  if((!SHELL&&!IS_IOS)||!PET.enabled||event.button!==0||PET.locked||PET.roam||!confirmPetEventHit(event))return;
   clearGesture();
   const part=petBodyPart(event.clientX,event.clientY);
   gesture={x0:event.clientX,y0:event.clientY,
@@ -2804,7 +3937,9 @@ cv.addEventListener('pointerdown',event=>{
     t0:performance.now(),ptt:false,
     part,head:part==='head'||part==='hair'};
   cv.setPointerCapture(event.pointerId);
-  if(gesture.head&&canPetTalk()){
+  // Phone: the talk bar owns voice - a held finger on her face would only
+  // hide her, so the head is pure face play there (owner, 2026-08-02).
+  if(gesture.head&&!IS_IOS&&canPetTalk()){
     gesture.timer=setTimeout(()=>{
       if(!gesture||dragging)return;
       gesture.timer=0;gesture.ptt=true;
@@ -2824,7 +3959,10 @@ cv.addEventListener('pointerup',event=>{
   if(!active)return;
   if(active.ptt){stopPetTalk();return;}
   if(performance.now()-active.t0<=TAP_MS){
-    const part=active.part||'body';
+    let part=active.part||'body';
+    // A fingertip cannot aim at the hair strip; on the phone the whole
+    // head owns the double-tap dance.
+    if(IS_IOS&&part==='head')part='hair';
     const now=performance.now();
     if(lastTap.part===part&&now-lastTap.at<=DOUBLE_TAP_MS&&petDoubleTap(part)){
       lastTap={part:'',at:0};
@@ -2833,6 +3971,8 @@ cv.addEventListener('pointerup',event=>{
     // Any tap off the hair ends a running move show (the hair keeps its
     // double-tap toggle without the first tap eating the performance).
     if(moveShowActive(now)&&part!=='hair')moveShowUntil=0;
+    if(walkShowActive(now)&&part!=='leg_l'&&part!=='leg_r')walkShowUntil=0;
+    if(idleShowActive(now)){idleShowUntil=0;hideDomVideo();}
     lastTap={part,at:now};
     petTapReaction(part);
   }
@@ -2936,6 +4076,486 @@ monitorButton.addEventListener('click',async()=>{
 });
 ptt.addEventListener('mousedown',()=>startRec());
 addEventListener('mouseup',stopRec);
+/* ---- Pocket Mirror talk bar (iOS) --------------------------------------
+   WeChat idiom: the mic toggle swaps the field for one big hold-to-talk
+   bar. Press records, release sends, slide UP past the threshold cancels.
+   recDiscard makes the cancel real: the take is dropped unheard. */
+let recDiscard=false;
+if(IS_IOS){
+  const micmode=document.getElementById('micmode');
+  const talkbar=document.getElementById('talkbar');
+  const setTalkMode=on=>{
+    document.documentElement.classList.toggle('talk-mode',on);
+    micmode.setAttribute('aria-pressed',String(on));
+    if(!on)talkbar.classList.remove('rec','cancel');
+  };
+  micmode.addEventListener('click',
+    ()=>setTalkMode(!document.documentElement.classList.contains('talk-mode')));
+  let holdY=0,holdCancel=false;
+  const CANCEL_LIFT_PX=70;
+  talkbar.addEventListener('pointerdown',event=>{
+    event.preventDefault();
+    holdY=event.clientY;holdCancel=false;recDiscard=false;
+    try{talkbar.setPointerCapture(event.pointerId);}catch(error){}
+    talkbar.classList.add('rec');
+    document.documentElement.classList.add('listening');
+    startRec(true);
+  });
+  talkbar.addEventListener('pointermove',event=>{
+    if(!recording)return;
+    const lifted=holdY-event.clientY>CANCEL_LIFT_PX;
+    if(lifted!==holdCancel){
+      holdCancel=lifted;
+      talkbar.classList.toggle('cancel',lifted);
+      talkbar.textContent=lifted?'Release to cancel':'Hold to talk';
+    }
+  });
+  const endHold=()=>{
+    talkbar.classList.remove('rec','cancel');
+    talkbar.textContent='Hold to talk';
+    recDiscard=holdCancel;holdCancel=false;
+    stopRec();
+  };
+  talkbar.addEventListener('pointerup',endHold);
+  talkbar.addEventListener('pointercancel',endHold);
+  // Messenger bar, the standard grammar: mic, field, emoji, plus. The
+  // emoji strip inserts into the field; plus attaches a photo into the
+  // thread (owner: replicate WeChat/Telegram, don't invent).
+  const emojiBtn=document.getElementById('emojiBtn');
+  const emojiRow=document.getElementById('emojirow');
+  const plusBtn=document.getElementById('plusBtn');
+  const chatPhoto=document.getElementById('chatPhoto');
+  '😀 😄 😊 😉 😍 😘 🤗 🤔 😅 😂 🥰 😎 👍 🙏 👏 💪 ❤️ ✨ 🎉 🔥 🌸 ☕️ 🍜 🐱'.split(' ')
+    .forEach(ch=>{
+      const b=document.createElement('button');
+      b.type='button';b.textContent=ch;
+      b.addEventListener('click',()=>{
+        // Tapping an emoji is a decision to TYPE: leave hold-to-talk so
+        // the field is there to receive it.
+        document.documentElement.classList.remove('talk-mode');
+        txt.value+=ch;autoSizeTxt();
+      });
+      emojiRow.append(b);
+    });
+  emojiBtn.addEventListener('click',()=>{
+    document.documentElement.classList.remove('zoom-open');
+    document.documentElement.classList.toggle('emoji-open');
+    autoSizeTxt();
+  });
+  // Attaching is a choice about THIS message: close the emoji grid so the
+  // plus is never buried, and shed any panel the rail left open.
+  plusBtn.addEventListener('pointerdown',()=>{
+    document.documentElement.classList.remove('emoji-open','zoom-open');
+  });
+  plusBtn.addEventListener('click',()=>chatPhoto.click());
+  chatPhoto.addEventListener('change',async()=>{
+    const chosen=chatPhoto.files[0];
+    if(!chosen)return;
+    const container=document.getElementById('thread');
+    const card=document.createElement('div');
+    card.className='msg user';
+    const image=document.createElement('img');
+    image.src=URL.createObjectURL(chosen);
+    card.append(image);
+    container.append(card);
+    while(container.children.length>40)container.firstChild.remove();
+    container.scrollTop=container.scrollHeight;
+    chatPhoto.value='';
+    // The photo has to LAND somewhere an agent can see it: up to the Mac,
+    // then its path rides the next coupled message as context_files.
+    if(!(window.ENCONVO&&ENCONVO.agent)){
+      flashPrompt('Photos reach EnConvo agents · tap the bolt to couple first');
+      return;
+    }
+    try{
+      const body=new FormData();
+      body.append('photo',chosen,chosen.name||'photo.jpg');
+      const up=await(await fetch('api/enconvo/photo',{method:'POST',body})).json();
+      if(up.detail)throw new Error(up.detail);
+      ENCONVO.pending=(ENCONVO.pending||[]);
+      ENCONVO.pending.push(up.path);
+      flashPrompt('Photo attached · say something about it and send');
+    }catch(error){
+      flashPrompt('Photo upload failed: '+String(error.message||error).slice(0,80));
+    }
+  });
+  // A long-lived phone page across a Mac engine restart runs stale code
+  // (it faked the photo-upload failure, 2026-08-02). Watch the boot id;
+  // when the engine is reborn, be reborn with it.
+  let bootSeen='';
+  setInterval(async()=>{
+    try{
+      const h=await(await fetch('health',{cache:'no-store'})).json();
+      if(!h.boot)return;
+      if(!bootSeen)bootSeen=h.boot;
+      else if(bootSeen!==h.boot)location.reload();
+    }catch(e){}
+  },15000);
+  // Mute: her voice, one tap. Lips keep moving - a muted TV, not a
+  // frozen one.
+  const railMute=document.getElementById('rail-mute');
+  railMute.addEventListener('click',()=>{
+    window.IOS_MUTED=!window.IOS_MUTED;
+    if(masterGain)masterGain.gain.value=window.IOS_MUTED?0:1;
+  });
+  // The bar is the way home: touching input, mic, emoji, or plus ends any
+  // performance and brings the thread back (owner, 2026-08-02).
+  const exitStage=()=>{
+    moveShowUntil=0;walkShowUntil=0;
+    if(idleShowUntil){idleShowUntil=0;hideDomVideo();}
+    if(IOS_HEAD_ANCHOR||IOS_ZOOM>1.05)setZoom(1,false);
+    document.documentElement.classList.remove('zoom-open');
+  };
+  [txt,micmode,emojiBtn,plusBtn,talkbar].forEach(control=>{
+    control.addEventListener('pointerdown',exitStage);
+  });
+  autoSizeTxt();
+  txt.addEventListener('focus',exitStage);
+  // Jump-to-newest: the pill appears whenever you scroll away from the
+  // freshest reply.
+  const threadBox=document.getElementById('thread');
+  const threadDown=document.getElementById('threaddown');
+  threadBox.addEventListener('scroll',()=>{
+    threadDown.classList.toggle('on',
+      threadBox.children.length>0&&!threadNearBottom(threadBox));
+  });
+  threadDown.addEventListener('click',()=>{
+    threadToBottom(true);
+    threadDown.classList.remove('on');
+  });
+  /* ---- avatar carousel ------------------------------------------------ */
+  const avfan=document.getElementById('avfan');
+  const avfanDeck=document.getElementById('avfanDeck');
+  const avfanDetail=document.getElementById('avfanDetail');
+  const avfanStyle=document.getElementById('avfanStyle');
+  const SORBET=['#8ecfd4','#f2a7b3','#b9a7e8','#f4c07f','#9fd8a4','#f0e08a'];
+  const AVFAN={list:[],front:0,open:false,
+    style:localStorage.getItem('viv-carousel')||'noir'};
+  function avfanLayout(){
+    const n=AVFAN.list.length;
+    const sorbet=AVFAN.style==='sorbet';
+    avfan.classList.toggle('sorbet',sorbet);
+    avfanStyle.textContent=sorbet?'noir':'sorbet';
+    avfanDeck.querySelectorAll('.avcard').forEach((card,i)=>{
+      // Position relative to the front card, wrapping both ways.
+      let d=i-AVFAN.front;
+      if(d>n/2)d-=n;if(d<-n/2)d+=n;
+      const abs=Math.abs(d);
+      if(sorbet){
+        // An arc fan: cards swing around a point below the screen.
+        card.style.transform=
+          `translate(${d*58}px,${abs*26}px) rotate(${d*13}deg)`
+          +(d===0?' translateY(-24px) scale(1.12)':' scale(.94)');
+      }else{
+        // A marquee cascade climbing to the right.
+        card.style.transform=
+          `translate(${d*64}px,${d*-20}px) rotate(${d*-7}deg)`
+          +(d===0?' scale(1.16)':' scale(.96)');
+      }
+      card.style.zIndex=String(60-abs);
+      card.style.opacity=abs>3?'0':String(1-abs*0.16);
+    });
+    const front=AVFAN.list[AVFAN.front];
+    if(front){
+      avfanDetail.innerHTML='';
+      const label=document.createElement('span');
+      label.className='avname';label.textContent=front.name||front.slug;
+      const use=document.createElement('button');
+      use.className='avuse';use.type='button';
+      use.textContent=front.active?'On stage':'Use her';
+      use.disabled=Boolean(front.active);
+      use.addEventListener('click',async()=>{
+        use.disabled=true;use.textContent='Switching…';
+        try{
+          const r=await(await fetch('api/avatar/activate',{method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({slug:front.slug})})).json();
+          if(r&&r.error)throw new Error(r.error);
+          location.reload();
+        }catch(err){
+          use.textContent='Failed';
+          flashPrompt('Could not switch: '+String(err.message||err).slice(0,80));
+        }
+      });
+      avfanDetail.append(label,use);
+    }
+  }
+  async function openAvfan(){
+    if(AVFAN.open)return;
+    try{
+      const feed=await(await fetch('api/avatars')).json();
+      AVFAN.list=(feed.avatars||[]).filter(a=>a.status==='ready')
+        .map(a=>({slug:a.slug,name:a.name,active:a.slug===feed.active}));
+    }catch(e){return;}
+    if(AVFAN.list.length<2){
+      flashPrompt('Only one avatar installed · add more in Settings');
+      return;
+    }
+    AVFAN.open=true;
+    AVFAN.front=Math.max(0,AVFAN.list.findIndex(a=>a.active));
+    avfanDeck.innerHTML='';
+    AVFAN.list.forEach((item,i)=>{
+      const card=document.createElement('div');
+      card.className='avcard';
+      card.style.setProperty('--card',SORBET[i%SORBET.length]);
+      const face=document.createElement('img');
+      // Card-sized and cacheable; the full keyframe is over a megabyte
+      // and made opening the deck crawl (owner, 2026-08-03).
+      face.src='api/avatar/thumb?slug='+encodeURIComponent(item.slug)+'&size=320';
+      face.loading='eager';face.decoding='async';
+      face.alt=item.name||item.slug;
+      const name=document.createElement('div');
+      name.className='name';name.textContent=item.name||item.slug;
+      card.append(face,name);
+      card.addEventListener('click',()=>{
+        if(i!==AVFAN.front){AVFAN.front=i;avfanLayout();}
+      });
+      avfanDeck.append(card);
+    });
+    avfan.hidden=false;
+    avfanLayout();
+  }
+  function closeAvfan(){AVFAN.open=false;avfan.hidden=true;}
+  // A swipe nobody knows about is a feature nobody has (owner: "where is
+  // the carousel"). The rail says it out loud; the swipe stays as the
+  // shortcut for anyone who finds it.
+  document.getElementById('rail-faces')
+    .addEventListener('click',()=>{void openAvfan();});
+  document.getElementById('avfanClose').addEventListener('click',closeAvfan);
+  avfanStyle.addEventListener('click',()=>{
+    AVFAN.style=AVFAN.style==='sorbet'?'noir':'sorbet';
+    localStorage.setItem('viv-carousel',AVFAN.style);
+    avfanLayout();
+  });
+  // Drag anywhere on the deck to spin it.
+  let avfanDrag=null;
+  avfanDeck.addEventListener('pointerdown',e=>{
+    avfanDrag={x:e.clientX,moved:false};
+  });
+  avfanDeck.addEventListener('pointermove',e=>{
+    if(!avfanDrag)return;
+    const dx=e.clientX-avfanDrag.x;
+    if(Math.abs(dx)>46){
+      const n=AVFAN.list.length;
+      AVFAN.front=((AVFAN.front-(dx>0?1:-1))%n+n)%n;
+      avfanDrag={x:e.clientX,moved:true};
+      avfanLayout();
+    }
+  });
+  avfanDeck.addEventListener('pointerup',()=>{avfanDrag=null;});
+  // The way in: a clean horizontal swipe across her - not a tap (face
+  // play), not a vertical scroll (thread).
+  let stageSwipe=null;
+  cv.addEventListener('pointerdown',e=>{
+    stageSwipe={x:e.clientX,y:e.clientY,t:performance.now()};
+  },true);
+  cv.addEventListener('pointerup',e=>{
+    if(!stageSwipe||!IS_IOS)return;
+    const dx=e.clientX-stageSwipe.x,dy=e.clientY-stageSwipe.y;
+    const dt=performance.now()-stageSwipe.t;
+    stageSwipe=null;
+    if(Math.abs(dx)>70&&Math.abs(dy)<48&&dt<650)openAvfan();
+  },true);
+  // The rail whispers: it fades to a quarter after a few idle seconds so
+  // the thread owns the full width, and any touch wakes it (owner,
+  // 2026-08-02).
+  const railBox=document.getElementById('rail');
+  let railDimTimer=0;
+  const wakeRail=()=>{
+    railBox.classList.remove('dim');
+    clearTimeout(railDimTimer);
+    railDimTimer=setTimeout(()=>railBox.classList.add('dim'),3800);
+  };
+  addEventListener('pointerdown',wakeRail,true);
+  wakeRail();
+  // Action rail: live call, dance, walk, rest - one tap each, states lit.
+  const railLive=document.getElementById('rail-live');
+  const railMove=document.getElementById('rail-move');
+  const railIdle=document.getElementById('rail-idle');
+  railMove.addEventListener('click',()=>toggleMoveShow());
+  railIdle.addEventListener('click',()=>toggleIdleShow());
+  railLive.addEventListener('click',()=>{
+    if(LIVE)stopLiveTalk('ended');else void startLiveTalk();
+  });
+  // EnConvo lane: the rail's bolt opens the agent sheet - every EnConvo
+  // agent is a contact. Coupled, the thread routes to that agent through
+  // the Mac's gateway and the reply leaves through HER voice.
+  const railEnconvo=document.getElementById('rail-enconvo');
+  const agentSheet=document.getElementById('agentsheet');
+  const agentList=document.getElementById('agentlist');
+  // audio and verbose default on, the way a fresh EnConvo channel starts;
+  // /audio and /verbose flip them, /status reports them.
+  window.ENCONVO={agent:'',title:'',sessions:{},
+    audio:true,verbose:true,abort:null,pending:[]};
+  const closeAgents=()=>document.documentElement.classList.remove('agents-open');
+  railEnconvo.addEventListener('click',async()=>{
+    if(document.documentElement.classList.contains('agents-open')){closeAgents();return;}
+    document.documentElement.classList.add('agents-open');
+    agentList.innerHTML='<div class="agent"><div class="who"><b>Looking for EnConvo…</b></div></div>';
+    try{
+      const r=await(await fetch('api/enconvo/agents')).json();
+      if(!r.agents)throw new Error(r.detail||'no agents');
+      agentList.replaceChildren();
+      const off=document.createElement('button');
+      off.type='button';off.className='agent'+(ENCONVO.agent?'':' on');
+      off.innerHTML='<div class="who"><b>Vivieen herself</b><span>her own model - uncoupled</span></div>';
+      off.addEventListener('click',()=>{ENCONVO.agent='';ENCONVO.title='';closeAgents();
+        flashPrompt('Talking to Vivieen herself');});
+      agentList.append(off);
+      r.agents.forEach(agent=>{
+        const row=document.createElement('button');
+        row.type='button';
+        row.className='agent'+(ENCONVO.agent===agent.name?' on':'');
+        const face=agent.portrait?'<img src="api/enconvo/portrait?name='+
+          encodeURIComponent(agent.name)+'" alt="">':'<img alt="">';
+        row.innerHTML=face+'<div class="who"><b></b><span></span></div>';
+        row.querySelector('b').textContent=agent.title;
+        row.querySelector('span').textContent=agent.description||'EnConvo agent';
+        row.addEventListener('click',()=>{
+          ENCONVO.agent=agent.name;ENCONVO.title=agent.title;closeAgents();
+          flashPrompt('Coupled to '+agent.title+' · she speaks for the agent now');
+        });
+        agentList.append(row);
+      });
+    }catch(error){
+      agentList.innerHTML='';
+      const sad=document.createElement('div');sad.className='agent';
+      sad.innerHTML='<div class="who"><b>EnConvo not reachable</b><span></span></div>';
+      sad.querySelector('span').textContent=String(error.message||error).slice(0,120);
+      agentList.append(sad);
+    }
+  });
+  // Zoom: the slider tops out AT the face closeup, and the closeup button
+  // jumps straight there - one calibrated destination, computed from this
+  // avatar's own face box so every face fills the glass the same way.
+  // Tap the button again to reset (all Cmd+Shift+0 ever promised).
+  const railClose=document.getElementById('rail-close');
+  const railZoom=document.getElementById('rail-zoom');
+  const zoomRange=document.getElementById('zoomrange');
+  const faceCloseupZoom=()=>{
+    if(!(BODY&&M.body))return 6;
+    const width=BODY.width,height=BODY.height;
+    const crop=viewCrop(M.body,width,height,'full');
+    const lane=petLaneNow<1?0:petLaneNow;
+    const avail=Math.max(cv.height*0.35,cv.height-lane);
+    const s0=Math.min(cv.width/crop.w,avail/crop.h)*0.94;
+    const face=(M.body.alignment&&M.body.alignment.face_bounds)||
+      [width*.22,height*.10,width*.56,height*.42];
+    // Owner-calibrated (screenshot, 2026-08-02): the ceiling is the WHOLE
+    // head with its hair - the face box lands near 40% of the screen
+    // height - not an eyes-only crop. Scales itself to any avatar's face
+    // box and any phone's glass.
+    return Math.max(1.6,Math.min(8,(cv.height*0.40)/(Math.max(1,face[3])*s0)));
+  };
+  const setZoom=(value,headAnchor)=>{
+    IOS_ZOOM=Math.max(.6,Math.min(faceCloseupZoom(),value));
+    IOS_HEAD_ANCHOR=Boolean(headAnchor)&&IOS_ZOOM>1.01;
+    zoomRange.value=String(Math.round(IOS_ZOOM*100));
+  };
+  railClose.addEventListener('click',()=>{
+    if(IOS_HEAD_ANCHOR)setZoom(1,false);else setZoom(faceCloseupZoom(),true);
+  });
+  railZoom.addEventListener('click',()=>{
+    // One panel at a time - sliders drawn over the emoji grid was two
+    // controls fighting for the same corner.
+    document.documentElement.classList.remove('emoji-open');
+    document.documentElement.classList.toggle('zoom-open');
+  });
+  zoomRange.addEventListener('input',()=>setZoom(Number(zoomRange.value)/100,
+    Number(zoomRange.value)>140));
+  // Picture in picture: her canvas becomes a floating video, so a live
+  // call keeps its face while you use another app. Where WebKit refuses
+  // stream-backed PiP (some simulators), the call STILL survives in the
+  // background - the audio session carries it; PiP is just the visual.
+  // The native shell owns the floating window: WebKit's own PiP refuses a
+  // canvas stream, so the renderer just pumps frames over the bridge and
+  // AVPictureInPictureController draws them - a real OS window you can
+  // drag, resize, and slide off the edge (owner, 2026-08-02).
+  const railPip=document.getElementById('rail-pip');
+  const pipBridge=window.webkit&&window.webkit.messageHandlers&&
+    window.webkit.messageHandlers.pip;
+  let pipOn=false,pipTimer=0,pipCanvas=null;
+  const pipActive=()=>pipOn;
+  window.__pipStopped=()=>{pipOn=false;clearInterval(pipTimer);pipTimer=0;};
+  window.__pipUnsupported=()=>{
+    pipOn=false;clearInterval(pipTimer);pipTimer=0;
+    // The iOS Simulator reports isPictureInPictureSupported NO - PiP is
+    // a real-device feature. The call itself keeps running either way.
+    flashPrompt('Floating window needs a real iPhone · your call keeps running in the background');
+  };
+  const pipPump=()=>{
+    if(!pipBridge)return;
+    if(!pipCanvas){pipCanvas=document.createElement('canvas');
+      pipCanvas.width=360;pipCanvas.height=640;}
+    const g=pipCanvas.getContext('2d');
+    g.fillStyle='#05070a';g.fillRect(0,0,pipCanvas.width,pipCanvas.height);
+    // Letterbox her stage into the little window without distortion.
+    const s=Math.min(pipCanvas.width/cv.width,pipCanvas.height/cv.height);
+    const w=cv.width*s,h=cv.height*s;
+    try{g.drawImage(cv,(pipCanvas.width-w)/2,(pipCanvas.height-h)/2,w,h);}catch(e){}
+    pipBridge.postMessage(pipCanvas.toDataURL('image/jpeg',0.6));
+  };
+  railPip.addEventListener('click',()=>{
+    if(!pipBridge){
+      flashPrompt('Floating window needs the iPhone app');
+      return;
+    }
+    if(pipOn){pipBridge.postMessage('stop');window.__pipStopped();return;}
+    pipOn=true;
+    pipPump();
+    clearInterval(pipTimer);
+    pipTimer=setInterval(pipPump,125);
+    pipBridge.postMessage('start');
+  });
+  // Opacity: her whole stage fades - handy when she sits over your reading.
+  const alphaRange=document.getElementById('alpharange');
+  const stage=document.getElementById('stage');
+  alphaRange.addEventListener('input',()=>{
+    IOS_ALPHA=Number(alphaRange.value)/100;
+    stage.style.opacity=String(IOS_ALPHA);
+    if(domVideo.el)domVideo.el.style.opacity=String(IOS_ALPHA);
+  });
+  setInterval(()=>{
+    const now=performance.now();
+    // The slider's right edge IS the face closeup - recalibrated once the
+    // body plate lands (its face box sets the ceiling per avatar).
+    const ceiling=String(Math.round(faceCloseupZoom()*100));
+    if(zoomRange.max!==ceiling)zoomRange.max=ceiling;
+    document.documentElement.classList.toggle('stage-mode',
+      moveShowActive(now)||idleShowActive(now)||walkShowActive(now)||
+      IOS_HEAD_ANCHOR||IOS_ZOOM>1.05||
+      document.documentElement.classList.contains('zoom-open'));
+    railLive.classList.toggle('on',Boolean(LIVE));
+    railMove.classList.toggle('on',moveShowActive(now));
+    railIdle.classList.toggle('on',idleShowActive(now));
+    railClose.classList.toggle('on',IOS_HEAD_ANCHOR);
+    railPip.classList.toggle('on',pipActive());
+    railEnconvo.classList.toggle('on',Boolean(ENCONVO.agent)||
+      document.documentElement.classList.contains('agents-open'));
+    railMute.classList.toggle('on',Boolean(window.IOS_MUTED));
+    railZoom.classList.toggle('on',
+      document.documentElement.classList.contains('zoom-open'));
+  },400);
+  // iOS auto-scrolls the page to keep a focused field visible, which
+  // shoves her head off the top and leaves the page shifted after the
+  // keyboard goes away. The stage never legitimately scrolls - pin it.
+  addEventListener('scroll',()=>{if(scrollY||scrollX)scrollTo(0,0);});
+  document.addEventListener('focusout',()=>setTimeout(()=>scrollTo(0,0),60));
+  if(window.visualViewport){
+    const keyboardLane=()=>{
+      // The keyboard (and its accessory bar) shrinks the visual viewport;
+      // the bar, thread, and toast all climb above it instead of hiding
+      // underneath (owner: 'got too close, and overlapped').
+      const lift=Math.max(0,innerHeight-visualViewport.height-visualViewport.offsetTop);
+      document.documentElement.style.setProperty('--kb',lift+'px');
+    };
+    visualViewport.addEventListener('resize',()=>{scrollTo(0,0);fitTxtPlaceholder();keyboardLane();});
+    keyboardLane();
+    // The keyboard also pans the VISUAL viewport, which slid the bar and
+    // rail sideways off the glass; snap the layout scroll back each time.
+    visualViewport.addEventListener('scroll',()=>{if(scrollX||scrollY)scrollTo(0,0);});
+  }
+}
 addEventListener('keydown',e=>{if(!monitorEnabled&&e.code==='Space'&&document.activeElement!==txt&&!e.repeat){
   e.preventDefault();startRec();}});
 addEventListener('keyup',e=>{if(!monitorEnabled&&e.code==='Space'&&document.activeElement!==txt){

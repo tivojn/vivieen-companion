@@ -11,7 +11,7 @@ could only ever be a hard cut to fully-shut and a hard cut back - the lid never
 existed in between, which no amount of timing can rescue.  Now the lid has 8
 positions per eye and the two eyes can be driven independently.
 """
-import os, json, shutil
+import os, json, shutil, subprocess
 import numpy as np, cv2
 from . import face, blink, expression, cutout, limbs, build as reg
 
@@ -119,6 +119,36 @@ def _publish_body_extras(body_dir, body_meta, destination, log):
         log(f"  part reactions skipped for this publish: {error}")
 
 
+def _hevc_alpha_for_web(source, destination, log=print):
+    """WebKit refuses the ProRes-4444 alpha master (MEDIA_ERR 4 on the
+    iPhone, 2026-08-02) - Safari's transparent-video format is HEVC with
+    alpha (hvc1 via VideoToolbox). Encode once beside the master, reuse
+    on every later publish."""
+    cache = source[:-len(".mov")] + ".hevc.mov"
+    fresh = (os.path.isfile(cache)
+             and os.path.getmtime(cache) >= os.path.getmtime(source))
+    if not fresh:
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            return False
+        result = subprocess.run(
+            [ffmpeg, "-y", "-v", "error", "-i", source,
+             "-c:v", "hevc_videotoolbox", "-allow_sw", "1",
+             "-alpha_quality", "0.75", "-q:v", "60",
+             "-tag:v", "hvc1", "-pix_fmt", "bgra", "-an", cache],
+            capture_output=True, text=True)
+        if result.returncode != 0 or not os.path.isfile(cache):
+            log(f"  hevc-alpha encode failed: {result.stderr.strip()[:200]}")
+            try:
+                os.remove(cache)
+            except OSError:
+                pass
+            return False
+        log(f"  hevc-alpha web twin encoded: {os.path.basename(cache)}")
+    shutil.copy2(cache, destination)
+    return True
+
+
 def _publish_motion(directory, destination, log):
     for name in os.listdir(destination):
         if name.startswith("motion-") and name.endswith(".png"):
@@ -132,32 +162,44 @@ def _publish_motion(directory, destination, log):
     runtime = {"v": source.get("v", 1)}
     published = False
     for name in os.listdir(destination):
-        if name.startswith("motion-") and name.endswith(".webm"):
+        if name.startswith("motion-") and name.endswith((".webm", ".mov")):
             os.remove(os.path.join(destination, name))
     for kind in ("walk", "idle", "move"):
         clip = dict(source.get(kind) or {})
         if not clip.get("sheets"):
             continue
-        # A clip with a VP9-alpha stream ships as GPU-decoded video and its
-        # atlas stays home: the sheets remain in the studio's motion dir for
-        # previews and rebakes, but the runtime bundle carries ~0.4MB instead
-        # of ~20MB and the renderer skips ~120MB of decoded frames.
+        # The same take ships in every decode the fleet needs: VP9-alpha
+        # webm (Chromium), HEVC-alpha mov (WebKit on real devices), and the
+        # PNG atlas as the last-resort decoder-of-last-resort - the iOS
+        # SIMULATOR decodes no HEVC at all (2026-08-02), and the renderer
+        # only fetches the sheets when both videos fail, so engines with a
+        # working video path never pay for them.
         stream = clip.get("alpha_stream")
         stream_path = os.path.join(motion_dir, str(stream or ""))
         if stream and os.path.isfile(stream_path):
             stream_name = f"motion-{kind}.webm"
             shutil.copy2(stream_path, os.path.join(destination, stream_name))
             clip["alpha_stream"] = f"assets/{stream_name}"
-            clip["sheets"] = []
+            hevc = clip.get("alpha_video")
+            hevc_path = os.path.join(motion_dir, str(hevc or ""))
+            hevc_name = f"motion-{kind}.mov"
+            if (hevc and os.path.isfile(hevc_path)
+                    and not hevc_path.endswith(".hevc.mov")
+                    and _hevc_alpha_for_web(
+                        hevc_path, os.path.join(destination, hevc_name), log)):
+                clip["alpha_stream_hevc"] = f"assets/{hevc_name}"
+            else:
+                clip.pop("alpha_stream_hevc", None)
         else:
             clip.pop("alpha_stream", None)
-            sheets = []
-            for index, sheet in enumerate(clip.get("sheets") or []):
-                name = f"motion-{kind}-{index}.png"
-                shutil.copy2(os.path.join(motion_dir, sheet["image"]),
-                             os.path.join(destination, name))
-                sheets.append({**sheet, "image": f"assets/{name}"})
-            clip["sheets"] = sheets
+            clip.pop("alpha_stream_hevc", None)
+        sheets = []
+        for index, sheet in enumerate(clip.get("sheets") or []):
+            name = f"motion-{kind}-{index}.png"
+            shutil.copy2(os.path.join(motion_dir, sheet["image"]),
+                         os.path.join(destination, name))
+            sheets.append({**sheet, "image": f"assets/{name}"})
+        clip["sheets"] = sheets
         poster_name = f"motion-{kind}-poster.png"
         if clip.get("poster") and os.path.isfile(os.path.join(motion_dir, clip["poster"])):
             shutil.copy2(os.path.join(motion_dir, clip["poster"]),
@@ -319,7 +361,7 @@ def export(slug, dest, quality=92, states=blink.N_STATES, log=print,
 
     timing = dict(close=blink.CLOSE, hold=blink.HOLD, open=blink.OPEN,
                   settle=blink.SETTLE, creep=blink.CREEP)
-    manifest = dict(v=12, w=W, h=H, avatar=dict(slug=slug, name=m["name"]),
+    manifest = dict(v=15, w=W, h=H, avatar=dict(slug=slug, name=m["name"]),
                     visemes=names, frames=frames, eyes=eyes, gaze=gaze, brow=brow,
                     cheek=cheek, eyebag=eyebag,
                     neck=expression.neck(klm), cutout=cutout_meta,
