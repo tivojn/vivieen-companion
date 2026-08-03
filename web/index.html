@@ -1501,7 +1501,14 @@ async function soloSTT(wavBytes){
     headers:{'Content-Type':'multipart/form-data; boundary='+boundary},
     body_b64:b64FromBytes(whole)});
   const d=soloText(r);
-  if(r.status>=300)throw new Error('ears: provider said '+r.status);
+  // Say WHAT the provider objected to. "provider said 400" named the
+  // layer and hid the reason, which is the one thing that would have
+  // told us whether the fault was ours or the take's (owner, 2026-08-03).
+  if(r.status>=300){
+    const why=(d&&(d.detail&&(d.detail.message||d.detail)||d.error&&(d.error.message||d.error)||d.message))||'';
+    throw new Error('ears: '+(why?String(why).slice(0,120):'provider said '+r.status)
+      +' ['+wavBytes.length+'B]');
+  }
   return(d.text||'').trim();
 }
 

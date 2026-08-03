@@ -36,17 +36,48 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     /// in the query; this is where it is redeemed.
     private var parked: [String: Data] = [:]
 
+    /// Tickets whose fetch arrived BEFORE their body did.
+    private var awaited: [String: (Data?) -> Void] = [:]
+
     func park(id: String, body: Data) {
         lock.lock()
+        if let waiter = awaited.removeValue(forKey: id) {
+            lock.unlock(); waiter(body); return
+        }
         parked[id] = body
         // A ticket nobody redeems must not become a leak.
         if parked.count > 24, let oldest = parked.keys.first { parked[oldest] = nil }
         lock.unlock()
     }
 
-    private func redeem(_ id: String) -> Data? {
-        lock.lock(); defer { lock.unlock() }
-        return parked.removeValue(forKey: id)
+    /// The page posts the body over the script bridge and fetches in the
+    /// VERY NEXT statement. Those are two IPC channels with no ordering
+    /// between them, so it is a race - and the bigger the body, the more
+    /// reliably it loses. A 2 KB chat body arrived in time; ~90 KB of
+    /// recorded audio did not, the ticket redeemed to nil, the provider
+    /// got an empty multipart and said 400, and push-to-talk failed with
+    /// "could not transcribe" every time (owner, 2026-08-03).
+    ///
+    /// So wait for it. Never on the main thread - this handler runs there
+    /// and the script message it is waiting for is delivered there too,
+    /// which would deadlock - hence a callback, not a sleep.
+    private func redeem(_ id: String, _ then: @escaping (Data?) -> Void) {
+        lock.lock()
+        if let body = parked.removeValue(forKey: id) {
+            lock.unlock(); then(body); return
+        }
+        awaited[id] = then
+        lock.unlock()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 4) { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            let late = self.awaited.removeValue(forKey: id)
+            self.lock.unlock()
+            if let late {
+                NSLog("[viv-body] ticket %@ never arrived", id)
+                late(nil)
+            }
+        }
     }
 
     init(address: String, token: String, relayBase: String) {
@@ -226,7 +257,23 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         }
         if !query.isEmpty { path += "?" + query }
         let method = task.request.httpMethod ?? "GET"
-        let body = ticket.flatMap(redeem) ?? task.request.httpBody
+        // A ticketed body may still be in flight; wait for it (see redeem)
+        // and only then decide what to do with the request.
+        if let ticket {
+            let carry = (path, method, requested)
+            redeem(ticket) { [weak self] parked in
+                self?.route(task, path: carry.0, method: carry.1,
+                            requested: carry.2,
+                            body: parked ?? task.request.httpBody)
+            }
+            return
+        }
+        route(task, path: path, method: method, requested: requested,
+              body: task.request.httpBody)
+    }
+
+    private func route(_ task: WKURLSchemeTask, path: String, method: String,
+                       requested: URL, body: Data?) {
 
         // Health is a LIVENESS PROBE, and a probe must be allowed to
         // fail fast: routed through the relay's ten-minute reply window
