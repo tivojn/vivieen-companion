@@ -2140,6 +2140,20 @@ class PocketBarAndToolsTests(unittest.TestCase):
         app_source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
         self.assertIn("import relay_agent", app_source)
 
+    def test_a_recording_keeps_one_multipart_boundary(self):
+        # Serialising FormData twice mints two different random
+        # boundaries: the header promised one, the bytes used the other,
+        # the Mac found no audio part, and she said "I did not catch
+        # that" to every recording (owner, 2026-08-03). Header and bytes
+        # must come from the SAME Request.
+        self.assertIn("once=new Request(", self.renderer)
+        self.assertIn("type=once.headers.get('Content-Type')", self.renderer)
+        self.assertIn("encoded=b64(await once.arrayBuffer())", self.renderer)
+        # And the old double-serialisation must not creep back.
+        self.assertNotIn("new Response(body).arrayBuffer()", self.renderer)
+        # A refused upload must not masquerade as silence.
+        self.assertIn("upload refused (", self.renderer)
+
     def test_secrets_live_in_the_vault_never_on_disk(self):
         # EnConvo's leaf, the Mac's machinery: keys go to the Keychain
         # (a JSON vault file under test), config.json keeps only the

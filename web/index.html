@@ -692,14 +692,7 @@ if(IS_IOS){
   if(location.protocol==='viv:'&&window.webkit&&webkit.messageHandlers.body){
     const plainFetch=window.fetch.bind(window);
     let ticketSeq=0;
-    const encode=async body=>{
-      if(body==null)return null;
-      const buffer=body instanceof Blob||body instanceof FormData
-        ? await new Response(body).arrayBuffer()
-        : typeof body==='string' ? new TextEncoder().encode(body).buffer
-        : body instanceof ArrayBuffer ? body
-        : ArrayBuffer.isView(body) ? body.buffer : null;
-      if(!buffer)return null;
+    const b64=buffer=>{
       const bytes=new Uint8Array(buffer);
       let binary='';
       for(let i=0;i<bytes.length;i+=0x8000)
@@ -709,11 +702,18 @@ if(IS_IOS){
     window.fetch=async(input,init)=>{
       const opts=init||{};
       if(!opts.body)return plainFetch(input,init);
-      // FormData carries its own multipart boundary; keep the header the
-      // Response gave it, or the Mac cannot parse the parts.
-      const probe=new Request('viv://app/x',{method:'POST',body:opts.body});
-      const type=probe.headers.get('Content-Type');
-      const encoded=await encode(opts.body);
+      // ONE serialisation, header and bytes from the same object. Reading
+      // the type from one Request and the body from another gave multipart
+      // two different random boundaries - the header promised one, the
+      // bytes used the other - so the Mac found no audio part and she said
+      // "I did not catch that" to every recording (owner, 2026-08-03).
+      let once,encoded,type;
+      try{
+        once=new Request('https://viv.invalid/x',
+          {method:'POST',body:opts.body});
+        type=once.headers.get('Content-Type');
+        encoded=b64(await once.arrayBuffer());
+      }catch(e){return plainFetch(input,init);}
       if(encoded===null)return plainFetch(input,init);
       const ticket='b'+(++ticketSeq)+'-'+Date.now();
       webkit.messageHandlers.body.postMessage(ticket+':'+encoded);
@@ -3393,7 +3393,14 @@ async function stopNativeRec(){
   try{
     const body=new FormData();
     body.append('audio',wavFromPcm(chunks,PTT.rate),'take.wav');
-    const r=await(await fetch('stt',{method:'POST',body})).json();
+    const response=await fetch('stt',{method:'POST',body});
+    // "I did not catch that" used to swallow real failures - a rejected
+    // upload looked exactly like silence (owner, 2026-08-03). Say which.
+    if(!response.ok){
+      const why=await response.text();
+      throw new Error('upload refused ('+response.status+') '+why.slice(0,60));
+    }
+    const r=await response.json();
     const heard=String(r.text||'').trim();
     if(!heard){flashPrompt('I did not catch that');setStatus('ready','on');return;}
     await turn(heard,true);
