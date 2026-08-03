@@ -10,6 +10,7 @@ Opt-in and rollback-safe by construction: this thread only starts when
 and restart - the whole feature is off. EnConvo is never touched; the
 relay replays the same local API the phone already speaks on the LAN.
 """
+import base64
 import hashlib
 import json
 import os
@@ -18,7 +19,14 @@ import time
 import urllib.request
 
 SUPPORT = os.path.expanduser("~/Library/Application Support/Vivieen")
-_ALLOWED_PREFIXES = ("/api/enconvo/", "/api/avatars", "/health")
+# Everything the pocket app asks for on the LAN, so the same app can ask
+# for it from anywhere: her page, her runtime assets, the files she
+# delivers, and the whole local API. The channel is already gated on the
+# pairing token, so a caller here could reach these over Wi-Fi anyway.
+_ALLOWED_PREFIXES = ("/api/", "/assets/", "/files/", "/health", "/reply",
+                     "/say", "/stt", "/settings", "/live-worklet.js", "/c/")
+_TEXTUAL = ("text/", "application/json", "application/javascript",
+            "image/svg+xml")
 
 
 def _read(path):
@@ -45,7 +53,9 @@ def _replay(envelope, engine_port, engine_token, send):
     request_id = envelope.get("id") or ""
     req = envelope.get("req") or {}
     path = str(req.get("path") or "")
-    if not path.startswith(_ALLOWED_PREFIXES):
+    # "/" and "/?query" are her page itself.
+    if not (path.startswith(_ALLOWED_PREFIXES) or path == "/"
+            or path.startswith("/?")):
         send({"id": request_id, "done": True, "status": 403,
               "body": json.dumps({"error": "path not relayed"})})
         return
@@ -75,9 +85,17 @@ def _replay(envelope, engine_port, engine_token, send):
                 send({"id": request_id, "done": True, "status": 200,
                       "stream": True})
             else:
-                send({"id": request_id, "done": True, "status": feed.status,
-                      "type": kind,
-                      "body": feed.read().decode("utf-8", "replace")})
+                raw = feed.read()
+                # Her sprites and audio are bytes, not text - decoding them
+                # as utf-8 would quietly corrupt every avatar over the wire.
+                textual = any(kind.startswith(k) for k in _TEXTUAL)
+                message = {"id": request_id, "done": True,
+                           "status": feed.status, "type": kind}
+                if textual:
+                    message["body"] = raw.decode("utf-8", "replace")
+                else:
+                    message["b64"] = base64.b64encode(raw).decode("ascii")
+                send(message)
     except Exception as error:
         send({"id": request_id, "done": True, "status": 502,
               "body": json.dumps({"error": str(error)[:200]})})

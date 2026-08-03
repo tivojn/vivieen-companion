@@ -139,6 +139,14 @@ struct CompanionWebView: UIViewRepresentable {
         configuration.userContentController.add(context.coordinator, name: "audio")
         configuration.userContentController.add(context.coordinator, name: "share")
         configuration.userContentController.add(context.coordinator, name: "speech")
+        // One origin, wherever she is: viv://app is served from the cache,
+        // the Mac, or the relay, in that order (VivScheme).
+        let scheme = VivSchemeHandler(
+            address: address, token: token,
+            relayBase: UserDefaults.standard.string(forKey: "relayBase")
+                ?? RelayClient.defaultBase)
+        configuration.setURLSchemeHandler(scheme,
+                                          forURLScheme: VivSchemeHandler.scheme)
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.uiDelegate = context.coordinator
         webView.navigationDelegate = context.coordinator
@@ -169,29 +177,19 @@ struct CompanionWebView: UIViewRepresentable {
     func updateUIView(_ webView: WKWebView, context: Context) {}
 
     private func load(into webView: WKWebView, coordinator: Coordinator) {
-        guard var components = URLComponents(string: address),
-              let host = components.host else { return }
         // The decoupled web view, not the pet overlay: chat, hold-to-talk,
         // and spoken replies are all self-contained there, while the pet
         // page's gestures ride on Electron IPC the phone does not have.
-        components.path = "/"
-        components.query = "view=full&ios=1"
-        guard let page = components.url else { return }
+        //
+        // The address is no longer in the URL - viv://app is the origin
+        // everywhere, and the scheme handler carries the token itself, so
+        // moving between Wi-Fi and cellular changes nothing the page can
+        // see.
+        guard let page = URL(string:
+            "\(VivSchemeHandler.scheme)://\(VivSchemeHandler.host)/?view=full&ios=1")
+        else { return }
         coordinator.pageURL = page
-        let cookie = HTTPCookie(properties: [
-            .domain: host,
-            .path: "/",
-            .name: "vivieen-token",
-            .value: token,
-            .expires: Date(timeIntervalSinceNow: 3600 * 24 * 365),
-        ])
-        let store = webView.configuration.websiteDataStore.httpCookieStore
-        let start = { webView.load(URLRequest(url: page)) }
-        if let cookie {
-            store.setCookie(cookie) { DispatchQueue.main.async { _ = start() } }
-        } else {
-            _ = start()
-        }
+        webView.load(URLRequest(url: page))
     }
 
     final class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate,

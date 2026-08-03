@@ -1930,6 +1930,44 @@ async def api_avatar_store():
         for item in AVATAR_STORE]}
 
 
+@app.get("/api/avatar/thumb")
+async def api_avatar_thumb(slug: str = Query(...), size: int = Query(320)):
+    """A card-sized face, made once and kept.
+
+    The carousel used to pull the full 1024px keyframe for every avatar -
+    well over a megabyte each, so opening the deck crawled (owner,
+    2026-08-03). This is the same face at card size, cached on disk after
+    the first request and immutable thereafter, which lets the phone keep
+    its own copy forever."""
+    import cv2
+    r = reg()
+    if slug not in {a["slug"] for a in r.list_avatars()}:
+        raise HTTPException(404, "no such avatar")
+    size = max(64, min(512, int(size)))
+    cache = os.path.join(r.AVATARS, slug, f"thumb-{size}.jpg")
+    if not os.path.isfile(cache):
+        source = None
+        for name in ("keyframe.png", "source-keyframe.png", "source.jpg"):
+            candidate = os.path.join(r.AVATARS, slug, name)
+            if os.path.isfile(candidate):
+                source = candidate
+                break
+        if not source:
+            raise HTTPException(404, "no face to show")
+        image = cv2.imread(source, cv2.IMREAD_COLOR)
+        if image is None:
+            raise HTTPException(404, "unreadable face")
+        height, width = image.shape[:2]
+        side = min(height, width)
+        # Square on the face, which sits in the upper middle of a portrait.
+        x0 = max(0, (width - side) // 2)
+        crop = image[0:side, x0:x0 + side]
+        thumb = cv2.resize(crop, (size, size), interpolation=cv2.INTER_AREA)
+        cv2.imwrite(cache, thumb, [int(cv2.IMWRITE_JPEG_QUALITY), 86])
+    return FileResponse(cache, media_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=604800"})
+
+
 @app.get("/api/avatar/store/art")
 async def api_avatar_store_art(id: str = Query(...),
                                kind: str = Query("face")):

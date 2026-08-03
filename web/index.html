@@ -509,6 +509,7 @@ html.ios #zoombox input{width:100%;flex:1}
   <button id="rail-pip" type="button" aria-label="Picture in picture"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3V5zm2 2v10h14V7H5zm7 4h5v4h-5v-4z"/></svg></button>
   <button id="rail-enconvo" type="button" aria-label="EnConvo agents"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3 4 14h6l-1 7 9-11h-6l1-7z"/></svg></button>
   <button id="rail-mute" type="button" aria-label="Mute her voice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 5V4L8 9H4zm12.5 3a3.5 3.5 0 0 0-2-3.15v6.3a3.5 3.5 0 0 0 2-3.15z"/></svg></button>
+  <button id="rail-faces" type="button" aria-label="Switch avatar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3v10H4V7zm4.5-2h7v14h-7V5zM17 7h3v10h-3V7z"/></svg></button>
   <button id="rail-zoom" type="button" aria-label="Zoom"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12zm-1 3h2v2h2v2h-2v2H9v-2H7V9h2V7z"/></svg></button>
 </div>
 <div id="thread"></div>
@@ -2737,16 +2738,24 @@ function audioSink(){
   masterGain.gain.value=(window.IOS_MUTED||NATIVE_SPEECH())?0:1;
   return masterGain;
 }
-/* WAV in, raw PCM16 out: the native player wants samples, not a header. */
-function pcmFromWav(bytes){
-  let at=12;
+/* WAV in, raw PCM16 out plus the rate THE FILE declares.
+   Not buf.sampleRate: decodeAudioData resamples to the context rate
+   (48k on the phone), so trusting it labelled 24k samples as 48k and she
+   answered like a chipmunk (owner, 2026-08-03). */
+function wavInfo(bytes){
+  const u32=at=>bytes[at]|(bytes[at+1]<<8)|(bytes[at+2]<<16)|(bytes[at+3]<<24);
+  let at=12,rate=24000,data=null;
   while(at+8<=bytes.length){
     const id=String.fromCharCode(bytes[at],bytes[at+1],bytes[at+2],bytes[at+3]);
-    const size=bytes[at+4]|(bytes[at+5]<<8)|(bytes[at+6]<<16)|(bytes[at+7]<<24);
-    if(id==='data')return bytes.subarray(at+8,Math.min(bytes.length,at+8+size));
+    const size=u32(at+4);
+    if(id==='fmt ')rate=u32(at+12)||rate;
+    else if(id==='data'){
+      data=bytes.subarray(at+8,Math.min(bytes.length,at+8+size));
+      break;
+    }
     at+=8+size+(size&1);
   }
-  return bytes.subarray(44);
+  return{rate,data:data||bytes.subarray(44)};
 }
 function b64FromBytes(bytes){
   let binary='';
@@ -2786,8 +2795,10 @@ async function speak(b64,tr){
   try{buf=await actx.decodeAudioData(u8.buffer.slice(0));}
   catch(e){audbg('decode FAIL: '+e);return;}
   // The app says it out loud; WebAudio below only keeps the time.
-  if(NATIVE_SPEECH())
-    nativeSpeak(b64FromBytes(pcmFromWav(u8)),buf.sampleRate);
+  if(NATIVE_SPEECH()){
+    const wav=wavInfo(u8);
+    nativeSpeak(b64FromBytes(wav.data),wav.rate);
+  }
   const src=actx.createBufferSource();src.buffer=buf;localSource=src;
   analyser=actx.createAnalyser();analyser.fftSize=2048;analyser.smoothingTimeConstant=0.6;
   src.connect(analyser);analyser.connect(audioSink());
@@ -4288,7 +4299,10 @@ if(IS_IOS){
       card.className='avcard';
       card.style.setProperty('--card',SORBET[i%SORBET.length]);
       const face=document.createElement('img');
-      face.src='/files/'+encodeURIComponent(item.slug)+'/keyframe.png';
+      // Card-sized and cacheable; the full keyframe is over a megabyte
+      // and made opening the deck crawl (owner, 2026-08-03).
+      face.src='api/avatar/thumb?slug='+encodeURIComponent(item.slug)+'&size=320';
+      face.loading='eager';face.decoding='async';
       face.alt=item.name||item.slug;
       const name=document.createElement('div');
       name.className='name';name.textContent=item.name||item.slug;
@@ -4302,6 +4316,11 @@ if(IS_IOS){
     avfanLayout();
   }
   function closeAvfan(){AVFAN.open=false;avfan.hidden=true;}
+  // A swipe nobody knows about is a feature nobody has (owner: "where is
+  // the carousel"). The rail says it out loud; the swipe stays as the
+  // shortcut for anyone who finds it.
+  document.getElementById('rail-faces')
+    .addEventListener('click',()=>{void openAvfan();});
   document.getElementById('avfanClose').addEventListener('click',closeAvfan);
   avfanStyle.addEventListener('click',()=>{
     AVFAN.style=AVFAN.style==='sorbet'?'noir':'sorbet';

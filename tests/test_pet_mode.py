@@ -2122,8 +2122,14 @@ class PocketBarAndToolsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as empty:
             with mock.patch.object(relay_agent, "SUPPORT", empty):
                 self.assertIsNone(relay_agent.start("8777"))
-        self.assertIn("/api/enconvo/", relay_agent._ALLOWED_PREFIXES)
-        self.assertNotIn("/api/settings", str(relay_agent._ALLOWED_PREFIXES))
+        # Wide enough to carry her whole self - page, sprites, API - so
+        # the phone works off Wi-Fi, but still an explicit list.
+        for prefix in ("/api/", "/assets/", "/files/"):
+            self.assertIn(prefix, relay_agent._ALLOWED_PREFIXES)
+        # Binary is base64, never utf-8 decoded: her sprites would be
+        # silently corrupted on the way through.
+        source = (ROOT / "server" / "relay_agent.py").read_text()
+        self.assertIn('message["b64"] = base64.b64encode(raw)', source)
         source = (ROOT / "server" / "relay_agent.py").read_text()
         self.assertIn('hashlib.sha256(b"viv-relay:" + token.encode())', source)
         relay = (ROOT / "relay" / "api" / "relay.js").read_text()
