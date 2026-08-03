@@ -147,6 +147,8 @@ struct CompanionWebView: UIViewRepresentable {
                 ?? RelayClient.defaultBase)
         configuration.setURLSchemeHandler(scheme,
                                           forURLScheme: VivSchemeHandler.scheme)
+        configuration.userContentController.add(context.coordinator, name: "body")
+        context.coordinator.scheme = scheme
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.uiDelegate = context.coordinator
         webView.navigationDelegate = context.coordinator
@@ -181,10 +183,11 @@ struct CompanionWebView: UIViewRepresentable {
         // and spoken replies are all self-contained there, while the pet
         // page's gestures ride on Electron IPC the phone does not have.
         //
-        // The address is no longer in the URL - viv://app is the origin
-        // everywhere, and the scheme handler carries the token itself, so
-        // moving between Wi-Fi and cellular changes nothing the page can
-        // see.
+        // viv://app, wherever she is: cache, then the Mac, then the relay.
+        // WKURLSchemeHandler never hands over a POST BODY from fetch - so
+        // dictation, chat and the agent lane all arrived empty ("I did not
+        // catch that") until the page started parking bodies with the app
+        // first (see the body bridge in index.html and BodyStore here).
         guard let page = URL(string:
             "\(VivSchemeHandler.scheme)://\(VivSchemeHandler.host)/?view=full&ios=1")
         else { return }
@@ -197,6 +200,7 @@ struct CompanionWebView: UIViewRepresentable {
         let pip = PipDriver()
         let mic = MicDriver()
         let speech = SpeechPlayer()
+        weak var scheme: VivSchemeHandler?
         var pageURL: URL?
         private let pageLive: (Bool) -> Void
 
@@ -237,6 +241,18 @@ struct CompanionWebView: UIViewRepresentable {
                 if body == "start" { pip.start() }
                 else if body == "stop" { pip.stop() }
                 else { pip.enqueue(dataURL: body) }
+                return
+            }
+            if message.name == "body" {
+                // "<ticket>:<base64 body>" - parked until the matching
+                // request arrives, because WebKit will not carry it.
+                guard let text = message.body as? String,
+                      let split = text.firstIndex(of: ":") else { return }
+                let ticket = String(text[text.startIndex..<split])
+                let encoded = String(text[text.index(after: split)...])
+                if let data = Data(base64Encoded: encoded) {
+                    scheme?.park(id: ticket, body: data)
+                }
                 return
             }
             if message.name == "speech" {

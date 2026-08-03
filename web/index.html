@@ -235,6 +235,68 @@ html[data-design=atelier] #monitorTip{border-radius:0;
   border-color:rgba(201,168,106,.3);background:rgba(22,20,17,.95)}
 html[data-design=atelier] #petBubble{border-radius:0;
   border-color:rgba(201,168,106,.32);background:rgba(22,20,17,.85)}
+/* ---- Pocket Mirror: light and dark --------------------------------------
+   She is rendered on a stage, and a stage has a colour. Dark is the
+   default because her cutout is lit for it, but the phone should be
+   allowed to follow the room (owner, 2026-08-03): the system preference
+   decides unless the owner has said otherwise, and every surface below
+   reads these tokens instead of a hardcoded slate. */
+html.ios{
+  --skin:#0b0d10;          /* the stage behind her */
+  --card:rgba(12,14,18,.72);
+  --card-line:rgba(255,255,255,.10);
+  --card-ink:#e9ecf1;
+  --mine:rgba(63,60,112,.55);
+  --mine-line:rgba(124,116,226,.38);
+  --chip:rgba(20,22,26,.55);
+  --chip-line:rgba(255,255,255,.14);
+  --chip-ink:#c9cdd4;
+  --field:rgba(255,255,255,.06);
+  --field-line:rgba(255,255,255,.16);
+  --faint:#aab0bb;
+}
+html.ios[data-skin=light]{
+  --skin:#eef0f4;
+  --card:rgba(255,255,255,.86);
+  --card-line:rgba(18,22,30,.10);
+  --card-ink:#151a21;
+  --mine:rgba(108,101,222,.16);
+  --mine-line:rgba(108,101,222,.40);
+  --chip:rgba(255,255,255,.78);
+  --chip-line:rgba(18,22,30,.12);
+  --chip-ink:#39414d;
+  --field:rgba(255,255,255,.9);
+  --field-line:rgba(18,22,30,.14);
+  --faint:#5d6672;
+}
+html.ios[data-skin=light],html.ios[data-skin=light] body{background:var(--skin)}
+html.ios[data-skin=light] #vignette{
+  background:radial-gradient(120% 90% at 50% 35%,transparent 45%,rgba(90,100,120,.18) 100%)}
+html.ios[data-skin=light] #st,html.ios[data-skin=light] #status{color:#3a424e}
+html.ios[data-skin=light] #gear{color:#4a525e;border-color:rgba(18,22,30,.14)}
+/* The talk bar is a BUTTON people press without looking - in light mode
+   it has to read as one, not as a pale ghost (owner, 2026-08-03). */
+html.ios[data-skin=light] #txt{
+  background:rgba(255,255,255,.92);border-color:rgba(18,22,30,.14);
+  color:#151a21}
+html.ios[data-skin=light].talk-mode #talkbar{
+  background:rgba(108,101,222,.14);border-color:rgba(108,101,222,.5);
+  color:#2c2a63}
+html.ios[data-skin=light].talk-mode #talkbar.rec{
+  background:rgba(108,101,222,.34);border-color:rgba(108,101,222,.85);
+  color:#1d1b4d}
+html.ios[data-skin=light].talk-mode #talkbar.cancel{
+  background:rgba(212,76,71,.24);border-color:rgba(212,76,71,.75);color:#6d211d}
+html.ios[data-skin=light].talk-mode #micmode{
+  background:rgba(108,101,222,.2);border-color:rgba(108,101,222,.55)}
+html.ios[data-skin=light] #txt::placeholder{color:#8a929e}
+html.ios[data-skin=light] #thread .msg pre{background:#e4e7ee;border-color:#d2d7e0}
+html.ios[data-skin=light] #thread .msg a{color:#4b46c4}
+html.ios[data-skin=light] #thread .msg.working .live{color:#151a21}
+html.ios[data-skin=light] #listenWave{background:rgba(255,255,255,.86);
+  border-color:rgba(18,22,30,.12)}
+html.ios[data-skin=light] #listenWaveText{color:rgba(20,24,30,.6)}
+html.ios[data-skin=light] #listenWaveBars span{background:rgba(30,36,46,.8)}
 /* ---- Pocket Mirror (iOS) ------------------------------------------------
    Phone ergonomics: captions are frosted glass capped at her lower thigh
    (her face and lip-sync stay visible while she speaks), the caption dims
@@ -251,13 +313,13 @@ html.ios.her-speaking #her{opacity:.72}
 html.ios #monitor{display:none}
 #micmode{display:none}
 html.ios #micmode{display:flex;flex:none;width:40px;height:40px;border-radius:50%;
-  align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.16);
-  background:rgba(255,255,255,.06);color:#cfd3da;padding:0}
+  align-items:center;justify-content:center;border:1px solid var(--field-line);
+  background:var(--field);color:var(--chip-ink);padding:0}
 html.ios #micmode svg{width:19px;height:19px;fill:currentColor}
 #emojiBtn,#plusBtn{display:none}
 html.ios #emojiBtn,html.ios #plusBtn{display:flex;flex:none;width:40px;height:40px;
   border-radius:50%;align-items:center;justify-content:center;padding:0;
-  border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#cfd3da}
+  border:1px solid var(--field-line);background:var(--field);color:var(--chip-ink)}
 html.ios #emojiBtn svg,html.ios #plusBtn svg{width:20px;height:20px;fill:currentColor}
 /* Never display:none - WebKit refuses a programmatic .click() on an
    unrendered file input, which is why the plus button did nothing on the
@@ -348,8 +410,8 @@ html.ios #gearWord{display:none}
 html.ios #gear{top:calc(8px + env(safe-area-inset-top,0px));right:52px;padding:8px}
 html.ios #rail button{width:44px;height:44px;border-radius:50%;padding:0;
   display:flex;align-items:center;justify-content:center;
-  border:1px solid rgba(255,255,255,.14);background:rgba(20,22,26,.55);
-  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:#c9cdd4;
+  border:1px solid var(--chip-line);background:var(--chip);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:var(--chip-ink);
   touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 html.ios #rail svg{width:20px;height:20px;fill:currentColor}
 html.ios #rail button.on{background:rgba(124,116,226,.42);
@@ -388,19 +450,19 @@ html.ios #thread .msg{pointer-events:auto;align-self:stretch;
   flex:none;
   width:100%;min-width:0;max-width:100%;box-sizing:border-box;
   padding:9px 12px;border-radius:13px;
-  font-size:14.5px;line-height:1.5;color:#e9ecf1;overflow-wrap:anywhere;
-  overflow:hidden;background:rgba(12,14,18,.72);
-  border:1px solid rgba(255,255,255,.10);
+  font-size:14.5px;line-height:1.5;color:var(--card-ink);overflow-wrap:anywhere;
+  overflow:hidden;background:var(--card);
+  border:1px solid var(--card-line);
   -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
-html.ios #thread .msg.user{background:rgba(63,60,112,.55);
-  border-color:rgba(124,116,226,.38)}
+html.ios #thread .msg.user{background:var(--mine);
+  border-color:var(--mine-line)}
 html.ios #thread .msg img,html.ios #thread .msg video{display:block;
   width:100%;max-width:100%;height:29vh;object-fit:contain;
   background:#0a0c10;border-radius:9px;margin:4px 0}
 /* A file card is the file - no prose padding around it. */
 html.ios #thread .msg.media{padding:5px}
 html.ios #thread .media-name{padding:6px 6px 2px;font-size:12.5px;
-  color:#aab0bb;letter-spacing:.01em}
+  color:var(--faint);letter-spacing:.01em}
 /* Fullscreen picture: tap anywhere to close, pinch to look closer. */
 .lightbox{position:fixed;inset:0;z-index:120;display:flex;
   align-items:center;justify-content:center;background:rgba(0,0,0,.94)}
@@ -509,6 +571,7 @@ html.ios #zoombox input{width:100%;flex:1}
   <button id="rail-pip" type="button" aria-label="Picture in picture"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3V5zm2 2v10h14V7H5zm7 4h5v4h-5v-4z"/></svg></button>
   <button id="rail-enconvo" type="button" aria-label="EnConvo agents"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3 4 14h6l-1 7 9-11h-6l1-7z"/></svg></button>
   <button id="rail-mute" type="button" aria-label="Mute her voice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 5V4L8 9H4zm12.5 3a3.5 3.5 0 0 0-2-3.15v6.3a3.5 3.5 0 0 0 2-3.15z"/></svg></button>
+  <button id="rail-skin" type="button" aria-label="Light or dark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg></button>
   <button id="rail-faces" type="button" aria-label="Switch avatar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3v10H4V7zm4.5-2h7v14h-7V5zM17 7h3v10h-3V7z"/></svg></button>
   <button id="rail-zoom" type="button" aria-label="Zoom"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12zm-1 3h2v2h2v2h-2v2H9v-2H7V9h2V7z"/></svg></button>
 </div>
@@ -596,6 +659,65 @@ if(IS_IOS){
   document.querySelectorAll('a[href="/settings"]').forEach(link=>{
     link.href='/settings?ios=1';
   });
+  // Light or dark: the room decides unless the owner has (owner,
+  // 2026-08-03). Stored choice wins; otherwise follow iOS, and keep
+  // following it if it changes while she is open.
+  const systemDark=matchMedia('(prefers-color-scheme: dark)');
+  const applySkin=()=>{
+    const chosen=localStorage.getItem('viv-skin');
+    const dark=chosen?chosen==='dark':systemDark.matches;
+    document.documentElement.dataset.skin=dark?'dark':'light';
+  };
+  applySkin();
+  systemDark.addEventListener('change',()=>{
+    if(!localStorage.getItem('viv-skin'))applySkin();
+  });
+  /* WebKit hands a custom-scheme handler the URL and headers of a fetch
+     but NEVER its body, so every POST reached the Mac empty and she
+     answered "I did not catch that" to a good recording (owner,
+     2026-08-03). Park the body with the app first and pass a ticket in
+     the query; the handler redeems it. Only needed on the viv:// origin -
+     a plain http page posts normally. */
+  if(location.protocol==='viv:'&&window.webkit&&webkit.messageHandlers.body){
+    const plainFetch=window.fetch.bind(window);
+    let ticketSeq=0;
+    const encode=async body=>{
+      if(body==null)return null;
+      const buffer=body instanceof Blob||body instanceof FormData
+        ? await new Response(body).arrayBuffer()
+        : typeof body==='string' ? new TextEncoder().encode(body).buffer
+        : body instanceof ArrayBuffer ? body
+        : ArrayBuffer.isView(body) ? body.buffer : null;
+      if(!buffer)return null;
+      const bytes=new Uint8Array(buffer);
+      let binary='';
+      for(let i=0;i<bytes.length;i+=0x8000)
+        binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));
+      return btoa(binary);
+    };
+    window.fetch=async(input,init)=>{
+      const opts=init||{};
+      if(!opts.body)return plainFetch(input,init);
+      // FormData carries its own multipart boundary; keep the header the
+      // Response gave it, or the Mac cannot parse the parts.
+      const probe=new Request('viv://app/x',{method:'POST',body:opts.body});
+      const type=probe.headers.get('Content-Type');
+      const encoded=await encode(opts.body);
+      if(encoded===null)return plainFetch(input,init);
+      const ticket='b'+(++ticketSeq)+'-'+Date.now();
+      webkit.messageHandlers.body.postMessage(ticket+':'+encoded);
+      let url=typeof input==='string'?input:input.url;
+      url+=(url.includes('?')?'&':'?')+'__vivbody='+ticket;
+      const headers=new Headers(opts.headers||{});
+      if(type&&!headers.has('Content-Type'))headers.set('Content-Type',type);
+      return plainFetch(url,{...opts,headers,body:undefined});
+    };
+  }
+  window.toggleSkin=()=>{
+    const dark=document.documentElement.dataset.skin!=='light';
+    localStorage.setItem('viv-skin',dark?'light':'dark');
+    applySkin();
+  };
 }
 // A second on-desk avatar loads this same page at /c/<slug>/?side=left: it
 // idles against the LEFT screen edge while the active avatar keeps the right.
@@ -4321,6 +4443,8 @@ if(IS_IOS){
   // shortcut for anyone who finds it.
   document.getElementById('rail-faces')
     .addEventListener('click',()=>{void openAvfan();});
+  document.getElementById('rail-skin')
+    .addEventListener('click',()=>window.toggleSkin&&window.toggleSkin());
   document.getElementById('avfanClose').addEventListener('click',closeAvfan);
   avfanStyle.addEventListener('click',()=>{
     AVFAN.style=AVFAN.style==='sorbet'?'noir':'sorbet';

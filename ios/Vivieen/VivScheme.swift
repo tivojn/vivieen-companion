@@ -29,6 +29,25 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     /// otherwise every asset pays the timeout on cellular.
     private var directOffUntil = Date.distantPast
     private let lock = NSLock()
+    /// WebKit hands a scheme handler the URL and the headers of a fetch,
+    /// but NEVER its body - so every POST arrived empty and she answered
+    /// "I did not catch that" to a perfectly good recording (owner,
+    /// 2026-08-03). The page parks the body here first and puts its ticket
+    /// in the query; this is where it is redeemed.
+    private var parked: [String: Data] = [:]
+
+    func park(id: String, body: Data) {
+        lock.lock()
+        parked[id] = body
+        // A ticket nobody redeems must not become a leak.
+        if parked.count > 24, let oldest = parked.keys.first { parked[oldest] = nil }
+        lock.unlock()
+    }
+
+    private func redeem(_ id: String) -> Data? {
+        lock.lock(); defer { lock.unlock() }
+        return parked.removeValue(forKey: id)
+    }
 
     init(address: String, token: String, relayBase: String) {
         self.address = address.hasSuffix("/") ? String(address.dropLast()) : address
@@ -78,25 +97,61 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         }
     }
 
+    /// WebKit throws - and the throw is fatal - if a task is answered
+    /// after it was stopped, and a relay round trip is slow enough that
+    /// this happens routinely (crash log, 2026-08-03). Only tasks WebKit
+    /// still wants get spoken to, and each gets answered exactly once.
+    private var liveTasks = Set<ObjectIdentifier>()
+
+    private func adopt(_ task: WKURLSchemeTask) {
+        lock.lock(); liveTasks.insert(ObjectIdentifier(task)); lock.unlock()
+    }
+
+    private func retire(_ task: WKURLSchemeTask) -> Bool {
+        lock.lock()
+        let wanted = liveTasks.remove(ObjectIdentifier(task)) != nil
+        lock.unlock()
+        return wanted
+    }
+
     private func finish(_ task: WKURLSchemeTask, url: URL,
                         data: Data, type: String, status: Int = 200) {
+        guard retire(task) else { return }
         let response = HTTPURLResponse(
             url: url, statusCode: status, httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": type,
                            "Access-Control-Allow-Origin": "*",
                            "Cache-Control": "no-store"])!
-        task.didReceive(response)
-        task.didReceive(data)
-        task.didFinish()
+        // Even so, WebKit can stop a task between the check and the call.
+        // An ObjC exception here would abort the process, so catch it.
+        VivObjC.catching {
+            task.didReceive(response)
+            task.didReceive(data)
+            task.didFinish()
+        }
     }
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
         guard let requested = task.request.url else { return }
+        adopt(task)
         // viv://app/api/... -> /api/...
         var path = requested.path.isEmpty ? "/" : requested.path
-        if let query = requested.query, !query.isEmpty { path += "?" + query }
+        // The ticket rides in the query and belongs to us, not the Mac.
+        var ticket: String?
+        var query = requested.query ?? ""
+        if !query.isEmpty {
+            let kept = query.split(separator: "&").filter { pair in
+                if pair.hasPrefix("__vivbody=") {
+                    ticket = String(pair.dropFirst("__vivbody=".count))
+                    return false
+                }
+                return true
+            }
+            query = kept.joined(separator: "&")
+        }
+        if !query.isEmpty { path += "?" + query }
         let method = task.request.httpMethod ?? "GET"
-        let body = task.request.httpBody
+        let body = ticket.flatMap(redeem) ?? task.request.httpBody
 
         if method == "GET", cacheable(path),
            let cached = try? Data(contentsOf: cacheURL(path)), !cached.isEmpty {
@@ -160,5 +215,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         }
     }
 
-    func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
+    func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {
+        _ = retire(task)
+    }
 }

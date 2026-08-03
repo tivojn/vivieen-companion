@@ -13,6 +13,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.vivieen.pocket
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
+        SWIFT_OBJC_BRIDGING_HEADER: Vivieen/Vivieen-Bridging-Header.h
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Vivieen/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
