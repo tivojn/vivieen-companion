@@ -2587,7 +2587,12 @@ async function startLiveTalk(){
   if(LIVE){stopLiveTalk('ended');return;}
   if(monitorEnabled){setCaption('De-couple from EnConvo first — live talk needs the voice channel.');return;}
   setStatus('connecting live…','busy');
-  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/live/voice');
+  // Sockets need the Mac itself: on viv://app there is no host to
+  // speak of, and no cookie rides cross-origin, so the address and
+  // token come from the app (window.VIV_LAN / VIV_TOKEN). This is also
+  // why live talk is a same-network feature - a relay mailbox cannot
+  // carry a socket.
+  const ws=new WebSocket(wsURL('/live/voice'));
   ws.binaryType='arraybuffer';
   const session={ws,ctx:null,stream:null,cap:null,queueT:0,sources:new Set(),
     agentText:'',echoGuardUntil:0};
@@ -3238,8 +3243,7 @@ function openDictationStream(){
   if(monitorEnabled||dictationSocket)return;
   dictationSent=0;
   try{
-    const ws=new WebSocket(
-      (location.protocol==='https:'?'wss://':'ws://')+location.host+'/stt/stream');
+    const ws=new WebSocket(wsURL('/stt/stream'));
     ws.binaryType='arraybuffer';
     ws.onmessage=event=>{
       let payload=null;
@@ -3308,6 +3312,15 @@ async function interimTranscribe(){
    screenshot, 2026-08-03). The native bridge already has the real
    microphone - use it, collect PCM, and post one WAV when the finger
    lifts. */
+function wsURL(path){
+  const lan=window.VIV_LAN||'';
+  if(lan){
+    const base=lan.replace(/^http/,'ws').replace(/\/$/,'');
+    const token=window.VIV_TOKEN?'?token='+encodeURIComponent(window.VIV_TOKEN):'';
+    return base+path+token;
+  }
+  return (location.protocol==='https:'?'wss://':'ws://')+location.host+path;
+}
 const NATIVE_MIC=()=>Boolean(window.webkit&&webkit.messageHandlers&&
   webkit.messageHandlers.mic);
 const PTT={on:false,chunks:[],rate:16000};

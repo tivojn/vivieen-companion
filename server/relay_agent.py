@@ -59,12 +59,21 @@ def _replay(envelope, engine_port, engine_token, send):
         send({"id": request_id, "done": True, "status": 403,
               "body": json.dumps({"error": "path not relayed"})})
         return
-    body = req.get("body")
-    data = json.dumps(body).encode() if body is not None else None
+    # JSON rides as "body"; a recording or a photo rides as base64 "raw"
+    # with its own content type, so the request is rebuilt exactly.
+    body, raw = req.get("body"), req.get("raw")
+    if raw:
+        data = base64.b64decode(raw)
+        content_type = str(req.get("type") or "application/octet-stream")
+    elif body is not None:
+        data = json.dumps(body).encode()
+        content_type = "application/json"
+    else:
+        data, content_type = None, "application/json"
     upstream = urllib.request.Request(
         f"http://127.0.0.1:{engine_port}{path}", data=data,
         method=str(req.get("method") or ("POST" if data else "GET")),
-        headers={"Content-Type": "application/json",
+        headers={"Content-Type": content_type,
                  "x-vivieen-token": engine_token})
     try:
         with urllib.request.urlopen(upstream, timeout=900) as feed:

@@ -55,13 +55,19 @@ final class RelayClient {
 
     /// Send one request to the Mac and call back with its reply.
     func send(path: String, method: String, body: Data?,
+              contentType: String? = nil,
               completion: @escaping (RelayReply?) -> Void) {
         let id = UUID().uuidString
         var request: [String: Any] = ["path": path, "method": method]
-        if let body, let text = String(data: body, encoding: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: body) {
-            _ = text
-            request["body"] = json
+        if let body, !body.isEmpty {
+            if let json = try? JSONSerialization.jsonObject(with: body) {
+                request["body"] = json
+            } else {
+                // Audio takes, photos, anything not JSON: base64 with the
+                // content type, so the Mac can rebuild the exact request.
+                request["raw"] = body.base64EncodedString()
+                request["type"] = contentType ?? "application/octet-stream"
+            }
         }
         lock.lock()
         waiters[id] = { reply in completion(reply) }

@@ -29,6 +29,13 @@ private func removeInputAccessory(from webView: WKWebView) {
     object_setClass(target, subclass)
 }
 
+/// A Swift string as a JS literal, quotes and all.
+private func jsString(_ value: String) -> String {
+    let data = try? JSONSerialization.data(withJSONObject: [value])
+    let text = data.flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
+    return String(text.dropFirst().dropLast())
+}
+
 /// The Mac's renderer, unchanged, inside WKWebView. Auth rides on a
 /// cookie (the server accepts it as an equal of the Electron header)
 /// because WebKit cannot attach a header to every subresource and
@@ -132,6 +139,18 @@ struct CompanionWebView: UIViewRepresentable {
               } catch (e) { window.webkit.messageHandlers.viv.postMessage('STATE fail ' + e); }
             }, 5000);
             """, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        // A websocket cannot be opened against viv://app - location.host
+        // is literally "app" - and it cannot carry a cookie or a header
+        // cross-origin either, so live talk had nowhere to connect and
+        // nothing to identify itself with (owner, 2026-08-03). Hand the
+        // page the Mac's real address and the token; sockets use them
+        // directly, which also makes it plain that live talk is a
+        // same-network feature.
+        let lan = WKUserScript(source: """
+            window.VIV_LAN = \(jsString(address));
+            window.VIV_TOKEN = \(jsString(token));
+            """, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        configuration.userContentController.addUserScript(lan)
         configuration.userContentController.addUserScript(probe)
         configuration.userContentController.add(context.coordinator, name: "viv")
         configuration.userContentController.add(context.coordinator, name: "pip")

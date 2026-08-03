@@ -81,14 +81,20 @@ def _security_headers(response):
 
 
 def _client_token(source):
-    """The auth token from either the Electron-injected header or the
-    pairing cookie - iOS runs the renderer in a WKWebView, which cannot
-    add a header to every subresource and socket, but a cookie rides
-    along on all of them."""
+    """The auth token from the Electron-injected header, the pairing
+    cookie, or - for websockets only - the query string. iOS runs the
+    renderer in a WKWebView, which cannot add a header to a socket; and
+    once the page lives on its own origin the cookie stops riding along
+    either, so a socket has nowhere else to say who it is."""
     supplied = source.headers.get("x-vivieen-token", "")
     if not supplied:
         try:
             supplied = source.cookies.get("vivieen-token", "") or ""
+        except Exception:
+            supplied = ""
+    if not supplied:
+        try:
+            supplied = source.query_params.get("token", "") or ""
         except Exception:
             supplied = ""
     return supplied

@@ -173,8 +173,13 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         direct.httpMethod = method
         direct.httpBody = body
         direct.setValue(token, forHTTPHeaderField: "x-vivieen-token")
+        // Keep the page's own content type - a multipart upload carries a
+        // boundary, and calling it JSON makes the Mac unable to parse it.
         if body != nil {
-            direct.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            direct.setValue(
+                task.request.value(forHTTPHeaderField: "Content-Type")
+                    ?? "application/json",
+                forHTTPHeaderField: "Content-Type")
         }
         session.dataTask(with: direct) { [weak self] data, response, error in
             guard let self else { return }
@@ -199,7 +204,8 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
 
     private func viaRelay(_ task: WKURLSchemeTask, requested: URL, path: String,
                           method: String, body: Data?) {
-        relay.send(path: path, method: method, body: body) { [weak self] reply in
+        relay.send(path: path, method: method, body: body,
+                   contentType: task.request.value(forHTTPHeaderField: "Content-Type")) { [weak self] reply in
             guard let self else { return }
             guard let reply else {
                 self.finish(task, url: requested,
