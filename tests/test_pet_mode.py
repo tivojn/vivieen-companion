@@ -257,9 +257,9 @@ class PetInputBridgeTests(unittest.TestCase):
             expression.GAZE_DX, expression.GAZE_DX[1:])])
         self.assertGreaterEqual(max(expression.GAZE_DY), 2.0)
         server = (ROOT / "server" / "app.py").read_text()
-        self.assertIn("RUNTIME_VERSION = 15", server)
+        self.assertIn("RUNTIME_VERSION = 16", server)
         export_source = (ROOT / "studio" / "export.py").read_text()
-        self.assertIn("dict(v=15,", export_source)
+        self.assertIn("dict(v=16,", export_source)
 
     def test_body_parts_are_classified_and_react(self):
         # Clicks resolve to the nearest baked bone segment (head stays
@@ -1725,7 +1725,7 @@ class PetMatteTests(unittest.TestCase):
                       export)
         server = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
         self.assertIn('clip.get("alpha_stream_hevc")', server)
-        self.assertIn("RUNTIME_VERSION = 15", server)
+        self.assertIn("RUNTIME_VERSION = 16", server)
         renderer = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn("canPlayType('video/mp4; codecs=\"hvc1\"')", renderer)
         self.assertIn("const bail=setTimeout(()=>res(false),6000);", renderer)
@@ -2139,6 +2139,23 @@ class PocketBarAndToolsTests(unittest.TestCase):
         # The engine only ever starts it behind the opt-in file.
         app_source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
         self.assertIn("import relay_agent", app_source)
+
+    def test_alpha_twins_keep_the_definition_they_were_given(self):
+        # The master is 720x1088 because that is the generator's ceiling,
+        # so whatever the encode throws away is gone for good. Measured
+        # against the master on the idle loop (2026-08-03): q60/alpha0.75
+        # scored SSIM 0.9845, q85/alpha0.95 scored 0.9936 - 59% less
+        # error for about a megabyte, which a phone fetches once.
+        source = (ROOT / "studio" / "export.py").read_text(encoding="utf-8")
+        self.assertIn('HEVC_VIDEO_QUALITY = "85"', source)
+        self.assertIn('HEVC_ALPHA_QUALITY = "0.95"', source)
+        # The settings must live in the cache NAME: an mtime check cannot
+        # see a changed knob, so every existing twin would survive it.
+        self.assertIn('f".q{HEVC_VIDEO_QUALITY}a{HEVC_ALPHA_QUALITY}.hevc.mov"',
+                      source)
+        # The desk's own copy climbed too, to the knee of its curve.
+        motion = (ROOT / "studio" / "motion.py").read_text(encoding="utf-8")
+        self.assertIn('"-crf", "18"', motion)
 
     def test_a_recording_keeps_one_multipart_boundary(self):
         # Serialising FormData twice mints two different random

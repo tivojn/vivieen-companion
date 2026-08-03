@@ -229,7 +229,7 @@ def active_slug():
         return None
 
 
-RUNTIME_VERSION = 15  # v15: sheets ride along as the no-HEVC fallback (iOS simulator)
+RUNTIME_VERSION = 16  # v16: high-definition alpha twins (HEVC q85, VP9 crf18)
 
 
 def ensure_runtime(slug, log=print):

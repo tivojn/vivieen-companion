@@ -119,12 +119,32 @@ def _publish_body_extras(body_dir, body_meta, destination, log):
         log(f"  part reactions skipped for this publish: {error}")
 
 
+# Her definition on a phone, measured against the ProRes master (SSIM on
+# the idle loop, 2026-08-03):
+#
+#   q:v=60 alpha=0.75   436 KB   0.9845   <- what shipped
+#   q:v=75 alpha=0.95   980 KB   0.9902
+#   q:v=85 alpha=0.95  1364 KB   0.9936   <- here
+#   q:v=92 alpha=0.95  2396 KB   0.9960
+#
+# 85 cuts the error against the master by 59% for about a megabyte, and a
+# phone fetches each clip once and keeps it. Past 85 the curve flattens
+# while the file nearly doubles. The master is 720x1088 because that is
+# the generator's ceiling, so this is the last real detail available -
+# worth not throwing away in the encode.
+HEVC_ALPHA_QUALITY = "0.95"
+HEVC_VIDEO_QUALITY = "85"
+
+
 def _hevc_alpha_for_web(source, destination, log=print):
     """WebKit refuses the ProRes-4444 alpha master (MEDIA_ERR 4 on the
     iPhone, 2026-08-02) - Safari's transparent-video format is HEVC with
     alpha (hvc1 via VideoToolbox). Encode once beside the master, reuse
     on every later publish."""
-    cache = source[:-len(".mov")] + ".hevc.mov"
+    # The quality lives in the cache NAME: changing the settings must
+    # invalidate every twin ever made, and an mtime check cannot see that.
+    cache = (source[:-len(".mov")]
+             + f".q{HEVC_VIDEO_QUALITY}a{HEVC_ALPHA_QUALITY}.hevc.mov")
     fresh = (os.path.isfile(cache)
              and os.path.getmtime(cache) >= os.path.getmtime(source))
     if not fresh:
@@ -134,7 +154,8 @@ def _hevc_alpha_for_web(source, destination, log=print):
         result = subprocess.run(
             [ffmpeg, "-y", "-v", "error", "-i", source,
              "-c:v", "hevc_videotoolbox", "-allow_sw", "1",
-             "-alpha_quality", "0.75", "-q:v", "60",
+             "-alpha_quality", HEVC_ALPHA_QUALITY,
+             "-q:v", HEVC_VIDEO_QUALITY,
              "-tag:v", "hvc1", "-pix_fmt", "bgra", "-an", cache],
             capture_output=True, text=True)
         if result.returncode != 0 or not os.path.isfile(cache):
@@ -361,7 +382,7 @@ def export(slug, dest, quality=92, states=blink.N_STATES, log=print,
 
     timing = dict(close=blink.CLOSE, hold=blink.HOLD, open=blink.OPEN,
                   settle=blink.SETTLE, creep=blink.CREEP)
-    manifest = dict(v=15, w=W, h=H, avatar=dict(slug=slug, name=m["name"]),
+    manifest = dict(v=16, w=W, h=H, avatar=dict(slug=slug, name=m["name"]),
                     visemes=names, frames=frames, eyes=eyes, gaze=gaze, brow=brow,
                     cheek=cheek, eyebag=eyebag,
                     neck=expression.neck(klm), cutout=cutout_meta,
