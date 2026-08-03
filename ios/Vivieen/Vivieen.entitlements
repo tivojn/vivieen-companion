@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The Keychain refuses every write with -34018 unless the app has an
+       access group; unsigned Simulator builds get none by default, which
+       is where solo mode's synced keys were being dropped on the floor
+       (2026-08-03). -->
+  <key>keychain-access-groups</key>
+  <array>
+    <string>$(AppIdentifierPrefix)com.vivieen.pocket</string>
+  </array>
+</dict>
+</plist>

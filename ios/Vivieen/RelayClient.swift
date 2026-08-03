@@ -59,6 +59,7 @@ final class RelayClient {
     /// Send one request to the Mac and call back with its reply.
     func send(path: String, method: String, body: Data?,
               contentType: String? = nil,
+              timeout: TimeInterval = 600,
               completion: @escaping (RelayReply?) -> Void) {
         let id = UUID().uuidString
         var request: [String: Any] = ["path": path, "method": method]
@@ -84,7 +85,7 @@ final class RelayClient {
             }
         }
         // A turn through an agent, with tools, can run many minutes.
-        DispatchQueue.global().asyncAfter(deadline: .now() + 600) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
             self.lock.lock()
             let pending = self.waiters.removeValue(forKey: id)
             self.lock.unlock()

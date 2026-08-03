@@ -1255,6 +1255,10 @@ function routedStatus(route,fallback=''){
 
 async function poll(){
   try{const h=await(await fetch('health')).json();
+    // The scheme answers an unreachable Mac with {offline:true} - JSON,
+    // so .json() succeeds and only this check reaches the catch.
+    if(h.offline)throw new Error('offline');
+    SOLO.misses=0;soloExit();
     const providerOK=h.llm_ok??h.provider_ok??h.ollama;
     // The chat button's disabled state doubles as a monitor-mode lock, so pet
     // push-to-talk needs its own readiness signal.
@@ -1270,8 +1274,344 @@ async function poll(){
                            :'model unreachable \u2014 check settings','busy');
     }
   }catch(e){providerReady=false;
-    if(monitorEnabled)renderMonitorStatus();else setStatus('server offline','');}
-  setTimeout(poll,1500);
+    if(IS_IOS){SOLO.misses++;if(SOLO.misses>=2)soloEnter();}
+    if(SOLO.active){providerReady=true;}
+    else if(monitorEnabled)renderMonitorStatus();
+    else setStatus('server offline','');}
+  setTimeout(poll,SOLO.active?5000:1500);
+}
+
+
+/* ================= solo: her brain without the Mac =================
+   Everything above assumes the engine answers. Solo is what remains when
+   it does not: the page (from cache), her sprites (from cache), and a
+   native proxy that spends keys the phone synced while the Mac was in
+   reach - the page only ever knows key NAMES. Chat, voice, ears and
+   image come straight from the providers; EnConvo and live talk stay
+   Mac-bound and say so honestly. */
+const SOLO={active:false,cfg:null,misses:0};
+async function soloLoad(){
+  try{SOLO.cfg=await(await fetch('solo/config')).json();}
+  catch(e){SOLO.cfg=null;}
+}
+function soloHas(name){return Boolean(SOLO.cfg&&SOLO.cfg.has&&SOLO.cfg.has[name]);}
+function soloLLM(){
+  const c=(SOLO.cfg&&SOLO.cfg.llm)||{};
+  const OPENAI_SHAPE={openai:'https://api.openai.com/v1',xai:'https://api.x.ai/v1',
+    groq:'https://api.groq.com/openai/v1',deepseek:'https://api.deepseek.com/v1',
+    openrouter:'https://openrouter.ai/api/v1',mistral:'https://api.mistral.ai/v1',
+    together:'https://api.together.xyz/v1'};
+  if(soloHas('llm.api_key')){
+    if(OPENAI_SHAPE[c.provider])
+      return{shape:'openai',base:c.base_url||OPENAI_SHAPE[c.provider],
+        model:c.model||'gpt-5-mini',key:'llm.api_key',style:'bearer',label:c.provider};
+    if(c.provider==='anthropic')
+      return{shape:'anthropic',base:c.base_url||'https://api.anthropic.com/v1',
+        model:c.model||'claude-sonnet-5',key:'llm.api_key',style:'x-api-key',label:'anthropic'};
+    if(c.provider==='gemini')
+      return{shape:'gemini',base:c.base_url||'https://generativelanguage.googleapis.com/v1beta',
+        model:c.model||'gemini-2.5-flash',key:'llm.api_key',style:'query:key',label:'gemini'};
+  }
+  // The Mac inherits its brain from EnConvo; solo cannot. The live-talk
+  // xAI key doubles as a chat key, so she still thinks.
+  if(soloHas('live.xai_api_key'))
+    return{shape:'openai',base:'https://api.x.ai/v1',model:'grok-3-mini',
+      key:'live.xai_api_key',style:'bearer',label:'grok'};
+  return null;
+}
+async function soloCall(spec){
+  const r=await(await fetch('solo/call',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(spec)})).json();
+  if(r.error)throw new Error(r.error);
+  return r;
+}
+const soloText=r=>{
+  const bytes=atob(r.body_b64||'');
+  return JSON.parse(bytes.length?decodeURIComponent(escape(bytes)):'{}');
+};
+async function soloChat(){
+  const p=soloLLM();
+  if(!p)throw new Error('no chat key synced - open the app near your Mac once');
+  const system=((SOLO.cfg||{}).persona||{}).system||'Reply briefly.';
+  const recent=history.slice(-12);
+  let spec;
+  if(p.shape==='anthropic'){
+    spec={url:p.base+'/messages',key:p.key,style:p.style,
+      headers:{'Content-Type':'application/json','anthropic-version':'2023-06-01'},
+      body:{model:p.model,max_tokens:400,system,
+        messages:recent.map(m=>({role:m.role,content:m.content}))}};
+  }else if(p.shape==='gemini'){
+    spec={url:p.base+'/models/'+p.model+':generateContent',key:p.key,style:'query:key',
+      headers:{'Content-Type':'application/json'},
+      body:{system_instruction:{parts:[{text:system}]},
+        contents:recent.map(m=>({role:m.role==='assistant'?'model':'user',
+          parts:[{text:m.content}]}))}};
+  }else{
+    spec={url:p.base+'/chat/completions',key:p.key,style:'bearer',
+      headers:{'Content-Type':'application/json'},
+      body:{model:p.model,max_tokens:400,
+        messages:[{role:'system',content:system},...recent]}};
+  }
+  const r=await soloCall({url:spec.url,method:'POST',headers:spec.headers,
+    key:spec.key,key_style:spec.style,
+    body_b64:btoa(unescape(encodeURIComponent(JSON.stringify(spec.body))))});
+  const d=soloText(r);
+  if(r.status>=300)throw new Error((d.error&&(d.error.message||d.error))||('provider said '+r.status));
+  if(p.shape==='anthropic')return((d.content||[])[0]||{}).text||'';
+  if(p.shape==='gemini')
+    return(((d.candidates||[])[0]||{}).content||{parts:[]}).parts.map(x=>x.text||'').join('');
+  return(((d.choices||[])[0]||{}).message||{}).content||'';
+}
+
+/* Voice. ElevenLabs first (it ships character timestamps, so the mouth
+   keeps time); OpenAI-shape as the fallback. No key, no voice - text
+   still flows. */
+function soloTTSPick(){
+  const c=(SOLO.cfg&&SOLO.cfg.tts)||{};
+  if(c.provider==='elevenlabs'&&soloHas('tts.api_key'))
+    return{kind:'eleven',key:'tts.api_key',voice:c.voice};
+  if(soloHas('live.eleven_api_key'))
+    return{kind:'eleven',key:'live.eleven_api_key',voice:c.voice};
+  if(c.provider==='openai'&&soloHas('tts.api_key'))
+    return{kind:'openai',key:'tts.api_key',voice:c.voice};
+  return null;
+}
+async function soloTTS(text){
+  const pick=soloTTSPick();
+  if(!pick)return null;
+  if(pick.kind==='eleven'){
+    const voice=pick.voice||'21m00Tcm4TlvDq8ikWAM';
+    const r=await soloCall({url:'https://api.elevenlabs.io/v1/text-to-speech/'
+        +voice+'/with-timestamps?output_format=mp3_44100_96',
+      method:'POST',key:pick.key,key_style:'xi-api-key',
+      headers:{'Content-Type':'application/json'},
+      body_b64:btoa(unescape(encodeURIComponent(JSON.stringify(
+        {text,model_id:'eleven_turbo_v2_5'}))))});
+    const d=soloText(r);
+    if(r.status>=300||!d.audio_base64)
+      throw new Error('voice: '+((d.detail&&d.detail.message)||r.status));
+    return{b64:d.audio_base64,track:soloCharTrack(d.alignment)};
+  }
+  const r=await soloCall({url:'https://api.openai.com/v1/audio/speech',
+    method:'POST',key:pick.key,key_style:'bearer',
+    headers:{'Content-Type':'application/json'},
+    body_b64:btoa(unescape(encodeURIComponent(JSON.stringify(
+      {model:'gpt-4o-mini-tts',input:text,voice:pick.voice||'alloy',
+       response_format:'wav'}))))});
+  if(r.status>=300)throw new Error('voice: provider said '+r.status);
+  return{b64:r.body_b64,track:null};
+}
+
+/* Ears: raw WAV straight to Deepgram, or multipart to ElevenLabs
+   Scribe / an OpenAI-shape Whisper. */
+function soloSTTPick(){
+  const c=(SOLO.cfg&&SOLO.cfg.stt)||{};
+  if(c.provider==='deepgram'&&soloHas('stt.api_key'))
+    return{kind:'deepgram',key:'stt.api_key'};
+  if((c.provider==='openai'||c.provider==='groq')&&soloHas('stt.api_key'))
+    return{kind:'whisper',key:'stt.api_key',
+      base:c.provider==='groq'?'https://api.groq.com/openai/v1':'https://api.openai.com/v1',
+      model:c.provider==='groq'?'whisper-large-v3':'whisper-1'};
+  if(soloHas('live.eleven_api_key'))
+    return{kind:'scribe',key:'live.eleven_api_key'};
+  return null;
+}
+async function soloSTT(wavBytes){
+  const pick=soloSTTPick();
+  if(!pick)throw new Error('no speech key synced');
+  if(pick.kind==='deepgram'){
+    const r=await soloCall({url:'https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true',
+      method:'POST',key:pick.key,key_style:'token',
+      headers:{'Content-Type':'audio/wav'},body_b64:b64FromBytes(wavBytes)});
+    const d=soloText(r);
+    return((((d.results||{}).channels||[{}])[0].alternatives||[{}])[0].transcript||'').trim();
+  }
+  const boundary='----viv'+Date.now().toString(36);
+  const enc=new TextEncoder();
+  const field=(name,value)=>enc.encode('--'+boundary
+    +'\r\nContent-Disposition: form-data; name="'+name+'"\r\n\r\n'+value+'\r\n');
+  const head=enc.encode('--'+boundary
+    +'\r\nContent-Disposition: form-data; name="file"; filename="take.wav"'
+    +'\r\nContent-Type: audio/wav\r\n\r\n');
+  const tail=enc.encode('\r\n--'+boundary+'--\r\n');
+  const extra=pick.kind==='scribe'?field('model_id','scribe_v1')
+    :field('model',pick.model);
+  const body=new Uint8Array(head.length+wavBytes.length+tail.length+extra.length);
+  body.set(head,0);body.set(wavBytes,head.length);
+  body.set(enc.encode('\r\n'),head.length+wavBytes.length);
+  const rest=head.length+wavBytes.length+2;
+  body.set(extra,rest-2);
+  // simpler assembly: rebuild in order
+  const parts=[head,wavBytes,enc.encode('\r\n'),extra,tail];
+  let size=0;parts.forEach(x=>size+=x.length);
+  const whole=new Uint8Array(size);let at=0;
+  parts.forEach(x=>{whole.set(x,at);at+=x.length;});
+  const url=pick.kind==='scribe'?'https://api.elevenlabs.io/v1/speech-to-text'
+    :pick.base+'/audio/transcriptions';
+  const r=await soloCall({url,method:'POST',key:pick.key,
+    key_style:pick.kind==='scribe'?'xi-api-key':'bearer',
+    headers:{'Content-Type':'multipart/form-data; boundary='+boundary},
+    body_b64:b64FromBytes(whole)});
+  const d=soloText(r);
+  if(r.status>=300)throw new Error('ears: provider said '+r.status);
+  return(d.text||'').trim();
+}
+
+/* A picture with no Mac: the xAI key draws too. */
+async function soloImage(prompt){
+  const key=soloHas('image.api_key')?'image.api_key'
+    :soloHas('live.xai_api_key')?'live.xai_api_key':null;
+  if(!key)return null;
+  const base=key==='image.api_key'
+    ?(((SOLO.cfg||{}).image||{}).base_url||'https://api.openai.com/v1')
+    :'https://api.x.ai/v1';
+  const model=key==='image.api_key'
+    ?(((SOLO.cfg||{}).image||{}).model||'gpt-image-1'):'grok-2-image';
+  const r=await soloCall({url:base+'/images/generations',method:'POST',
+    key,key_style:'bearer',headers:{'Content-Type':'application/json'},
+    body_b64:btoa(unescape(encodeURIComponent(JSON.stringify(
+      {model,prompt,n:1,response_format:'b64_json'}))))});
+  const d=soloText(r);
+  if(r.status>=300)throw new Error('image: '+((d.error&&d.error.message)||r.status));
+  const row=(d.data||[])[0]||{};
+  if(!row.b64_json)return null;
+  return'data:image/png;base64,'+row.b64_json;
+}
+
+/* ---- the mouth, without the server's aligner --------------------------
+   The Mac derives viseme timing with a real G2P; that cannot ride to the
+   phone. This is the same TIMING MODEL (class durations, pause table,
+   measured on the Mac against Kokoro ground truth) with a letter-class
+   front end - looser than the server's tiers and honest about it. With
+   ElevenLabs timestamps the timing is real and only the shapes are
+   approximate. */
+const SOLO_DIG={th:'TH',ch:'CH',sh:'CH',ph:'FF',wh:'ou',ck:'kk',qu:'kk',
+  ee:'ih',oo:'ou',ea:'ih',ai:'E',ay:'E',ou:'ou',ow:'oh',oa:'oh'};
+const SOLO_LET={a:'aa',e:'E',i:'ih',o:'oh',u:'ou',y:'ih',w:'ou',m:'PP',
+  b:'PP',p:'PP',f:'FF',v:'FF',t:'DD',d:'DD',n:'nn',l:'nn',k:'kk',g:'kk',
+  c:'kk',q:'kk',j:'CH',s:'SS',z:'SS',x:'SS',r:'RR',h:'kk'};
+const SOLO_DUR={aa:.105,E:.105,ih:.105,oh:.105,ou:.105,PP:.058,FF:.095,
+  TH:.095,DD:.058,kk:.058,CH:.095,SS:.095,nn:.068,RR:.068};
+const SOLO_PAUSE={',':.20,';':.24,':':.24,'.':.34,'!':.34,'?':.34,
+  '—':.26,'…':.40};
+function soloItems(text){
+  const lower=String(text||'').toLowerCase();
+  const out=[];
+  for(let i=0;i<lower.length;i++){
+    const two=lower.slice(i,i+2);
+    if(SOLO_DIG[two]){out.push({v:SOLO_DIG[two],d:SOLO_DUR[SOLO_DIG[two]]||.08});i++;continue;}
+    const ch=lower[i];
+    if(SOLO_LET[ch]){out.push({v:SOLO_LET[ch],d:SOLO_DUR[SOLO_LET[ch]]||.075});continue;}
+    if(SOLO_PAUSE[ch]){out.push({v:'sil',d:SOLO_PAUSE[ch]});continue;}
+    if(ch===' ')out.push({v:null,d:.03});
+  }
+  return out;
+}
+function soloEstimateTrack(text,total){
+  const items=soloItems(text);
+  let sum=0;items.forEach(x=>sum+=x.d);
+  if(!items.length||!sum||!total)return[[0,'sil']];
+  const ev=[[0,'sil']];let t=0;
+  for(const item of items){
+    const dur=item.d/sum*total;
+    if(item.v)ev.push([t,item.v]);
+    t+=dur;
+  }
+  ev.push([Math.max(0,total-.02),'sil']);
+  return ev;
+}
+function soloCharTrack(alignment){
+  if(!alignment||!alignment.characters)return null;
+  const chars=alignment.characters,
+    starts=alignment.character_start_times_seconds||[];
+  const ev=[[0,'sil']];let prevEnd=0;
+  for(let i=0;i<chars.length;i++){
+    const ch=String(chars[i]).toLowerCase(),t=Number(starts[i]||0);
+    if(t-prevEnd>0.15)ev.push([prevEnd+.04,'sil']);
+    const two=ch+String(chars[i+1]||'').toLowerCase();
+    const v=SOLO_DIG[two]||SOLO_LET[ch]||(SOLO_PAUSE[ch]?'sil':null);
+    if(v)ev.push([t,v]);
+    prevEnd=t;
+  }
+  ev.push([prevEnd+.15,'sil']);
+  return ev;
+}
+
+let soloToldEnconvo=false;
+async function soloTurn(text){
+  history.push({role:'user',content:text});
+  threadPush('user',text);
+  if(window.ENCONVO&&ENCONVO.agent&&!soloToldEnconvo){
+    soloToldEnconvo=true;
+    flashPrompt('EnConvo needs your Mac — her solo brain is answering');
+  }
+  setStatus('solo · thinking','busy');
+  try{
+    // "draw me / make a picture" works solo too - the xAI key paints.
+    const wantsImage=/\b(draw|paint|generate|make|create)\b[^.]{0,40}\b(picture|image|photo|drawing|painting)\b/i.test(text);
+    const reply=await soloChat();
+    history.push({role:'assistant',content:reply});
+    setCaption(reply);threadPush('her',reply);
+    if(wantsImage){
+      setStatus('solo · painting','busy');
+      const art=await soloImage(text).catch(e=>{flashPrompt('image: '+String(e.message||e).slice(0,70));return null;});
+      if(art)threadAttachments([{url:art,name:'solo image'}]);
+    }
+    const voice=await soloTTS(reply).catch(e=>{flashPrompt('voice: '+String(e.message||e).slice(0,70));return null;});
+    if(voice){
+      setStatus('solo · speaking','on');
+      await speak(voice.b64,voice.track||(d=>soloEstimateTrack(reply,d)));
+    }
+    const p=soloLLM();
+    setStatus('solo · '+(p?p.label:'ready'),'on');
+  }catch(e){
+    const why=String(e.message||e).slice(0,110);
+    setCaption('(solo trouble: '+why+')');
+    threadPush('her','(solo trouble: '+why+')');
+    setStatus('solo · error','');
+  }
+}
+function soloEnter(){
+  if(SOLO.active)return;
+  if(!soloLLM())return;               // nothing synced - honest offline stays
+  SOLO.active=true;
+  providerReady=true;ptt.disabled=false;
+  document.documentElement.classList.add('solo');
+  const p=soloLLM();
+  setStatus('solo · '+(p?p.label:'ready'),'on');
+  flashPrompt('Mac unreachable · running solo on your own keys');
+}
+function soloExit(){
+  if(!SOLO.active)return;
+  SOLO.active=false;soloToldEnconvo=false;
+  document.documentElement.classList.remove('solo');
+  fetch('solo/sync',{method:'POST'}).catch(()=>{});
+}
+if(IS_IOS){
+  soloLoad();
+  // Warm every asset the manifest names while the Mac is in reach, so
+  // solo has a complete face to draw. The scheme handler does the
+  // storing; this walk just requests.
+  setTimeout(async()=>{
+    try{
+      const seen=new Set();
+      const walk=node=>{
+        if(typeof node==='string'){
+          if(node.startsWith('assets/'))seen.add(node);
+        }else if(Array.isArray(node))node.forEach(walk);
+        else if(node&&typeof node==='object')Object.values(node).forEach(walk);
+      };
+      walk(M);
+      const queue=[...seen];
+      const pump=async()=>{
+        while(queue.length){
+          const src=queue.shift();
+          try{await fetch(src,{cache:'no-store'});}catch(e){}
+        }
+      };
+      await Promise.all([pump(),pump(),pump()]);
+    }catch(e){}
+  },6000);
 }
 
 /* ================= face runtime =================
@@ -2947,10 +3287,24 @@ async function speak(b64,tr){
   let buf;
   try{buf=await actx.decodeAudioData(u8.buffer.slice(0));}
   catch(e){audbg('decode FAIL: '+e);return;}
-  // The app says it out loud; WebAudio below only keeps the time.
+  // Solo hands a BUILDER because it cannot know the duration until the
+  // audio is decoded; the server always sends a finished track.
+  if(typeof tr==='function')tr=tr(buf.duration);
+  // The app says it out loud; WebAudio below only keeps the time. WAV
+  // ships its PCM in the file; anything else (solo mp3) uses the decoded
+  // buffer, which is the same samples at the context rate.
   if(NATIVE_SPEECH()){
-    const wav=wavInfo(u8);
-    nativeSpeak(b64FromBytes(wav.data),wav.rate);
+    if(u8[0]===0x52&&u8[1]===0x49&&u8[2]===0x46&&u8[3]===0x46){
+      const wav=wavInfo(u8);
+      nativeSpeak(b64FromBytes(wav.data),wav.rate);
+    }else{
+      const ch=buf.getChannelData(0),pcm=new Int16Array(ch.length);
+      for(let i=0;i<ch.length;i++){
+        const v=Math.max(-1,Math.min(1,ch[i]));
+        pcm[i]=v<0?v*32768:v*32767;
+      }
+      nativeSpeak(b64FromBytes(new Uint8Array(pcm.buffer)),buf.sampleRate);
+    }
   }
   const src=actx.createBufferSource();src.buffer=buf;localSource=src;
   analyser=actx.createAnalyser();analyser.fftSize=2048;analyser.smoothingTimeConstant=0.6;
@@ -3077,6 +3431,7 @@ function enconvoSlash(text){
   return true;
 }
 async function turn(text,spoken=false){
+  if(SOLO.active)return soloTurn(text);
   ptt.disabled=true;elYou.textContent=text;setCaption('');
   threadPush('user',text);
   setStatus('thinking','busy');
@@ -3406,6 +3761,14 @@ async function stopNativeRec(){
   }
   setStatus('transcribing','busy');
   try{
+    if(SOLO.active){
+      const blob=wavFromPcm(chunks,PTT.rate);
+      const bytes=new Uint8Array(await blob.arrayBuffer());
+      const heard=await soloSTT(bytes);
+      if(!heard){flashPrompt('I did not catch that');setStatus('ready','on');return;}
+      await turn(heard,true);
+      return;
+    }
     const body=new FormData();
     body.append('audio',wavFromPcm(chunks,PTT.rate),'take.wav');
     const response=await fetch('stt',{method:'POST',body});
@@ -4354,7 +4717,7 @@ if(IS_IOS){
   setInterval(async()=>{
     try{
       const h=await(await fetch('health',{cache:'no-store'})).json();
-      if(!h.boot)return;
+      if(h.offline||!h.boot)return;
       if(!bootSeen)bootSeen=h.boot;
       else if(bootSeen!==h.boot)location.reload();
     }catch(e){}
@@ -4451,7 +4814,9 @@ if(IS_IOS){
   async function openAvfan(){
     if(AVFAN.open)return;
     try{
-      const feed=await(await fetch('api/avatars')).json();
+      let feed;
+      try{feed=await(await fetch('api/avatars')).json();}
+      catch(e){flashPrompt('Switching avatars needs your Mac');closeAvfan();return;}
       AVFAN.list=(feed.avatars||[]).filter(a=>a.status==='ready')
         .map(a=>({slug:a.slug,name:a.name,active:a.slug===feed.active}));
     }catch(e){return;}

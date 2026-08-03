@@ -2844,6 +2844,52 @@ async def say(s: Say):
     return await _say(s.text, P.load())
 
 
+# ------------------------------------------------------------ solo sync
+# The phone's independent mode needs the provider config and the keys.
+# Config travels in the clear; every SECRET is AES-GCM encrypted under a
+# key derived (HKDF) from the pairing token - which the relay never sees -
+# so the payload can cross the blind mailbox without anything readable
+# ever resting on third-party disk.
+
+@app.get("/api/sync/solo")
+async def api_sync_solo():
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+    from cryptography.hazmat.primitives import hashes as _hashes
+
+    cfg = P.load()
+    key = HKDF(algorithm=_hashes.SHA256(), length=32,
+               salt=b"viv-solo-sync", info=b"v1").derive(
+                   AUTH_TOKEN.encode())
+    aead = AESGCM(key)
+
+    def seal(value):
+        nonce = secrets.token_bytes(12)
+        return {"n": base64.b64encode(nonce).decode(),
+                "c": base64.b64encode(
+                    aead.encrypt(nonce, value.encode(), None)).decode()}
+
+    sealed = {}
+    for block_name, fields in (("llm", ("api_key",)), ("tts", ("api_key",)),
+                               ("stt", ("api_key",)), ("image", ("api_key",)),
+                               ("video", ("api_key",)),
+                               ("live", ("xai_api_key", "eleven_api_key"))):
+        for field in fields:
+            value = (cfg.get(block_name) or {}).get(field) or ""
+            if value:
+                sealed[f"{block_name}.{field}"] = seal(value)
+
+    config = {}
+    for name in ("llm", "tts", "stt", "image", "video", "live"):
+        block = dict(cfg.get(name) or {})
+        for field in ("api_key", "xai_api_key", "eleven_api_key"):
+            block.pop(field, None)
+        config[name] = block
+    config["persona"] = dict(cfg.get("persona") or {})
+    return {"v": 1, "updated_at": int(time.time()),
+            "config": config, "secrets": sealed}
+
+
 # ------------------------------------------------------------ enconvo lane
 # EnConvo's local gateway (port 54535) routes into every extension. The
 # pocket app couples to any EnConvo agent through here and behaves as one

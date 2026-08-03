@@ -69,18 +69,30 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         super.init()
     }
 
-    /// The big, immutable things: worth keeping, safe to keep. Avatar
-    /// thumbnails belong here too - a face at card size never changes,
-    /// and fetching three of them on every open is what made the deck
-    /// feel slow (owner, 2026-08-03).
+    /// Everything her page needs to STAND UP is cacheable - the page
+    /// itself, its worklet, every asset, the manifest. That is what lets
+    /// the app open with the Mac asleep instead of a "can't reach your
+    /// Mac" screen (solo mode, 2026-08-03). Cached copies are refreshed
+    /// behind the scenes whenever the Mac answers, so a stale shell heals
+    /// itself on the next shared Wi-Fi.
     private func cacheable(_ path: String) -> Bool {
-        path.hasPrefix("/assets/")
+        bare(path) == "/"
+            || path.hasPrefix("/assets/")
             || path == "/live-worklet.js"
             || path.hasPrefix("/api/avatar/thumb")
     }
 
+    /// The path without its query. Boot fetches carry cache-busters
+    /// (?v=...), which would make every launch a different cache key and
+    /// the cache useless exactly when it is needed.
+    private func bare(_ path: String) -> String {
+        path.firstIndex(of: "?").map { String(path[path.startIndex..<$0]) } ?? path
+    }
+
     private func cacheURL(_ path: String) -> URL {
-        let safe = path.replacingOccurrences(of: "/", with: "_")
+        let key = bare(path)
+        let safe = key == "/" ? "__page"
+            : key.replacingOccurrences(of: "/", with: "_")
         return cacheRoot.appendingPathComponent(safe)
     }
 
@@ -135,6 +147,26 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         }
     }
 
+    /// Refresh one cached path from the Mac, silently, at most once per
+    /// launch per path. Failure is fine - the cache stays as it was.
+    private var refreshed = Set<String>()
+
+    private func refreshInBackground(_ path: String) {
+        lock.lock()
+        let skip = Date() < directOffUntil || refreshed.contains(bare(path))
+        if !skip { refreshed.insert(bare(path)) }
+        lock.unlock()
+        if skip { return }
+        var request = URLRequest(url: URL(string: address + path)!)
+        request.timeoutInterval = 10
+        request.setValue(token, forHTTPHeaderField: "x-vivieen-token")
+        session.dataTask(with: request) { [weak self] data, response, _ in
+            guard let self, let data, !data.isEmpty,
+                  (response as? HTTPURLResponse)?.statusCode == 200 else { return }
+            try? data.write(to: self.cacheURL(path))
+        }.resume()
+    }
+
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
         guard let requested = task.request.url else { return }
         adopt(task)
@@ -157,9 +189,54 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         let method = task.request.httpMethod ?? "GET"
         let body = ticket.flatMap(redeem) ?? task.request.httpBody
 
+        // Health is a LIVENESS PROBE, and a probe must be allowed to
+        // fail fast: routed through the relay's ten-minute reply window
+        // it never failed at all, the page's poll hung on its very first
+        // ask, and solo mode could not trigger (2026-08-03). Direct with
+        // a short fuse, one brief relay try, then an honest 503.
+        if bare(path) == "/health", method == "GET" {
+            var probe = URLRequest(url: URL(string: address + path)!)
+            probe.timeoutInterval = 4
+            probe.setValue(token, forHTTPHeaderField: "x-vivieen-token")
+            session.dataTask(with: probe) { [weak self] data, response, error in
+                guard let self else { return }
+                if error == nil, let data,
+                   (response as? HTTPURLResponse)?.statusCode == 200 {
+                    self.finish(task, url: requested, data: data,
+                                type: "application/json")
+                    return
+                }
+                self.relay.send(path: path, method: "GET", body: nil,
+                                timeout: 8) { reply in
+                    if let reply, reply.status == 200 {
+                        self.finish(task, url: requested, data: reply.data,
+                                    type: "application/json")
+                    } else {
+                        self.finish(task, url: requested,
+                                    data: Data("{\"offline\":true}".utf8),
+                                    type: "application/json", status: 503)
+                    }
+                }
+            }.resume()
+            return
+        }
+
+        // Solo mode: these paths are the PHONE's, never the Mac's. The
+        // page asks for a call by NAME of a key; the proxy injects the
+        // value from the iOS Keychain, so no key ever enters the page.
+        if bare(path).hasPrefix("/solo/") {
+            handleSolo(task, requested: requested, path: bare(path), body: body)
+            return
+        }
+
         if method == "GET", cacheable(path),
            let cached = try? Data(contentsOf: cacheURL(path)), !cached.isEmpty {
-            finish(task, url: requested, data: cached, type: mime(for: path))
+            finish(task, url: requested, data: cached, type: mime(for: bare(path)))
+            // Stale-while-revalidate: the cached copy answers NOW; a quiet
+            // background fetch keeps it honest whenever the Mac is
+            // actually there. Without this, caching the page would pin
+            // the app to whatever shell it saw first.
+            refreshInBackground(path)
             return
         }
 
@@ -230,5 +307,125 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
 
     func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {
         _ = retire(task)
+    }
+
+    /// Pull the solo config + keys from the Mac now (fire-and-forget).
+    func syncSolo() {
+        SoloStore.shared.sync(address: address, token: token)
+    }
+
+    // ------------------------------------------------------------ solo
+
+    private func json(_ task: WKURLSchemeTask, _ requested: URL,
+                      _ object: [String: Any], status: Int = 200) {
+        let data = (try? JSONSerialization.data(withJSONObject: object)) ?? Data()
+        finish(task, url: requested, data: data,
+               type: "application/json", status: status)
+    }
+
+    private func handleSolo(_ task: WKURLSchemeTask, requested: URL,
+                            path: String, body: Data?) {
+        switch path {
+        case "/solo/config":
+            var config = SoloStore.shared.config
+            // The page learns WHICH keys exist, never what they are.
+            var has: [String: Bool] = [:]
+            for name in ["llm.api_key", "tts.api_key", "stt.api_key",
+                         "image.api_key", "video.api_key",
+                         "live.xai_api_key", "live.eleven_api_key"] {
+                has[name] = !SoloStore.shared.secret(name).isEmpty
+            }
+            config["has"] = has
+            json(task, requested, config)
+        case "/solo/sync":
+            SoloStore.shared.sync(address: address, token: token)
+            json(task, requested, ["started": true])
+        case "/solo/call":
+            soloCall(task, requested: requested, body: body)
+        default:
+            json(task, requested, ["error": "unknown solo path"], status: 404)
+        }
+    }
+
+    /// One provider HTTPS call, made by the app on the page's behalf.
+    /// {url, method, headers{}, body_b64, key, key_style}
+    ///   key_style: "bearer" | "x-api-key" | "query:<name>" | "header:<Name>"
+    private func soloCall(_ task: WKURLSchemeTask, requested: URL, body: Data?) {
+        guard let body,
+              let spec = try? JSONSerialization.jsonObject(with: body)
+                as? [String: Any],
+              let target = spec["url"] as? String,
+              var url = URL(string: target),
+              url.scheme == "https",
+              let host = url.host else {
+            json(task, requested, ["error": "bad call spec"], status: 400)
+            return
+        }
+        guard SoloStore.shared.allowedHosts().contains(host) else {
+            json(task, requested,
+                 ["error": "host not allowed: \(host)"], status: 403)
+            return
+        }
+        let keyName = spec["key"] as? String ?? ""
+        let keyValue = keyName.isEmpty ? "" : SoloStore.shared.secret(keyName)
+        if !keyName.isEmpty && keyValue.isEmpty {
+            json(task, requested,
+                 ["error": "no key stored for \(keyName) - open the app "
+                    + "near your Mac once to sync"], status: 401)
+            return
+        }
+        let style = spec["key_style"] as? String ?? "bearer"
+        if style.hasPrefix("query:"), !keyValue.isEmpty,
+           var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            var items = parts.queryItems ?? []
+            items.append(URLQueryItem(
+                name: String(style.dropFirst("query:".count)), value: keyValue))
+            parts.queryItems = items
+            url = parts.url ?? url
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = spec["method"] as? String ?? "POST"
+        request.timeoutInterval = 300
+        for (name, value) in (spec["headers"] as? [String: String]) ?? [:] {
+            // The page supplies protocol headers, never credentials.
+            if name.lowercased() == "authorization" { continue }
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        if !keyValue.isEmpty {
+            switch style {
+            case "bearer":
+                request.setValue("Bearer \(keyValue)",
+                                 forHTTPHeaderField: "Authorization")
+            case "x-api-key":
+                request.setValue(keyValue, forHTTPHeaderField: "x-api-key")
+            case "xi-api-key":
+                request.setValue(keyValue, forHTTPHeaderField: "xi-api-key")
+            case "token":
+                request.setValue("Token \(keyValue)",
+                                 forHTTPHeaderField: "Authorization")
+            default:
+                if style.hasPrefix("header:") {
+                    request.setValue(keyValue, forHTTPHeaderField:
+                        String(style.dropFirst("header:".count)))
+                }
+            }
+        }
+        if let payload = spec["body_b64"] as? String {
+            request.httpBody = Data(base64Encoded: payload)
+        }
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self else { return }
+            if let error {
+                self.json(task, requested,
+                          ["error": error.localizedDescription], status: 502)
+                return
+            }
+            let http = response as? HTTPURLResponse
+            self.json(task, requested, [
+                "status": http?.statusCode ?? 0,
+                "type": http?.value(forHTTPHeaderField: "Content-Type") ?? "",
+                "body_b64": (data ?? Data()).base64EncodedString(),
+            ])
+        }.resume()
     }
 }
