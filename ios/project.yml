@@ -11,7 +11,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vivieen.pocket
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Vivieen/Info.plist
