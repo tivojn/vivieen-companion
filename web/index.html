@@ -4515,12 +4515,54 @@ if(IS_IOS){
   avfanDeck.addEventListener('pointerup',()=>{avfanDrag=null;});
   // The way in: a clean horizontal swipe across her - not a tap (face
   // play), not a vertical scroll (thread).
+  /* Pinch her the way you pinch a photo. The page itself never scales -
+     WebKit's own zoom is nailed shut, or a double-tap would leave the
+     whole app panned and headless - so two fingers drive HER scale
+     instead, between the standing view and the same face-closeup ceiling
+     the slider tops out at (owner, 2026-08-03). */
+  const pinch={points:new Map(),span:0,from:1,live:false};
+  const spanOf=()=>{
+    const [a,b]=[...pinch.points.values()];
+    return Math.hypot(a.x-b.x,a.y-b.y);
+  };
+  cv.addEventListener('pointerdown',e=>{
+    if(!IS_IOS||e.pointerType!=='touch')return;
+    pinch.points.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pinch.points.size===2){
+      pinch.span=spanOf();pinch.from=IOS_ZOOM;pinch.live=true;
+      stageSwipe=null;                       // two fingers is not a swipe
+      document.documentElement.classList.remove('zoom-open');
+    }
+  },true);
+  cv.addEventListener('pointermove',e=>{
+    if(!pinch.points.has(e.pointerId))return;
+    pinch.points.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(!pinch.live||pinch.points.size!==2)return;
+    const span=spanOf();
+    if(pinch.span<10)return;
+    const wanted=pinch.from*(span/pinch.span);
+    // Past a gentle threshold she frames on the head, exactly as the
+    // slider does, so pinching in lands on her face and not her knees.
+    setZoom(wanted,wanted>1.4);
+    e.preventDefault();
+  },{capture:true,passive:false});
+  const pinchEnd=e=>{
+    if(!pinch.points.delete(e.pointerId))return;
+    if(pinch.points.size<2){
+      // The finger still down must not be read as a tap or a swipe.
+      if(pinch.live)stageSwipe=null;
+      pinch.live=false;
+    }
+  };
+  ['pointerup','pointercancel','pointerleave'].forEach(kind=>
+    cv.addEventListener(kind,pinchEnd,true));
+
   let stageSwipe=null;
   cv.addEventListener('pointerdown',e=>{
     stageSwipe={x:e.clientX,y:e.clientY,t:performance.now()};
   },true);
   cv.addEventListener('pointerup',e=>{
-    if(!stageSwipe||!IS_IOS)return;
+    if(!stageSwipe||!IS_IOS||pinch.live||pinch.points.size)return;
     const dx=e.clientX-stageSwipe.x,dy=e.clientY-stageSwipe.y;
     const dt=performance.now()-stageSwipe.t;
     stageSwipe=null;

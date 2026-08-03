@@ -2140,6 +2140,23 @@ class PocketBarAndToolsTests(unittest.TestCase):
         app_source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
         self.assertIn("import relay_agent", app_source)
 
+    def test_two_fingers_resize_her_not_the_page(self):
+        # Pinch her the way you pinch a photo. WebKit's own page zoom is
+        # nailed shut (a double-tap once left the whole app panned and
+        # headless), so two fingers drive HER scale between the floor and
+        # the same face-closeup ceiling the slider tops out at.
+        self.assertIn("const pinch={points:new Map()", self.renderer)
+        self.assertIn("setZoom(wanted,wanted>1.4)", self.renderer)
+        # A pinch must never also read as a swipe (which opens the deck)
+        # or as a tap on her face.
+        self.assertIn("stageSwipe=null;                       // two fingers",
+                      self.renderer)
+        self.assertIn("if(!stageSwipe||!IS_IOS||pinch.live||pinch.points.size)",
+                      self.renderer)
+        # And the page still refuses to scale itself.
+        glue = (ROOT / "ios" / "Vivieen" / "CompanionWebView.swift").read_text()
+        self.assertIn("maximumZoomScale = 1", glue)
+
     def test_the_phone_draws_sheets_not_the_alpha_video(self):
         # HEVC-with-alpha PLAYS on the phone but WKWebView does not
         # COMPOSITE its alpha: she arrived inside an opaque black
