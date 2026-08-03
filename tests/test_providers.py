@@ -188,6 +188,26 @@ class ProviderDefaultsTests(unittest.TestCase):
         # no idle site may hard-code 'ready' and clobber the agent's name
         self.assertNotIn("setStatus('ready','on')", html)
 
+    def test_ios_composer_is_chatgpts_card_with_live_talk_inside(self):
+        # Owner asked for a carbon copy of ChatGPT's iOS composer: one
+        # rounded card, the field on its own row, the controls beneath,
+        # and live talk moved off the rail into the round slot that turns
+        # into send once you type (owner, 2026-08-03).
+        index_path = os.path.join(ROOT, "web", "index.html")
+        with open(index_path, encoding="utf-8") as handle:
+            html = handle.read()
+        self.assertIn("if(IS_IOS)document.getElementById('manual').appendChild(railLive);", html)
+        self.assertIn("html.ios #txt{order:1;flex:1 0 100%", html)
+        self.assertIn("html.ios.has-draft #rail-live{display:none}", html)
+        # one round slot, never live talk AND send at once
+        self.assertIn("html.ios #rail-live,html.ios.has-draft #sendBtn{", html)
+        # the glyph must not be painted with the same token as its disc -
+        # in dark mode both resolve light and the icon vanishes
+        self.assertIn("background:#f1f2f5;color:#14171d;", html)
+        self.assertIn("html.ios[data-skin=light] #rail-live,", html)
+        # the rail's old scoped rule would stop matching once it moved out
+        self.assertNotIn("html.ios #rail #rail-live.on", html)
+
     def test_openai_lists_only_models_for_the_requested_modality(self):
         # Exclusion only, never a name allowlist: the old gpt-* prefix list
         # hid every newly-named family (a "luna-1" never appeared). Unknown

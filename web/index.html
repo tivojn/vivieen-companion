@@ -312,25 +312,53 @@ html.ios #her{--caption-expanded-height:30vh;font-size:15px;
 html.ios.her-speaking #her{opacity:.72}
 html.ios #monitor{display:none}
 #micmode{display:none}
-html.ios #micmode{display:flex;flex:none;width:40px;height:40px;border-radius:50%;
-  align-items:center;justify-content:center;border:1px solid var(--field-line);
-  background:var(--field);color:var(--chip-ink);padding:0}
-html.ios #micmode svg{width:19px;height:19px;fill:currentColor}
-/* A send button people can SEE. Relying on the keyboard's return key
-   left text sitting in the field with the keyboard still up and nothing
-   sent (owner, 2026-08-03); every messenger shows this button. */
 #sendBtn{display:none}
-html.ios.has-draft #sendBtn{display:flex;flex:none;width:40px;height:40px;
-  border-radius:50%;align-items:center;justify-content:center;padding:0;
-  border:1px solid rgba(124,116,226,.55);background:rgba(124,116,226,.9);
-  color:#fff}
-html.ios.has-draft #sendBtn svg{width:20px;height:20px;fill:currentColor}
-html.ios.has-draft #emojiBtn,html.ios.has-draft #plusBtn{display:none}
 #emojiBtn,#plusBtn{display:none}
-html.ios #emojiBtn,html.ios #plusBtn{display:flex;flex:none;width:40px;height:40px;
-  border-radius:50%;align-items:center;justify-content:center;padding:0;
-  border:1px solid var(--field-line);background:var(--field);color:var(--chip-ink)}
-html.ios #emojiBtn svg,html.ios #plusBtn svg{width:20px;height:20px;fill:currentColor}
+/* ---- composer: ChatGPT's card -----------------------------------------
+   Copied from ChatGPT's iOS composer at the owner's request: ONE rounded
+   card, the field on its own line, the controls on a row beneath it.
+   Live talk moves in here as the resting state of the round slot on the
+   right - it becomes send the moment you type, the way ChatGPT swaps its
+   voice button for send. A row of its own means the plus no longer has
+   to hide to make room (owner, 2026-08-03). */
+html.ios #manual{box-sizing:border-box;width:100%;flex-wrap:wrap;
+  align-items:center;gap:6px;padding:14px 12px 10px;border-radius:26px;
+  border:1px solid var(--field-line);background:var(--field);
+  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
+html.ios #txt{order:1;flex:1 0 100%;height:auto;min-height:26px;max-height:132px;
+  border:none;background:none;border-radius:0;padding:0 8px 6px;
+  font-size:17px;line-height:1.35;
+  -webkit-backdrop-filter:none;backdrop-filter:none}
+html.ios #txt:focus{background:none;border-color:transparent}
+html.ios #txt::placeholder{font-size:17px}
+html.ios #plusBtn{order:2}
+html.ios #emojiBtn{order:3}
+html.ios #micmode{order:4;margin-left:auto}
+html.ios #rail-live{order:5}
+html.ios #sendBtn{order:6}
+html.ios #plusBtn,html.ios #emojiBtn,html.ios #micmode{
+  display:flex;flex:none;width:34px;height:34px;border-radius:50%;padding:0;
+  align-items:center;justify-content:center;border:none;background:none;
+  color:var(--chip-ink)}
+html.ios #plusBtn svg,html.ios #emojiBtn svg{width:23px;height:23px;fill:currentColor}
+html.ios #micmode svg{width:21px;height:21px;fill:currentColor}
+/* The round slot on the right: live talk while the field is empty, send
+   once it is not - one place, never both. */
+/* Fill and glyph are named outright, never as a --chip-ink/--field pair:
+   in dark mode both tokens resolve light and the icon disappeared into
+   its own button. Dark = white disc, dark glyph; light = the inverse,
+   exactly as ChatGPT does it. */
+html.ios #rail-live,html.ios.has-draft #sendBtn{
+  display:flex;flex:none;width:34px;height:34px;border-radius:50%;padding:0;
+  align-items:center;justify-content:center;border:none;
+  background:#f1f2f5;color:#14171d;
+  -webkit-backdrop-filter:none;backdrop-filter:none}
+html.ios[data-skin=light] #rail-live,
+html.ios[data-skin=light].has-draft #sendBtn{background:#1b1f27;color:#fff}
+html.ios #rail-live.on{background:rgba(212,76,71,.95);color:#fff}
+html.ios #rail-live svg,html.ios.has-draft #sendBtn svg{
+  width:19px;height:19px;fill:currentColor}
+html.ios.has-draft #rail-live{display:none}
 /* Never display:none - WebKit refuses a programmatic .click() on an
    unrendered file input, which is why the plus button did nothing on the
    phone. Rendered, one pixel, invisible, out of the way. */
@@ -348,7 +376,7 @@ html.ios #emojirow button,html.ios #rail button,html.ios #gear{
 html.ios.talk-mode #micmode{background:rgba(124,116,226,.28);border-color:rgba(124,116,226,.6)}
 #talkbar{display:none}
 html.ios.talk-mode #txt{display:none}
-html.ios.talk-mode #talkbar{display:block;flex:1;height:44px;border-radius:12px;
+html.ios.talk-mode #talkbar{display:block;order:1;flex:1 0 100%;height:44px;border-radius:12px;
   border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);
   color:#e8e9ec;font-size:15px;font-weight:600;letter-spacing:.02em;
   touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
@@ -426,8 +454,8 @@ html.ios #rail button{width:44px;height:44px;border-radius:50%;padding:0;
 html.ios #rail svg{width:20px;height:20px;fill:currentColor}
 html.ios #rail button.on{background:rgba(124,116,226,.42);
   border-color:rgba(124,116,226,.8);color:#efeefe}
-html.ios #rail #rail-live.on{background:rgba(212,76,71,.5);
-  border-color:rgba(212,76,71,.9);color:#ffe9e8}
+/* Live talk lives in the composer now - its lit state is defined with
+   the composer's round button, below, not here in the rail's block. */
 /* Pocket thread: the conversation stacks left-aligned above the input,
    both voices as glass cards with full markdown - and media cards that
    actually play. She is the BACKGROUND, full figure, dimmable via the
@@ -4974,6 +5002,11 @@ if(IS_IOS){
   wakeRail();
   // Action rail: live call, dance, walk, rest - one tap each, states lit.
   const railLive=document.getElementById('rail-live');
+  // On the phone live talk belongs where you type, not on the rail:
+  // ChatGPT keeps its voice button inside the composer and swaps it for
+  // send once there is a draft (owner, 2026-08-03). Moving the NODE
+  // keeps this one handler and one lit state.
+  if(IS_IOS)document.getElementById('manual').appendChild(railLive);
   const railMove=document.getElementById('rail-move');
   const railIdle=document.getElementById('rail-idle');
   railMove.addEventListener('click',()=>toggleMoveShow());
