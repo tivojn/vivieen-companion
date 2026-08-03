@@ -364,7 +364,7 @@ class ProviderDefaultsTests(unittest.TestCase):
         # and it must not hold a gap open while hidden
         self.assertIn("html.ios #toast{max-height:0;", html)
         # PiP retired: live talk keeps its own socket in the background
-        self.assertIn("html.ios #rail-pip{display:none}", html)
+        self.assertIn("html.ios #rail #rail-pip{display:none}", html)
 
     def test_openai_lists_only_models_for_the_requested_modality(self):
         # Exclusion only, never a name allowlist: the old gpt-* prefix list
