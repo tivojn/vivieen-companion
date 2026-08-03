@@ -120,6 +120,55 @@ class AvatarTransferTests(unittest.TestCase):
         self.assertEqual(result["status"], "draft")
 
 
+class StoreProgressTests(unittest.TestCase):
+    def setUp(self):
+        # Importing an archive WRITES an avatar. Without this the test
+        # installed itself into the owner's real collection - two stray
+        # "Probe" faces on the bench (2026-08-03). Every test that imports
+        # must own its own root.
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.original = build.AVATARS
+        build.AVATARS = self.temp.name
+        self.addCleanup(lambda: setattr(build, "AVATARS", self.original))
+
+    def test_unpacking_reports_bytes_not_a_frozen_number(self):
+        # A 300MB avatar takes real time to unpack, and a bar parked on
+        # one number reads as a hang (owner, 2026-08-03). Progress is by
+        # BYTES written, because the sprite sheets are thousands of times
+        # larger than the json beside them - counting files would race to
+        # 90% and then sit through the only part that takes any time.
+        import json as _json, tempfile, zipfile
+        work = tempfile.mkdtemp()
+        path = os.path.join(work, "tiny.avtr")
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("avtr.json", _json.dumps(
+                {"format": server_app.AVTR_FORMAT, "version": 1,
+                 "slug": "progressprobe"}))
+            archive.writestr("avatar/manifest.json",
+                             _json.dumps({"name": "Probe", "status": "draft"}))
+            for index, size in enumerate((200_000, 800_000, 40_000, 1_500_000)):
+                archive.writestr(f"avatar/sheet-{index}.bin", b"\0" * size)
+        seen = []
+        server_app._import_avatar_archive(
+            path, on_progress=lambda written, total: seen.append((written, total)))
+        self.assertGreater(len(seen), 1)
+        self.assertTrue(all(seen[i][0] <= seen[i + 1][0]
+                            for i in range(len(seen) - 1)), "must not go backwards")
+        self.assertEqual(seen[-1][0], seen[-1][1], "must finish at the total")
+
+    def test_the_bar_spends_its_length_where_the_time_goes(self):
+        source = (Path(__file__).resolve().parents[1] / "server" / "app.py").read_text(encoding="utf-8")
+        # The download is most of the wait, so it owns most of the bar.
+        self.assertIn("pct=min(70, int(got * 70 / expect))", source)
+        self.assertIn("pct=70 + int(written * 25 / total)", source)
+        # Byte counts ride along, so a slow line still shows movement
+        # between whole percents.
+        self.assertIn("done_bytes=got, total_bytes=expect", source)
+        card = (Path(__file__).resolve().parents[1] / "web" / "settings.html").read_text(encoding="utf-8")
+        self.assertIn("storeBytes(job)", card)
+
+
 class AvatarStoreTests(unittest.TestCase):
     """The in-app store: starter avatars pulled from GitHub releases."""
 

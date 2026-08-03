@@ -1704,6 +1704,13 @@ const STORE_PREV = {};
 const storeMB = bytes => Math.round(bytes / 1048576) + ' MB';
 const STORE_LABEL = {downloading: 'Downloading', installing: 'Unpacking',
                      publishing: 'Publishing'};
+// A percent alone stalls visibly on a slow line; the byte counts keep
+// moving between whole numbers, so the bar never looks stuck.
+const storeBytes = job => {
+  const done = Number(job.done_bytes || 0), all = Number(job.total_bytes || 0);
+  if (!all || !done) return '';
+  return `  ·  ${storeMB(done)} / ${storeMB(all)}`;
+};
 
 function storeCard(item) {
   const job = item.job || null;
@@ -1722,7 +1729,7 @@ function storeCard(item) {
       <span class="note">${storeMB(item.bytes)} · GitHub</span>
     </div>
     <p class="note" style="margin:6px 0 12px">${item.blurb}</p>
-    ${busy ? `<div class="jobbox"><div class="note">${STORE_LABEL[job.phase]}… ${job.pct || 0}%</div>
+    ${busy ? `<div class="jobbox"><div class="note">${STORE_LABEL[job.phase]}… ${job.pct || 0}%${storeBytes(job)}</div>
         <div class="bar"><i style="width:${job.pct || 0}%"></i></div></div>`
       : done ? `<div class="note" style="color:var(--ok-text)">Installed — she's waiting on the bench above.</div>`
       : `<button class="btn pri" data-get="${item.id}" type="button"

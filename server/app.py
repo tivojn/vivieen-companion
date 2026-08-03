@@ -1718,7 +1718,7 @@ def _avatar_archive(slug, directory, destination):
                 archive.write(full, f"avatar/{inner.replace(os.sep, '/')}")
 
 
-def _import_avatar_archive(path):
+def _import_avatar_archive(path, on_progress=None):
     with zipfile.ZipFile(path) as archive:
         try:
             meta = json.loads(archive.read("avtr.json"))
@@ -1762,6 +1762,11 @@ def _import_avatar_archive(path):
         os.makedirs(stage, mode=0o700)
         try:
             stage_root = os.path.abspath(stage)
+            # Unpacking a third of a gigabyte is not instant, and a bar
+            # frozen at one number reads as a hang (owner, 2026-08-03).
+            # Report by BYTES written, not files: the sprite sheets are
+            # thousands of times bigger than the json beside them.
+            unpacked = 0
             for info in entries:
                 name = info.filename
                 if name == "avtr.json" or name.endswith("/"):
@@ -1774,6 +1779,9 @@ def _import_avatar_archive(path):
                 os.makedirs(os.path.dirname(destination), exist_ok=True)
                 with archive.open(info) as source, open(destination, "wb") as sink:
                     shutil.copyfileobj(source, sink)
+                unpacked += info.file_size
+                if on_progress and total:
+                    on_progress(unpacked, total)
             manifest_path = os.path.join(stage_root, "manifest.json")
             with open(manifest_path, encoding="utf-8") as handle:
                 manifest = json.load(handle)
@@ -1903,16 +1911,29 @@ def _store_install(item):
                     raise ValueError("download exceeds the 4 GB limit")
                 handle.write(chunk)
                 with _store_lock:
+                    # The download is most of the wait, so it owns most of
+                    # the bar; the byte counts ride along so a slow line
+                    # still shows something moving between percents.
                     _store_jobs[key].update(
                         phase="downloading",
-                        pct=min(90, int(got * 90 / expect)) if expect else 0)
+                        pct=min(70, int(got * 70 / expect)) if expect else 0,
+                        done_bytes=got, total_bytes=expect)
         handle.close()
         with _store_lock:
-            _store_jobs[key].update(phase="installing", pct=92)
-        result = _import_avatar_archive(temp)
+            _store_jobs[key].update(phase="installing", pct=70,
+                                    done_bytes=0, total_bytes=0)
+
+        def unpacking(written, total):
+            with _store_lock:
+                _store_jobs[key].update(
+                    phase="installing", pct=70 + int(written * 25 / total),
+                    done_bytes=written, total_bytes=total)
+
+        result = _import_avatar_archive(temp, on_progress=unpacking)
         slug = result["slug"]
         with _store_lock:
-            _store_jobs[key].update(phase="publishing", pct=96, slug=slug)
+            _store_jobs[key].update(phase="publishing", pct=95, slug=slug,
+                                    done_bytes=0, total_bytes=0)
         if result.get("status") == "ready":
             ensure_runtime(slug, log=jlog(slug, "publishing store install"))
         with _store_lock:
@@ -2014,7 +2035,9 @@ async def api_avatar_store_install(request: StoreInstall):
         if job and job.get("phase") in STORE_BUSY_PHASES:
             return {"started": False, "job": dict(job)}
         _store_jobs[item["id"]] = {"phase": "downloading", "pct": 0,
-                                   "error": "", "slug": ""}
+                                   "error": "", "slug": "",
+                                   "done_bytes": 0,
+                                   "total_bytes": int(item.get("bytes") or 0)}
     threading.Thread(target=_store_install, args=(item,), daemon=True).start()
     return {"started": True}
 
