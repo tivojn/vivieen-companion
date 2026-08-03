@@ -2140,6 +2140,19 @@ class PocketBarAndToolsTests(unittest.TestCase):
         app_source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
         self.assertIn("import relay_agent", app_source)
 
+    def test_the_phone_draws_sheets_not_the_alpha_video(self):
+        # HEVC-with-alpha PLAYS on the phone but WKWebView does not
+        # COMPOSITE its alpha: she arrived inside an opaque black
+        # rectangle, invisible on the dark stage and glaring the moment
+        # light mode existed (owner, 2026-08-03). Proven both ways -
+        # desktop Safari floats her on pink from the very same file, and
+        # the Simulator, which cannot decode HEVC at all, was always
+        # right because it had been drawing these sheets the whole time.
+        self.assertIn("if(!IS_IOS){", self.renderer)
+        # Walk is a desk verb; the phone has nowhere to travel to.
+        self.assertIn("IS_IOS?[loadMotion('idle'),loadMotion('move')]",
+                      self.renderer)
+
     def test_alpha_twins_keep_the_definition_they_were_given(self):
         # The master is 720x1088 because that is the generator's ceiling,
         # so whatever the encode throws away is gone for good. Measured

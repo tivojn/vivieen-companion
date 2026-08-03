@@ -1162,12 +1162,23 @@ function routedStatus(route,fallback=''){
     // the whole boot at "booting" (Pocket Mirror, 2026-08-02).
     const caps=document.createElement('video');
     const streams=[];
-    if(clip.alpha_stream&&caps.canPlayType('video/webm; codecs="vp9"'))
-      streams.push(clip.alpha_stream);
-    if(clip.alpha_stream_hevc&&(caps.canPlayType('video/mp4; codecs="hvc1"')
-       ||caps.canPlayType('video/quicktime')))
-      streams.push(clip.alpha_stream_hevc);
-    if(!streams.length&&clip.alpha_stream)streams.push(clip.alpha_stream);
+    // iOS takes the sprite sheets, not the video. HEVC-with-alpha plays on
+    // the phone but WKWebView does not COMPOSITE its alpha - she arrived
+    // inside an opaque black rectangle, invisible against the dark stage
+    // and glaring the moment light mode existed (owner, 2026-08-03).
+    // Proven both ways: desktop Safari floats her on pink from the very
+    // same file, and the Simulator - which cannot decode HEVC at all, so
+    // it has been drawing these sheets the whole time - was always right.
+    // The sheets are lossless PNG, so this costs bytes and buys both
+    // correctness and the best definition available.
+    if(!IS_IOS){
+      if(clip.alpha_stream&&caps.canPlayType('video/webm; codecs="vp9"'))
+        streams.push(clip.alpha_stream);
+      if(clip.alpha_stream_hevc&&(caps.canPlayType('video/mp4; codecs="hvc1"')
+         ||caps.canPlayType('video/quicktime')))
+        streams.push(clip.alpha_stream_hevc);
+      if(!streams.length&&clip.alpha_stream)streams.push(clip.alpha_stream);
+    }
     for(const src of streams){
       // GPU-decoded alpha video instead of a decoded PNG atlas.
       const video=document.createElement('video');
@@ -1203,7 +1214,11 @@ function routedStatus(route,fallback=''){
                 load(M.body.head_mask).then(image=>{HEADMASK=image;})]:[]),
     ...(M.body&&M.body.reactions?Object.entries(M.body.reactions).map(
       async([name,meta])=>{RB[name]=await load(meta.src);}):[]),
-    ...(M.motion?[loadMotion('walk'),loadMotion('idle'),loadMotion('move')]:[])
+    // Walk is a DESK verb - it strides while the window travels, and the
+    // phone has nowhere to travel to (owner, 2026-08-03). Skipping it on
+    // iOS spares the download and the decoded frames outright.
+    ...(M.motion?(IS_IOS?[loadMotion('idle'),loadMotion('move')]
+      :[loadMotion('walk'),loadMotion('idle'),loadMotion('move')]):[])
   ]);
   const motionReady=Boolean(MOTION.walk);
   if(SHELL&&SHELL.isElectron&&typeof SHELL.setPetMotionReady==='function'){
