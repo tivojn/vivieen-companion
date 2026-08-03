@@ -1334,6 +1334,14 @@ async function soloLoad(){
   catch(e){SOLO.cfg=null;}
 }
 function soloHas(name){return Boolean(SOLO.cfg&&SOLO.cfg.has&&SOLO.cfg.has[name]);}
+/* Mirror of the engine's FALLBACK_MODEL. A blank model means "the
+   provider's default", and one shared fallback of gpt-5-mini asked
+   api.x.ai for an OpenAI model - solo chat failed for every
+   OpenAI-SHAPED provider that is not OpenAI (owner, 2026-08-03). */
+const SOLO_FALLBACK={openai:'gpt-5-mini',xai:'grok-3-mini',
+  groq:'llama-3.3-70b-versatile',deepseek:'deepseek-chat',
+  mistral:'mistral-small-latest',openrouter:'openai/gpt-5-mini',
+  together:'meta-llama/Llama-3.3-70B-Instruct-Turbo'};
 function soloLLM(){
   const c=(SOLO.cfg&&SOLO.cfg.llm)||{};
   const OPENAI_SHAPE={openai:'https://api.openai.com/v1',xai:'https://api.x.ai/v1',
@@ -1343,7 +1351,8 @@ function soloLLM(){
   if(soloHas('llm.api_key')){
     if(OPENAI_SHAPE[c.provider])
       return{shape:'openai',base:c.base_url||OPENAI_SHAPE[c.provider],
-        model:c.model||'gpt-5-mini',key:'llm.api_key',style:'bearer',label:c.provider};
+        model:c.model||SOLO_FALLBACK[c.provider]||'gpt-5-mini',
+        key:'llm.api_key',style:'bearer',label:c.provider};
     if(c.provider==='anthropic')
       return{shape:'anthropic',base:c.base_url||'https://api.anthropic.com/v1',
         model:c.model||'claude-sonnet-5',key:'llm.api_key',style:'x-api-key',label:'anthropic'};

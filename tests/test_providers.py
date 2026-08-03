@@ -208,6 +208,54 @@ class ProviderDefaultsTests(unittest.TestCase):
         # the rail's old scoped rule would stop matching once it moved out
         self.assertNotIn("html.ios #rail #rail-live.on", html)
 
+    def test_solo_falls_back_per_provider_not_to_one_model(self):
+        # A blank model means "the provider's default". One shared
+        # fallback of gpt-5-mini asked api.x.ai for an OpenAI model, so
+        # offline chat failed for every OpenAI-shaped provider that is
+        # not OpenAI (owner: solo chat fails, 2026-08-03).
+        index_path = os.path.join(ROOT, "web", "index.html")
+        with open(index_path, encoding="utf-8") as handle:
+            html = handle.read()
+        self.assertIn("const SOLO_FALLBACK={openai:'gpt-5-mini',xai:'grok-3-mini'", html)
+        self.assertIn("model:c.model||SOLO_FALLBACK[c.provider]||'gpt-5-mini'", html)
+
+    def test_relay_readers_start_at_the_tip(self):
+        # Both ends read from 0 on a cold start, so a session began by
+        # downloading every stale reply still in the mailbox - 3.4 MB of
+        # other sessions' pages and assets. The Mac's rewind was worse:
+        # it re-EXECUTED the whole request history and pushed a fresh
+        # copy of every old reply back in (owner: 5G, 2026-08-03).
+        with open(os.path.join(ROOT, "relay", "api", "relay.js"),
+                  encoding="utf-8") as handle:
+            relay = handle.read()
+        self.assertIn("const fromTip = Number.isFinite(asked) && asked < 0;", relay)
+        self.assertIn("if (fromTip) after = length;", relay)
+        with open(os.path.join(ROOT, "server", "relay_agent.py"),
+                  encoding="utf-8") as handle:
+            agent = handle.read()
+        self.assertIn("cursor = -1", agent)          # start at the tip
+        self.assertIn("cursor, quiet = -1, 0", agent)  # resync to it, never replay
+        with open(os.path.join(ROOT, "ios", "Vivieen", "RelayClient.swift"),
+                  encoding="utf-8") as handle:
+            client = handle.read()
+        self.assertIn("private var cursor = -1", client)
+        # the tip must be pinned BEFORE the first request goes out
+        self.assertIn("seedCursor {", client)
+
+    def test_simulator_keychain_fallback_is_simulator_only(self):
+        # An ad-hoc signed Simulator build has no keychain access group,
+        # so every write returned -34018 and solo owned no keys at all.
+        # The fallback must never exist in a device build.
+        with open(os.path.join(ROOT, "ios", "Vivieen", "SoloStore.swift"),
+                  encoding="utf-8") as handle:
+            store = handle.read()
+        self.assertIn("#if targetEnvironment(simulator)", store)
+        self.assertIn("guard status == errSecMissingEntitlement else { return }", store)
+        # per-config settings must sit UNDER settings:, or XcodeGen drops them
+        with open(os.path.join(ROOT, "ios", "project.yml"), encoding="utf-8") as handle:
+            spec = handle.read()
+        self.assertIn("      configs:\n        Debug:", spec)
+
     def test_openai_lists_only_models_for_the_requested_modality(self):
         # Exclusion only, never a name allowlist: the old gpt-* prefix list
         # hid every newly-named family (a "luna-1" never appeared). Unknown

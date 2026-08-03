@@ -35,7 +35,42 @@ final class SoloStore {
         let status = SecItemAdd(add as CFDictionary, nil)
         if status != errSecSuccess {
             NSLog("[viv-solo] keychain add %@ failed: %d", name, status)
+            fallbackWrite(name, value, status)
         }
+    }
+
+    // ------------------------------------------------- simulator fallback
+    //
+    // The Simulator cannot hold these. An ad-hoc signed build has no
+    // keychain access group - Xcode strips the entitlement because there
+    // is no team prefix to expand - so every write returns -34018 and
+    // solo mode silently owned no keys at all: offline chat could never
+    // start, and the turn fell through to a Mac that was not there.
+    //
+    // SIMULATOR ONLY, deliberately. A device build is signed with a real
+    // profile, gets its access group from it, and never reaches this
+    // code - so the shipping security story is unchanged: on a phone the
+    // secrets live in the Keychain or nowhere. Here they live in the app
+    // container, which is a development convenience, not a vault.
+    private func fallbackWrite(_ name: String, _ value: String, _ status: OSStatus) {
+        #if targetEnvironment(simulator)
+        guard status == errSecMissingEntitlement else { return }
+        var box = UserDefaults.standard.dictionary(forKey: "soloSimSecrets")
+            as? [String: String] ?? [:]
+        box[name] = value
+        UserDefaults.standard.set(box, forKey: "soloSimSecrets")
+        NSLog("[viv-solo] simulator fallback holds %@", name)
+        #endif
+    }
+
+    private func fallbackRead(_ name: String) -> String {
+        #if targetEnvironment(simulator)
+        let box = UserDefaults.standard.dictionary(forKey: "soloSimSecrets")
+            as? [String: String] ?? [:]
+        return box[name] ?? ""
+        #else
+        return ""
+        #endif
     }
 
     func secret(_ name: String) -> String {
@@ -48,8 +83,8 @@ final class SoloStore {
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: AnyObject?
         guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess,
-              let data = out as? Data else { return "" }
-        return String(data: data, encoding: .utf8) ?? ""
+              let data = out as? Data else { return fallbackRead(name) }
+        return String(data: data, encoding: .utf8) ?? fallbackRead(name)
     }
 
     // ------------------------------------------------------------ config

@@ -12,7 +12,11 @@ final class RelayClient {
     private let base: String
     private let channel: String
     private let proof: String
-    private var cursor = 0
+    /// -1 asks the relay for the TIP. A launch has nothing waiting for it
+    /// in the backlog, and reading from 0 meant downloading every stale
+    /// reply still in the box - 3.4 MB of other sessions' pages and
+    /// assets - before the first fresh answer (owner, 2026-08-03).
+    private var cursor = -1
     private var quiet = 0
     private let lock = NSLock()
     private var waiters: [String: (RelayReply) -> Void] = [:]
@@ -76,12 +80,15 @@ final class RelayClient {
         lock.lock()
         waiters[id] = { reply in completion(reply) }
         lock.unlock()
-        // Nothing can arrive before the poller is running.
-        startPolling()
-        post("dir=to_mac", ["items": [["id": id, "req": request]]]) { ok in
-            if !ok {
-                self.lock.lock(); self.waiters[id] = nil; self.lock.unlock()
-                completion(nil)
+        // Pin the cursor to the tip BEFORE anything goes out, then listen,
+        // then send. Nothing can arrive before the poller is running.
+        seedCursor {
+            self.startPolling()
+            self.post("dir=to_mac", ["items": [["id": id, "req": request]]]) { ok in
+                if !ok {
+                    self.lock.lock(); self.waiters[id] = nil; self.lock.unlock()
+                    completion(nil)
+                }
             }
         }
         // A turn through an agent, with tools, can run many minutes.
@@ -91,6 +98,34 @@ final class RelayClient {
             self.lock.unlock()
             if pending != nil { completion(nil) }
         }
+    }
+
+    /// Resolve the tip once, before the first request leaves. Letting the
+    /// first long-poll resolve it left a window where the reply could land
+    /// ahead of the tip and be skipped for good - and the whole point of
+    /// starting at the tip is to never read the backlog.
+    private func seedCursor(_ then: @escaping () -> Void) {
+        lock.lock(); let need = cursor < 0; lock.unlock()
+        guard need, let url = url("dir=to_client&after=-1&wait=0") else {
+            then(); return
+        }
+        var request = URLRequest(url: url)
+        request.setValue(proof, forHTTPHeaderField: "x-viv-proof")
+        request.timeoutInterval = 20
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+            guard let self else { return }
+            var tip = 0
+            if let data,
+               let top = try? JSONSerialization.jsonObject(with: data)
+                 as? [String: Any], let next = top["next"] as? Int, next >= 0 {
+                tip = next
+            }
+            // An unreachable relay or an older one that does not know -1:
+            // read from the start rather than never read at all.
+            self.lock.lock(); if self.cursor < 0 { self.cursor = tip }
+            self.lock.unlock()
+            then()
+        }.resume()
     }
 
     private func startPolling() {
@@ -127,12 +162,22 @@ final class RelayClient {
             // A mailbox emptied under us leaves this cursor past the end,
             // and reading past the end returns nothing forever. Never let
             // that be permanent: after a long silence, rewind and resync.
+            // Adopt the cursor even on an EMPTY poll. The relay answers
+            // a tip request with no items and the resolved position, and
+            // taking it only on a non-empty poll left the cursor pinned
+            // at -1, asking for the tip forever and skipping every reply
+            // that landed in between.
+            if let next = top["next"] as? Int, next >= 0 { self.cursor = next }
             if items.isEmpty {
                 self.quiet += 1
+                // The rewind stays at ZERO here, unlike the Mac's: this
+                // end is waiting on a reply that may already have landed
+                // in a stretch it cannot see, and re-reading costs it
+                // nothing but time. The Mac re-EXECUTES, so it resyncs to
+                // the tip instead.
                 if self.quiet >= 8, self.cursor > 0 { self.cursor = 0; self.quiet = 0 }
             } else {
                 self.quiet = 0
-                if let next = top["next"] as? Int { self.cursor = next }
             }
             for item in items { self.deliver(item) }
         }.resume()

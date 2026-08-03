@@ -245,8 +245,14 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                                 type: "application/json")
                     return
                 }
+                // 8s was too tight to survive cellular. A relay round
+                // trip is four hops through a 700ms-polled mailbox - ~5s
+                // on wifi before 5G latency is added - so the probe was
+                // timing out while the Mac was perfectly reachable and
+                // the phone declared itself offline (owner, 2026-08-03).
+                // Still a fuse: two misses in a row is what enters solo.
                 self.relay.send(path: path, method: "GET", body: nil,
-                                timeout: 8) { reply in
+                                timeout: 15) { reply in
                     if let reply, reply.status == 200 {
                         self.finish(task, url: requested, data: reply.data,
                                     type: "application/json")

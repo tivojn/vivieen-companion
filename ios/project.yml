@@ -26,14 +26,16 @@ targets:
         CODE_SIGN_IDENTITY: ""
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGNING_ALLOWED: NO
-    configs:
-      # Simulator only. A real signed build gets its Keychain access
+      # Simulator only, and it MUST live under settings: - a bare
+      # `configs:` on the target is not a key XcodeGen knows, so this
+      # whole block was silently dropped and the app shipped with no
+      # entitlements at all. A real signed build gets its Keychain access
       # group from its provisioning profile; an UNSIGNED simulator build
-      # gets none at all, so every Keychain write failed -34018 and solo
-      # silently lost the keys it had just decrypted (2026-08-03). These
-      # two lines fix that without touching the archive, which refuses an
-      # explicit keychain-group entitlement under distribution signing.
-      Debug:
-        CODE_SIGN_IDENTITY: "-"
-        CODE_SIGNING_ALLOWED: YES
-        CODE_SIGN_ENTITLEMENTS: Vivieen/Vivieen.entitlements
+      # gets none, so every Keychain write failed -34018 and solo lost the
+      # keys it had just decrypted - offline chat could never start
+      # (2026-08-03). Verify with: codesign -d --entitlements - <app>.
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGNING_ALLOWED: YES
+          CODE_SIGN_ENTITLEMENTS: Vivieen/Vivieen.entitlements

@@ -8,7 +8,10 @@
        (2026-08-03). -->
   <key>keychain-access-groups</key>
   <array>
-    <string>$(AppIdentifierPrefix)com.vivieen.pocket</string>
+    <!-- Literal, NOT $(AppIdentifierPrefix)...: ad-hoc simulator signing
+         has no team prefix to expand, and Xcode strips the whole array,
+         leaving an empty entitlements dict and -34018 all over again. -->
+    <string>com.vivieen.pocket</string>
   </array>
 </dict>
 </plist>

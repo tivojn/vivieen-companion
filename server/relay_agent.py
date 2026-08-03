@@ -130,7 +130,12 @@ def start(engine_port):
                 time.sleep(attempt)
 
     def pump():
-        cursor = 0
+        # Start at the TIP, never at 0. Requests still sitting in the box
+        # are from sessions that timed out minutes ago; replaying them
+        # re-answers stale messages and pushes a fresh copy of every old
+        # reply back into the mailbox, which is how it grew to megabytes
+        # and made the phone unusable over 5G (owner, 2026-08-03).
+        cursor = -1
         quiet = 0
         print(f"[viv] relay agent up: {base} channel={channel}", flush=True)
         while True:
@@ -149,9 +154,12 @@ def start(engine_port):
                 else:
                     quiet += 1
                     if quiet >= 8 and cursor:
-                        print("[viv] relay: long silence, rewinding cursor",
+                        print("[viv] relay: long silence, resyncing to tip",
                               flush=True)
-                        cursor, quiet = 0, 0
+                        # To the tip, not to zero: this only has to cure a
+                        # cursor stranded past the end. Rewinding to zero
+                        # cured it by re-executing the entire history.
+                        cursor, quiet = -1, 0
                         continue
                 cursor = got.get("next", cursor)
                 for envelope in items:

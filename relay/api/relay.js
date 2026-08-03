@@ -97,13 +97,21 @@ export default async function handler(request, response) {
   }
 
   // GET: long-poll for anything after ?after=N, up to ?wait seconds.
-  let after = Math.max(0, Number(q.after) || 0);
+  // ?after=-1 means "start at the tip". A session that just began has
+  // nothing waiting for it in the backlog - everything already in the box
+  // was addressed to somebody else - and on a phone that backlog was
+  // MEGABYTES of stale page and asset bodies, downloaded before the first
+  // fresh answer could be seen. Nothing worked over 5G (owner, 2026-08-03).
+  const asked = Number(q.after);
+  const fromTip = Number.isFinite(asked) && asked < 0;
+  let after = fromTip ? 0 : Math.max(0, asked || 0);
   // A box shorter than the caller's cursor means it was emptied under us -
   // an instance recycled, an expiry fired. Reading past the end returns
   // nothing FOREVER, so both ends went silently deaf and the phone could
   // never reach the Mac again (2026-08-03). Notice, and resync.
   const length = await boxLen(key);
-  if (after > length) after = 0;
+  if (fromTip) after = length;
+  else if (after > length) after = 0;
   const wait = Math.min(25, Math.max(0, Number(q.wait) || 0));
   const deadline = Date.now() + wait * 1000;
   for (;;) {
