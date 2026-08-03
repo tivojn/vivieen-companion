@@ -97,7 +97,13 @@ export default async function handler(request, response) {
   }
 
   // GET: long-poll for anything after ?after=N, up to ?wait seconds.
-  const after = Math.max(0, Number(q.after) || 0);
+  let after = Math.max(0, Number(q.after) || 0);
+  // A box shorter than the caller's cursor means it was emptied under us -
+  // an instance recycled, an expiry fired. Reading past the end returns
+  // nothing FOREVER, so both ends went silently deaf and the phone could
+  // never reach the Mac again (2026-08-03). Notice, and resync.
+  const length = await boxLen(key);
+  if (after > length) after = 0;
   const wait = Math.min(25, Math.max(0, Number(q.wait) || 0));
   const deadline = Date.now() + wait * 1000;
   for (;;) {

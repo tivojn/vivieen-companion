@@ -13,6 +13,7 @@ final class RelayClient {
     private let channel: String
     private let proof: String
     private var cursor = 0
+    private var quiet = 0
     private let lock = NSLock()
     private var waiters: [String: (RelayReply) -> Void] = [:]
     private var polling = false
@@ -119,10 +120,18 @@ final class RelayClient {
             guard let data,
                   let top = try? JSONSerialization.jsonObject(with: data)
                     as? [String: Any] else { return }
-            if let next = top["next"] as? Int { self.cursor = next }
-            for item in (top["items"] as? [[String: Any]]) ?? [] {
-                self.deliver(item)
+            let items = (top["items"] as? [[String: Any]]) ?? []
+            // A mailbox emptied under us leaves this cursor past the end,
+            // and reading past the end returns nothing forever. Never let
+            // that be permanent: after a long silence, rewind and resync.
+            if items.isEmpty {
+                self.quiet += 1
+                if self.quiet >= 8, self.cursor > 0 { self.cursor = 0; self.quiet = 0 }
+            } else {
+                self.quiet = 0
+                if let next = top["next"] as? Int { self.cursor = next }
             }
+            for item in items { self.deliver(item) }
         }.resume()
     }
 

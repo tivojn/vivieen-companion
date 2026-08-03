@@ -131,13 +131,30 @@ def start(engine_port):
 
     def pump():
         cursor = 0
+        quiet = 0
         print(f"[viv] relay agent up: {base} channel={channel}", flush=True)
         while True:
             try:
                 got = _call_relay(base, channel, proof,
                                   f"dir=to_mac&after={cursor}&wait=25")
+                items = got.get("items") or []
+                # A mailbox that empties under us (an instance recycled, an
+                # expiry fired) leaves this cursor past the end, and reading
+                # past the end returns nothing FOREVER - the phone could
+                # never reach the Mac again, silently (2026-08-03). The
+                # relay resyncs now, but never depend on the far end for
+                # your own liveness: after a long quiet spell, rewind.
+                if items:
+                    quiet = 0
+                else:
+                    quiet += 1
+                    if quiet >= 8 and cursor:
+                        print("[viv] relay: long silence, rewinding cursor",
+                              flush=True)
+                        cursor, quiet = 0, 0
+                        continue
                 cursor = got.get("next", cursor)
-                for envelope in got.get("items") or []:
+                for envelope in items:
                     threading.Thread(
                         target=_replay,
                         args=(envelope, engine_port, token, send),
