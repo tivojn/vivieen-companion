@@ -16,6 +16,8 @@ final class RelayClient {
     private var quiet = 0
     private let lock = NSLock()
     private var waiters: [String: (RelayReply) -> Void] = [:]
+    /// Server-sent frames gathered per request until its "done" arrives.
+    private var streams: [String: String] = [:]
     private var polling = false
 
     struct RelayReply {
@@ -81,8 +83,8 @@ final class RelayClient {
                 completion(nil)
             }
         }
-        // A turn through an agent can be minutes; give up well after that.
-        DispatchQueue.global().asyncAfter(deadline: .now() + 300) {
+        // A turn through an agent, with tools, can run many minutes.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 600) {
             self.lock.lock()
             let pending = self.waiters.removeValue(forKey: id)
             self.lock.unlock()
@@ -136,21 +138,34 @@ final class RelayClient {
     }
 
     private func deliver(_ item: [String: Any]) {
-        guard let id = item["id"] as? String,
-              (item["done"] as? Bool) == true else { return }
+        guard let id = item["id"] as? String else { return }
+        // An agent turn arrives as a run of server-sent frames and then a
+        // bare "done". Nobody was gathering the frames, so the page got an
+        // empty 200 and said the agent closed without answering (owner,
+        // 2026-08-03). Collect them; hand over the whole stream at the end.
+        if let frame = item["sse"] as? String {
+            lock.lock()
+            streams[id, default: ""] += frame
+            lock.unlock()
+            return
+        }
+        guard (item["done"] as? Bool) == true else { return }
         lock.lock()
         let waiter = waiters.removeValue(forKey: id)
+        let gathered = streams.removeValue(forKey: id)
         lock.unlock()
         guard let waiter else { return }
         var payload = Data()
-        if let b64 = item["b64"] as? String {
+        var type = item["type"] as? String ?? "application/octet-stream"
+        if let gathered, (item["stream"] as? Bool) == true {
+            payload = Data(gathered.utf8)
+            type = "text/event-stream"
+        } else if let b64 = item["b64"] as? String {
             payload = Data(base64Encoded: b64) ?? Data()
         } else if let body = item["body"] as? String {
             payload = Data(body.utf8)
         }
         waiter(RelayReply(status: item["status"] as? Int ?? 200,
-                          contentType: item["type"] as? String
-                            ?? "application/octet-stream",
-                          data: payload))
+                          contentType: type, data: payload))
     }
 }

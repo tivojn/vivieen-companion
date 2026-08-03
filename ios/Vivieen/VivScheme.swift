@@ -59,7 +59,11 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         try? FileManager.default.createDirectory(at: cacheRoot,
                                                  withIntermediateDirectories: true)
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 8
+        // Sprites should give up fast so the relay can take over; an agent
+        // turn can genuinely run for minutes, and an eight-second ceiling
+        // killed every one of them ("the agent closed without answering",
+        // owner 2026-08-03). The per-request timeout is set per request.
+        config.timeoutIntervalForRequest = 600
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         session = URLSession(configuration: config)
         super.init()
@@ -172,6 +176,9 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         var direct = URLRequest(url: URL(string: address + path)!)
         direct.httpMethod = method
         direct.httpBody = body
+        // Static things fail fast so we can fall through to the relay;
+        // anything that thinks for a living gets room to think.
+        direct.timeoutInterval = cacheable(path) || method == "GET" ? 8 : 600
         direct.setValue(token, forHTTPHeaderField: "x-vivieen-token")
         // Keep the page's own content type - a multipart upload carries a
         // boundary, and calling it JSON makes the Mac unable to parse it.
