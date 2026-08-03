@@ -510,8 +510,15 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         if let payload = spec["body_b64"] as? String {
             request.httpBody = Data(base64Encoded: payload)
         }
+        // Solo failures happen with no Mac to look at, so this call has to
+        // narrate itself: which host, how many bytes went, what came back.
+        NSLog("[viv-solo] call %@ body=%d key=%@", host,
+              request.httpBody?.count ?? -1, keyName)
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             guard let self else { return }
+            NSLog("[viv-solo] call %@ -> status=%d bytes=%d err=%@", host,
+                  (response as? HTTPURLResponse)?.statusCode ?? -1,
+                  data?.count ?? -1, error?.localizedDescription ?? "none")
             if let error {
                 self.json(task, requested,
                           ["error": error.localizedDescription], status: 502)

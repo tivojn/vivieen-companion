@@ -371,7 +371,8 @@ html.ios.emoji-open #emojirow{display:grid;grid-template-columns:repeat(8,1fr);g
 html.ios #emojirow button{font-size:24px;line-height:1.5;background:none;border:none;padding:4px}
 /* A held finger on a control is a press, not a text selection - the long
    press meant for Paste was selecting the emoji glyph instead. */
-html.ios #emojirow button,html.ios #rail button,html.ios #gear{
+html.ios #emojirow button,html.ios #rail button,html.ios #gear,
+html.ios #petBubble{
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 html.ios.talk-mode #micmode{background:rgba(124,116,226,.28);border-color:rgba(124,116,226,.6)}
 #talkbar{display:none}
@@ -1367,11 +1368,25 @@ function soloLLM(){
       key:'live.xai_api_key',style:'bearer',label:'grok'};
   return null;
 }
-async function soloCall(spec){
-  const r=await(await fetch('solo/call',{method:'POST',
-    headers:{'Content-Type':'application/json'},body:JSON.stringify(spec)})).json();
-  if(r.error)throw new Error(r.error);
-  return r;
+/* Nothing in solo may hang without end: there is no Mac to look at and
+   no log to read, so a stall reads exactly like a crash. Every provider
+   call gets a ceiling and says which one it was (owner: it sat on
+   "transcribing" forever, 2026-08-03). */
+async function soloCall(spec,seconds){
+  const cap=(seconds||90)*1000;
+  let timer=null;
+  const call=fetch('solo/call',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(spec)})
+    .then(response=>response.json());
+  const bell=new Promise((_,fail)=>{
+    timer=setTimeout(()=>fail(new Error('provider did not answer in '
+      +Math.round(cap/1000)+'s')),cap);
+  });
+  try{
+    const r=await Promise.race([call,bell]);
+    if(r.error)throw new Error(r.error);
+    return r;
+  }finally{clearTimeout(timer);}
 }
 const soloText=r=>{
   const bytes=atob(r.body_b64||'');
@@ -5047,10 +5062,31 @@ if(IS_IOS){
   const closeAgents=()=>document.documentElement.classList.remove('agents-open');
   railEnconvo.addEventListener('click',async()=>{
     if(document.documentElement.classList.contains('agents-open')){closeAgents();return;}
+    // EnConvo lives on the Mac. With the Mac gone this request cannot
+    // succeed, and it was falling through to the relay's ten-minute
+    // window - so the sheet sat on "Looking for EnConvo..." forever
+    // (owner, 2026-08-03). Refuse now, and say which part is missing.
+    if(SOLO.active){
+      flashPrompt('EnConvo lives on your Mac — wake it to couple an agent');
+      return;
+    }
     document.documentElement.classList.add('agents-open');
     agentList.innerHTML='<div class="agent"><div class="who"><b>Looking for EnConvo…</b></div></div>';
     try{
-      const r=await(await fetch('api/enconvo/agents')).json();
+      // A ceiling, always. Solo may not have engaged yet when the Mac
+      // goes, and without one this fetch falls to the relay's ten-minute
+      // window - the sheet sat on "Looking for EnConvo..." forever
+      // (owner, 2026-08-03). Ten seconds, then say what is wrong.
+      const stop=new AbortController();
+      const bell=setTimeout(()=>stop.abort(),10000);
+      let r;
+      try{
+        r=await(await fetch('api/enconvo/agents',{signal:stop.signal})).json();
+      }catch(error){
+        throw new Error(stop.signal.aborted
+          ?'your Mac did not answer — EnConvo lives there'
+          :(error.message||error));
+      }finally{clearTimeout(bell);}
       if(!r.agents)throw new Error(r.detail||'no agents');
       agentList.replaceChildren();
       const off=document.createElement('button');
