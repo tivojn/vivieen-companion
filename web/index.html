@@ -1132,6 +1132,14 @@ function routedStatus(route,fallback=''){
   }
   return fallback?`ready · ${fallback}`:'ready';
 }
+/* Whose brain is answering. Coupled, that is the EnConvo agent by name -
+   "EnConvo · Mavis" - not whatever model the Mac would have used. */
+function enconvoStatus(){
+  if(!(window.ENCONVO&&ENCONVO.agent))return '';
+  return 'enconvo · '+(ENCONVO.title||ENCONVO.agent);
+}
+/* What the line says when nothing is happening. */
+function idleStatus(){return enconvoStatus()||'ready';}
 
 (async()=>{
   const assetRev=Date.now().toString(36);
@@ -1267,7 +1275,10 @@ async function poll(){
     if(monitorEnabled){
       renderMonitorStatus();
     }else if(h.warm&&providerOK){
-      setStatus(routedStatus(h.last_llm,h.llm),'on');ptt.disabled=false;
+      // Coupled, the AGENT is who answers - naming the Mac's own model
+      // there is describing a brain nobody is using (owner, 2026-08-03).
+      setStatus(enconvoStatus()||routedStatus(h.last_llm,h.llm),'on');
+      ptt.disabled=false;
     }else{
       ptt.disabled=true;
       setStatus(providerOK?(h.warming?'loading '+h.warming:'loading models')
@@ -3473,7 +3484,7 @@ async function turn(text,spoken=false){
       threadAttachments(r.media);
       if(r.audio&&ENCONVO.audio!==false){
         setStatus('speaking','on');await speak(r.audio,r.track);}
-      setStatus('coupled · '+(ENCONVO.title||ENCONVO.agent),'on');
+      setStatus(idleStatus(),'on');
     }catch(e){
       work.remove();
       if(e.name==='AbortError'){
@@ -3481,7 +3492,7 @@ async function turn(text,spoken=false){
       }else{
         setCaption('(agent trouble: '+e.message+')');
         threadPush('her','(agent trouble: '+e.message+')');
-        setStatus('ready','on');
+        setStatus(idleStatus(),'on');
       }
     }
     ENCONVO.abort=null;
@@ -3590,13 +3601,13 @@ async function startRec(force=false){
       recDiscard=false;
       closeDictationStream();
       txt.value='';autoSizeTxt();
-      setStatus('ready','on');ptt.disabled=monitorEnabled;
+      setStatus(idleStatus(),'on');ptt.disabled=monitorEnabled;
       return;
     }
     const blob=new Blob(chunks,{type:rec.mimeType||'audio/webm'});
     if(blob.size<3000){
       closeDictationStream();
-      setStatus('ready','on');ptt.disabled=monitorEnabled;
+      setStatus(idleStatus(),'on');ptt.disabled=monitorEnabled;
       flashPrompt('Too short · hold, speak while the wave pulses, then release');
       return;
     }
@@ -3612,13 +3623,13 @@ async function startRec(force=false){
         heard=String(r.text||'').trim()||txt.value.trim();
       }
       if(!heard){
-        setStatus('ready','on');ptt.disabled=monitorEnabled;
+        setStatus(idleStatus(),'on');ptt.disabled=monitorEnabled;
         flashPrompt('I could not hear words in that · try again');
         return;
       }
       txt.value='';autoSizeTxt();
       await turn(heard,true);
-    }catch(e){setStatus('ready','on');ptt.disabled=monitorEnabled;}
+    }catch(e){setStatus(idleStatus(),'on');ptt.disabled=monitorEnabled;}
     finally{closeDictationStream();}
   };
   // Timesliced so dictation can stream: chunks feed the realtime socket (or
@@ -3768,12 +3779,12 @@ async function stopNativeRec(){
   document.documentElement.classList.remove('listening');
   ptt.classList.remove('rec');txt.classList.remove('rec');
   const chunks=PTT.chunks;PTT.chunks=[];
-  if(recDiscard){recDiscard=false;setStatus('ready','on');return;}
+  if(recDiscard){recDiscard=false;setStatus(idleStatus(),'on');return;}
   let frames=0;
   chunks.forEach(c=>{frames+=c.length;});
   if(frames<PTT.rate*0.25){
     flashPrompt('Too short · hold, speak, then release');
-    setStatus('ready','on');return;
+    setStatus(idleStatus(),'on');return;
   }
   setStatus('transcribing','busy');
   try{
@@ -3781,7 +3792,7 @@ async function stopNativeRec(){
       const blob=wavFromPcm(chunks,PTT.rate);
       const bytes=new Uint8Array(await blob.arrayBuffer());
       const heard=await soloSTT(bytes);
-      if(!heard){flashPrompt('I did not catch that');setStatus('ready','on');return;}
+      if(!heard){flashPrompt('I did not catch that');setStatus(idleStatus(),'on');return;}
       await turn(heard,true);
       return;
     }
@@ -3796,11 +3807,11 @@ async function stopNativeRec(){
     }
     const r=await response.json();
     const heard=String(r.text||'').trim();
-    if(!heard){flashPrompt('I did not catch that');setStatus('ready','on');return;}
+    if(!heard){flashPrompt('I did not catch that');setStatus(idleStatus(),'on');return;}
     await turn(heard,true);
   }catch(error){
     flashPrompt('Could not transcribe: '+String(error.message||error).slice(0,70));
-    setStatus('ready','on');
+    setStatus(idleStatus(),'on');
   }
 }
 function stopRec(){

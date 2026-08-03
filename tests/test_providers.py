@@ -175,6 +175,19 @@ class ProviderDefaultsTests(unittest.TestCase):
         self.assertIn("routedStatus(h.last_llm,h.llm)", html)
         self.assertNotIn("classList.toggle('alert',!h.ollama)", html)
 
+    def test_coupled_status_names_the_agent_not_the_macs_model(self):
+        # Coupled, the EnConvo agent answers - the line said "READY . XAI
+        # GROK", naming a brain nobody was using (owner, 2026-08-03).
+        index_path = os.path.join(ROOT, "web", "index.html")
+        with open(index_path, encoding="utf-8") as handle:
+            html = handle.read()
+        self.assertIn("return 'enconvo \u00b7 '+(ENCONVO.title||ENCONVO.agent);", html)
+        # the agent wins over the route, and over every idle line
+        self.assertIn("setStatus(enconvoStatus()||routedStatus(h.last_llm,h.llm)", html)
+        self.assertIn("function idleStatus(){return enconvoStatus()||'ready';}", html)
+        # no idle site may hard-code 'ready' and clobber the agent's name
+        self.assertNotIn("setStatus('ready','on')", html)
+
     def test_openai_lists_only_models_for_the_requested_modality(self):
         # Exclusion only, never a name allowlist: the old gpt-* prefix list
         # hid every newly-named family (a "luna-1" never appeared). Unknown
