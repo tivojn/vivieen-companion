@@ -786,7 +786,8 @@ document.documentElement.dataset.design='quiet';</script>
     <button data-tab="persona">Persona</button>
   </nav>
   <div class="grow"></div>
-  <button class="theme-toggle" id="theme-toggle" type="button" title="Switch light / dark theme" aria-label="Switch color theme">◐</button>
+  <!-- The same moon the rail wears - one glyph for one switch (#30). -->
+  <button class="theme-toggle" id="theme-toggle" type="button" title="Switch light / dark theme" aria-label="Switch color theme"><svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16" fill="currentColor"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg></button>
   <a class="back" href="/">&larr; Back to chat</a>
 </header>
 
@@ -1247,11 +1248,24 @@ document.addEventListener('click', event => {
   button.title = shown ? 'Show the key' : 'Hide the key';
   button.setAttribute('aria-label', button.title);
 });
-$('#theme-toggle').onclick = () => {
-  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-  document.documentElement.dataset.theme = next;
-  localStorage.setItem('vivieen-theme', next);
-};
+/* One theme: one glyph, one key, one applier (#30). The rail on her
+   screen and this toggle were two controls over two localStorage keys,
+   so they disagreed - and localStorage is per-device besides. The key is
+   'vivieen-theme', the Mac's config (ui.theme) referees across devices
+   exactly the way the design setting learned to, and the storage event
+   keeps sibling windows in step. */
+function setTheme(value, push) {
+  document.documentElement.dataset.theme = value === 'dark' ? 'dark' : 'light';
+  localStorage.setItem('vivieen-theme', value);
+  if (push) api('/api/config', {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ui: {theme: value}})}).catch(() => {});
+}
+$('#theme-toggle').onclick = () =>
+  setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark', true);
+addEventListener('storage', event => {
+  if (event.key === 'vivieen-theme' && event.newValue) setTheme(event.newValue);
+});
 // Two complete designs over identical markup: Quiet (calm paper minimalism)
 // and Atelier (editorial couture). The choice is shared through
 // localStorage, so the pet chrome, menu, and bubble follow along live.
@@ -4147,6 +4161,8 @@ async function boot() {
   CAT = r.catalog;
   GLOBALS = r.globals || {};
   ACTIVE = r.active;
+  // The Mac decides, so this page and the rail cannot disagree (#30).
+  if ((CFG.ui || {}).theme) setTheme(CFG.ui.theme);
   ['llm', 'tts', 'stt'].forEach(resetModelState);
   DIRTY = false;
   ['llm', 'tts', 'stt'].forEach(renderBlock);

@@ -2548,6 +2548,10 @@ async def health():
             # Both pages read the look from HERE - it was on /api/meta,
             # which neither of them fetches, so the fix never fired.
             "design": ((cfg.get("ui") or {}).get("design") or "quiet"),
+            # Light/dark rides the same channel (#30). Empty means the
+            # owner never chose, and every device keeps following its
+            # own room.
+            "theme": ((cfg.get("ui") or {}).get("theme") or ""),
             "warm": _state["warm"], "warming": _state["warming"],
             "ollama": cfg["llm"].get("provider") == "ollama" and ok,
             "provider_ok": ok, "llm_ok": ok,

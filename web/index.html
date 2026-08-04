@@ -951,13 +951,20 @@ window.__vivAvatarChanged=()=>{
   setTimeout(()=>location.reload(),400);
 };
 applyChromeDesign(localStorage.getItem('vivieen-design'));
+// The light/dark applier lives in the iOS block below (the desk window
+// has no skin of its own); it registers here so the reconcile and the
+// storage event can reach it (#30).
+let applyThemeHook=()=>{};
 /* The Mac decides, so the desk and the phone cannot disagree. */
 fetch('health').then(r=>r.json()).then(h=>{
   if(h&&h.design){localStorage.setItem('vivieen-design',h.design);
     applyChromeDesign(h.design);}
+  if(h&&h.theme){localStorage.setItem('vivieen-theme',h.theme);
+    applyThemeHook();}
 }).catch(()=>{});
 addEventListener('storage',event=>{
   if(event.key==='vivieen-design')applyChromeDesign(event.newValue);
+  if(event.key==='vivieen-theme')applyThemeHook();
 });
 const SHELL=window.vivieen;
 const HAS_GLOBAL_PET_POINTER=Boolean(SHELL&&SHELL.onPetPointer);
@@ -983,16 +990,25 @@ if(IS_IOS){
   });
   // Light or dark: the room decides unless the owner has (owner,
   // 2026-08-03). Stored choice wins; otherwise follow iOS, and keep
-  // following it if it changes while she is open.
+  // following it if it changes while she is open. The key is
+  // 'vivieen-theme' - the SAME one Settings uses - because two keys under
+  // two controls is why the rail and the gear disagreed (#30). The old
+  // 'viv-skin' value migrates once and is gone.
   const systemDark=matchMedia('(prefers-color-scheme: dark)');
+  const old=localStorage.getItem('viv-skin');
+  if(old&&!localStorage.getItem('vivieen-theme')){
+    localStorage.setItem('vivieen-theme',old);
+  }
+  localStorage.removeItem('viv-skin');
   const applySkin=()=>{
-    const chosen=localStorage.getItem('viv-skin');
+    const chosen=localStorage.getItem('vivieen-theme');
     const dark=chosen?chosen==='dark':systemDark.matches;
     document.documentElement.dataset.skin=dark?'dark':'light';
   };
   applySkin();
+  applyThemeHook=applySkin;
   systemDark.addEventListener('change',()=>{
-    if(!localStorage.getItem('viv-skin'))applySkin();
+    if(!localStorage.getItem('vivieen-theme'))applySkin();
   });
   /* WebKit hands a custom-scheme handler the URL and headers of a fetch
      but NEVER its body, so every POST reached the Mac empty and she
@@ -1036,9 +1052,13 @@ if(IS_IOS){
     };
   }
   window.toggleSkin=()=>{
-    const dark=document.documentElement.dataset.skin!=='light';
-    localStorage.setItem('viv-skin',dark?'light':'dark');
+    const next=document.documentElement.dataset.skin!=='light'?'light':'dark';
+    localStorage.setItem('vivieen-theme',next);
     applySkin();
+    // Tell the Mac, so Settings on any device lands on the same side.
+    fetch('api/config',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ui:{theme:next}})}).catch(()=>{});
   };
 }
 // A second on-desk avatar loads this same page at /c/<slug>/?side=left: it

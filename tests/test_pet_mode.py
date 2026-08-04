@@ -2729,6 +2729,28 @@ class SoloLanSyncTests(unittest.TestCase):
         self.assertIn("func isPrivateHost(_ host: String) -> Bool", scheme)
 
 
+class OneThemeSwitchTests(unittest.TestCase):
+    """#30: the rail and Settings were two controls over two keys."""
+
+    def test_both_pages_share_one_key_and_the_mac_referees(self):
+        page = (ROOT / "web" / "index.html").read_text()
+        settings = (ROOT / "web" / "settings.html").read_text()
+        # One key. The rail's old key survives only as a one-time migration.
+        self.assertNotIn("localStorage.setItem('viv-skin'", page)
+        self.assertIn("localStorage.removeItem('viv-skin')", page)
+        for source in (page, settings):
+            self.assertIn("'vivieen-theme'", source)
+        # Both controls tell the Mac, and both pages listen for its answer.
+        self.assertIn("JSON.stringify({ui:{theme:next}})", page)
+        self.assertIn("JSON.stringify({ui: {theme: value}})", settings)
+        self.assertIn("if(h&&h.theme)", page)
+        self.assertIn("if ((CFG.ui || {}).theme) setTheme(CFG.ui.theme);",
+                      settings)
+        server = (ROOT / "server" / "app.py").read_text()
+        self.assertIn('"theme": ((cfg.get("ui") or {}).get("theme") or "")',
+                      server)
+
+
 class AvatarOpacityAndHiding(unittest.TestCase):
     def test_the_dimmer_cannot_defeat_the_hide_switch(self):
         # The opacity slider wrote stage.style.opacity, and an inline style
