@@ -427,7 +427,7 @@ class ProviderDefaultsTests(unittest.TestCase):
         with open(os.path.join(ROOT, "server", "app.py"),
                   encoding="utf-8") as handle:
             source = handle.read()
-        self.assertIn('"design": ((P.load().get("ui") or {}).get("design")', source)
+        self.assertIn('"design": ((cfg.get("ui") or {}).get("design")', source)
         for page in ("settings.html", "index.html"):
             with open(os.path.join(ROOT, "web", page), encoding="utf-8") as handle:
                 markup = handle.read()

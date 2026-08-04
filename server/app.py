@@ -2343,6 +2343,9 @@ async def health():
         return f"{block.get('provider')} / {detail or 'default'}"
 
     return {"app_id": APP_ID, "boot": BOOT_ID,
+            # Both pages read the look from HERE - it was on /api/meta,
+            # which neither of them fetches, so the fix never fired.
+            "design": ((cfg.get("ui") or {}).get("design") or "quiet"),
             "warm": _state["warm"], "warming": _state["warming"],
             "ollama": cfg["llm"].get("provider") == "ollama" and ok,
             "provider_ok": ok, "llm_ok": ok,
