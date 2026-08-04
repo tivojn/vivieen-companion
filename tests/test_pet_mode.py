@@ -2192,13 +2192,68 @@ class PocketBarAndToolsTests(unittest.TestCase):
                       "async function soloChat()", "async function soloTTS(",
                       "async function soloSTT(", "async function soloImage("):
             self.assertIn(piece, self.renderer)
-        # turn() must hand over BEFORE it reaches the Mac.
-        self.assertIn("if(SOLO.active)return soloTurn(text);", self.renderer)
+        # turn() must hand over BEFORE it reaches the Mac - UNLESS an
+        # EnConvo agent is coupled. One slow health poll is enough to enter
+        # solo, and handing a coupled message to the phone's own model with
+        # no word said took the agent silently out of the loop for the rest
+        # of the conversation (owner, 2026-08-04). Coupled, the agent is
+        # asked first; solo is what happens when that fails, and it says so.
+        self.assertIn(
+            "if(SOLO.active&&!(window.ENCONVO&&ENCONVO.agent))return soloTurn(text);",
+            self.renderer)
+        self.assertIn("needs your Mac — answering on this phone", self.renderer)
         # A dead Mac answers {offline:true} as valid JSON, so the poll has
         # to inspect it rather than trust that .json() throwing means down.
         self.assertIn("if(h.offline)throw new Error('offline')", self.renderer)
         # EnConvo cannot follow her off the Mac, and says so once.
         self.assertIn("EnConvo needs your Mac", self.renderer)
+
+    def test_the_corner_names_the_road(self):
+        # The line named the BRAIN and never the ROUTE, so "why is this
+        # slow" had no answer on screen. The native side STAMPS the road on
+        # the health reply; the page only displays it. An inference would be
+        # wrong in exactly the case the chip exists for.
+        scheme = (ROOT / "ios" / "Vivieen" / "VivScheme.swift").read_text()
+        self.assertIn('stampRoad(data, "lan")', scheme)
+        self.assertIn('stampRoad(reply.data, "internet")', scheme)
+        self.assertIn('<span id="road" hidden></span>', self.renderer)
+        self.assertIn("setRoad(h.road||'lan')", self.renderer)
+        self.assertIn("setRoad('solo')", self.renderer)
+        # Held before it changes, so a marginal wifi cannot strobe it.
+        self.assertIn("Date.now()-ROAD.since<10000", self.renderer)
+
+    def test_the_cheap_probe_arms_the_expensive_fuse(self):
+        # A chat POST gets a ten-minute direct timeout because a turn is
+        # allowed to think. So the first message after walking out of the
+        # house hung on a blackholed LAN for ten minutes before the relay
+        # was tried. The four-second health probe now arms the same fuse a
+        # real failure arms, and the POST never takes that road.
+        scheme = (ROOT / "ios" / "Vivieen" / "VivScheme.swift").read_text()
+        health = scheme[scheme.index('bare(path) == "/health"'):
+                        scheme.index('hasPrefix("/solo/")')]
+        self.assertIn("directOffUntil = Date().addingTimeInterval(20)", health)
+        self.assertIn("self.discoverMac()", health)
+        # And the probe must take the road the turns take, or it lies.
+        self.assertIn("if skipDirectNow() {", health)
+
+    def test_a_coupled_turn_is_never_replayed_through_the_relay(self):
+        # Over the relay the Mac never saw a disconnect - the relay agent
+        # is still holding the upstream open - so a retry makes the agent
+        # run the whole turn twice, tool side effects and all.
+        self.assertIn(
+            "if(attempt<1&&error.name!=='AbortError'&&ROAD.shown!=='internet')",
+            self.renderer)
+        # And the agent sheet's ceiling has to fit a mailbox round trip.
+        self.assertIn("ROAD.shown==='internet'?40000:10000", self.renderer)
+
+    def test_the_coupling_survives_a_reload(self):
+        # An engine restart trips the boot watchdog, which reloads the page.
+        # The agent and its session lived in one JS object, so the reload
+        # silently uncoupled you and orphaned the thread.
+        self.assertIn("const ENCONVO_KEPT='viv-enconvo'", self.renderer)
+        self.assertIn("window.enconvoRemember=()=>", self.renderer)
+        self.assertIn("if(window.enconvoRemember)enconvoRemember();",
+                      self.renderer)
 
     def test_solo_keys_never_enter_the_page(self):
         # The page learns key NAMES; the native proxy injects values. A

@@ -453,6 +453,21 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                                 type: "application/json")
                     return
                 }
+                // The probe is the CHEAP canary, so let it do the work of
+                // the expensive one. A chat POST gets a ten-minute direct
+                // timeout because a turn is allowed to think - which means
+                // the first message after walking out of the house used to
+                // hang on a blackholed LAN for ten minutes before the relay
+                // was tried at all. This four-second miss arms the same
+                // twenty-second fuse a real failure arms, so the POST never
+                // takes that road in the first place (owner, 2026-08-04).
+                self.lock.lock()
+                self.directOffUntil = Date().addingTimeInterval(20)
+                let stale = self.lanAddress
+                self.lanAddress = nil
+                self.lock.unlock()
+                if stale != nil { NSLog("[viv-scheme] LAN address stopped answering") }
+                self.discoverMac()
                 // 8s was too tight to survive cellular. A relay round
                 // trip is four hops through a 700ms-polled mailbox - ~5s
                 // on wifi before 5G latency is added - so the probe was

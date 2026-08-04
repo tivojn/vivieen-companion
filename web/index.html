@@ -1848,10 +1848,12 @@ function soloCharTrack(alignment){
 }
 
 let soloToldEnconvo=false;
-async function soloTurn(text){
+/* `pushed` says the caller already put the message in the thread - the
+   coupled lane does, before it discovers the agent cannot be reached. */
+async function soloTurn(text,pushed=false){
   turnBegin();
   history.push({role:'user',content:text});
-  threadPush('user',text);
+  if(!pushed)threadPush('user',text);
   if(window.ENCONVO&&ENCONVO.agent&&!soloToldEnconvo){
     soloToldEnconvo=true;
     flashPrompt('EnConvo needs your Mac — her solo brain is answering');
@@ -3769,7 +3771,11 @@ async function enconvoStream(body,work,attempt=0){
     // agent turn over the LAN, a moment of Wi-Fi, a backgrounded app.
     // The agent kept its session, so one quiet retry usually lands
     // (owner, 2026-08-03).
-    if(attempt<1&&error.name!=='AbortError'){
+    // NOT over the relay. There the Mac never saw a disconnect - the relay
+    // agent is still holding the upstream open - so the first turn is
+    // still running, and a retry makes the agent do the whole thing twice,
+    // tool side effects and all (owner, 2026-08-04).
+    if(attempt<1&&error.name!=='AbortError'&&ROAD.shown!=='internet'){
       work.addStep('reconnecting…');
       await new Promise(r=>setTimeout(r,1200));
       return enconvoStream(body,work,attempt+1);
@@ -3853,7 +3859,14 @@ function liveFlushAudio(){
 }
 
 async function turn(text,spoken=false){
-  if(SOLO.active)return soloTurn(text);
+  /* Coupled, solo is not a substitute for the agent. One slow health poll
+     is enough to put the page in solo, and this line used to hand the
+     message to the phone's own model without a word said - the agent
+     quietly out of the loop for the rest of the conversation, on a Mac
+     that was awake and answering over the relay the whole time (owner,
+     2026-08-04). If an agent is coupled, the agent is asked; solo is what
+     happens when THAT fails, and then it says so. */
+  if(SOLO.active&&!(window.ENCONVO&&ENCONVO.agent))return soloTurn(text);
   ptt.disabled=true;elYou.textContent=text;setCaption('');
   threadPush('user',text);
   setStatus('thinking','busy');
@@ -3872,7 +3885,8 @@ async function turn(text,spoken=false){
       ENCONVO.pending=[];
       work.remove();
       if(r.detail)throw new Error(r.detail);
-      if(r.session_id)ENCONVO.sessions[ENCONVO.agent]=r.session_id;
+      if(r.session_id){ENCONVO.sessions[ENCONVO.agent]=r.session_id;
+        if(window.enconvoRemember)enconvoRemember();}
       setCaption(r.text);
       threadPush('her',r.text);
       // Anything she made or fetched arrives as a card you can play right
@@ -3885,6 +3899,15 @@ async function turn(text,spoken=false){
       work.remove();
       if(e.name==='AbortError'){
         threadPush('her','· stopped ·');setStatus('coupled','on');
+      }else if(SOLO.active&&soloLLM()){
+        // Neither road reached the Mac. Answer anyway - but NAME the brain
+        // that is answering. An unannounced substitution is the whole bug.
+        threadPush('her','· '+(ENCONVO.title||ENCONVO.agent)
+          +' needs your Mac — answering on this phone ·');
+        ENCONVO.abort=null;turnEnd();
+        await soloTurn(text,true);
+        ptt.disabled=monitorEnabled;
+        return;
       }else{
         setCaption('(agent trouble: '+e.message+')');
         threadPush('her','(agent trouble: '+e.message+')');
@@ -5653,6 +5676,25 @@ if(IS_IOS){
   // /audio and /verbose flip them, /status reports them.
   window.ENCONVO={agent:'',title:'',sessions:{},
     audio:true,verbose:true,abort:null,pending:[]};
+  /* Which agent you are talking to, and the thread it is holding, both
+     lived in this object and nowhere else - so an engine restart, which
+     trips the boot watchdog and reloads the page, silently uncoupled you
+     and orphaned the session. The next message went to Vivieen herself
+     with no context and no word said (owner, 2026-08-04). */
+  const ENCONVO_KEPT='viv-enconvo';
+  try{
+    const kept=JSON.parse(localStorage.getItem(ENCONVO_KEPT)||'null');
+    if(kept&&kept.agent){
+      ENCONVO.agent=kept.agent;ENCONVO.title=kept.title||'';
+      ENCONVO.sessions=kept.sessions||{};
+    }
+  }catch(e){}
+  window.enconvoRemember=()=>{
+    try{
+      localStorage.setItem(ENCONVO_KEPT,JSON.stringify({
+        agent:ENCONVO.agent,title:ENCONVO.title,sessions:ENCONVO.sessions}));
+    }catch(e){}
+  };
   const closeAgents=()=>document.documentElement.classList.remove('agents-open');
   railEnconvo.addEventListener('click',async()=>{
     if(document.documentElement.classList.contains('agents-open')){closeAgents();return;}
@@ -5661,7 +5703,9 @@ if(IS_IOS){
     // window - so the sheet sat on "Looking for EnConvo..." forever
     // (owner, 2026-08-03). Refuse now, and say which part is missing.
     if(SOLO.active){
-      flashPrompt('EnConvo lives on your Mac — wake it to couple an agent');
+      flashPrompt(ROAD.shown==='internet'
+        ?'still finding your Mac through the relay — try again in a moment'
+        :'EnConvo lives on your Mac — wake it to couple an agent');
       return;
     }
     document.documentElement.classList.add('agents-open');
@@ -5671,8 +5715,15 @@ if(IS_IOS){
       // goes, and without one this fetch falls to the relay's ten-minute
       // window - the sheet sat on "Looking for EnConvo..." forever
       // (owner, 2026-08-03). Ten seconds, then say what is wrong.
+      //
+      // Ten is right on this wifi and wrong through the mailbox: a failed
+      // direct try, a cursor seed, a push, a 700ms poll and EnConvo's own
+      // fifteen-second list call do not fit, so the sheet was calling an
+      // awake Mac dead every time (owner, 2026-08-04). The road knows
+      // which one we are on, so let it set the ceiling.
       const stop=new AbortController();
-      const bell=setTimeout(()=>stop.abort(),10000);
+      const bell=setTimeout(()=>stop.abort(),
+                            ROAD.shown==='internet'?40000:10000);
       let r;
       try{
         r=await(await fetch('api/enconvo/agents',{signal:stop.signal})).json();
@@ -5686,7 +5737,8 @@ if(IS_IOS){
       const off=document.createElement('button');
       off.type='button';off.className='agent'+(ENCONVO.agent?'':' on');
       off.innerHTML='<div class="who"><b>Vivieen herself</b><span>her own model - uncoupled</span></div>';
-      off.addEventListener('click',()=>{ENCONVO.agent='';ENCONVO.title='';closeAgents();
+      off.addEventListener('click',()=>{ENCONVO.agent='';ENCONVO.title='';
+        enconvoRemember();closeAgents();
         flashPrompt('Talking to Vivieen herself');});
       agentList.append(off);
       r.agents.forEach(agent=>{
@@ -5699,7 +5751,8 @@ if(IS_IOS){
         row.querySelector('b').textContent=agent.title;
         row.querySelector('span').textContent=agent.description||'EnConvo agent';
         row.addEventListener('click',()=>{
-          ENCONVO.agent=agent.name;ENCONVO.title=agent.title;closeAgents();
+          ENCONVO.agent=agent.name;ENCONVO.title=agent.title;
+          enconvoRemember();closeAgents();
           flashPrompt('Coupled to '+agent.title+' · she speaks for the agent now');
         });
         agentList.append(row);
