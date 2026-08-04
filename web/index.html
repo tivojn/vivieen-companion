@@ -245,9 +245,9 @@ html.ios{
   --skin:#0b0d10;          /* the stage behind her */
   --card:rgba(12,14,18,.72);
   --card-line:rgba(255,255,255,.10);
-  --card-ink:#e9ecf1;
-  --mine:rgba(63,60,112,.55);
-  --mine-line:rgba(124,116,226,.38);
+  --card-ink:#f1f0ee;
+  --mine:rgba(255,255,255,.07);
+  --mine-line:rgba(255,255,255,.20);
   --chip:rgba(20,22,26,.55);
   --chip-line:rgba(255,255,255,.14);
   --chip-ink:#c9cdd4;
@@ -256,18 +256,46 @@ html.ios{
   --faint:#aab0bb;
 }
 html.ios[data-skin=light]{
-  --skin:#eef0f4;
-  --card:rgba(255,255,255,.86);
-  --card-line:rgba(18,22,30,.10);
-  --card-ink:#151a21;
-  --mine:rgba(108,101,222,.16);
-  --mine-line:rgba(108,101,222,.40);
-  --chip:rgba(255,255,255,.78);
-  --chip-line:rgba(18,22,30,.12);
-  --chip-ink:#39414d;
-  --field:rgba(255,255,255,.9);
-  --field-line:rgba(18,22,30,.14);
-  --faint:#5d6672;
+  --skin:#f7f7f5;
+  --card:rgba(255,255,255,.92);
+  --card-line:#e7e6e3;
+  --card-ink:#37352f;
+  --mine:rgba(55,53,47,.055);
+  --mine-line:rgba(55,53,47,.14);
+  --chip:rgba(255,255,255,.86);
+  --chip-line:#e7e6e3;
+  --chip-ink:#5f5e5b;
+  --field:#ffffff;
+  --field-line:#e7e6e3;
+  --faint:#787774;
+}
+/* ---- accent -------------------------------------------------------------
+   Notion's discipline: neutral surfaces, one restrained accent, and
+   colour reserved for state that MEANS something. The purple was
+   decorating things that were merely selected (owner, 2026-08-04), so
+   every one of those is now a soft grey; red stays for recording and a
+   live call, green for ready, because those are worth a colour. */
+html.ios{
+  --tint:rgba(255,255,255,.08);        /* selected / active fill      */
+  --tint-line:rgba(255,255,255,.18);   /* its edge                    */
+  --tint-ink:#f1f0ee;                  /* text on it                  */
+  --tint-bar:rgba(255,255,255,.82);    /* meter bars                  */
+  --solid:#f1f0ee;                     /* the one filled disc         */
+  --solid-ink:#1f1e1c;
+  /* The only two colours in the whole interface, and each one MEANS
+     something: red = recording or on a call, green = ready. Everything
+     else is a grey. Both are Settings' own accents, so the two halves of
+     the app finally look like one product (owner, 2026-08-04). */
+  --hot:#e2483a;
+  --go:#448361;
+}
+html.ios[data-skin=light]{
+  --tint:rgba(55,53,47,.055);
+  --tint-line:rgba(55,53,47,.14);
+  --tint-ink:#37352f;
+  --tint-bar:rgba(55,53,47,.68);
+  --solid:#37352f;
+  --solid-ink:#ffffff;
 }
 html.ios[data-skin=light],html.ios[data-skin=light] body{background:var(--skin)}
 html.ios[data-skin=light] #vignette{
@@ -280,18 +308,18 @@ html.ios[data-skin=light] #txt{
   background:rgba(255,255,255,.92);border-color:rgba(18,22,30,.14);
   color:#151a21}
 html.ios[data-skin=light].talk-mode #talkbar{
-  background:rgba(108,101,222,.14);border-color:rgba(108,101,222,.5);
-  color:#2c2a63}
+  background:var(--tint);border-color:var(--tint-line);
+  color:var(--tint-ink)}
 html.ios[data-skin=light].talk-mode #talkbar.rec{
-  background:rgba(108,101,222,.34);border-color:rgba(108,101,222,.85);
-  color:#1d1b4d}
+  background:var(--tint);border-color:var(--tint-line);
+  color:var(--tint-ink)}
 html.ios[data-skin=light].talk-mode #talkbar.cancel{
-  background:rgba(212,76,71,.24);border-color:rgba(212,76,71,.75);color:#6d211d}
+  background:rgba(212,76,71,.24);border-color:var(--hot);color:#6d211d}
 html.ios[data-skin=light].talk-mode #micmode{
-  background:rgba(108,101,222,.2);border-color:rgba(108,101,222,.55)}
+  background:var(--tint);border-color:var(--tint-line)}
 html.ios[data-skin=light] #txt::placeholder{color:#8a929e}
 html.ios[data-skin=light] #thread .msg pre{background:#e4e7ee;border-color:#d2d7e0}
-html.ios[data-skin=light] #thread .msg a{color:#4b46c4}
+html.ios[data-skin=light] #thread .msg a{color:#37352f;text-decoration:underline}
 html.ios[data-skin=light] #thread .msg.working .live{color:#151a21}
 html.ios[data-skin=light] #listenWave{background:rgba(255,255,255,.86);
   border-color:rgba(18,22,30,.12)}
@@ -351,11 +379,9 @@ html.ios #micmode svg{width:21px;height:21px;fill:currentColor}
 html.ios #rail-live,html.ios.has-draft #sendBtn{
   display:flex;flex:none;width:34px;height:34px;border-radius:50%;padding:0;
   align-items:center;justify-content:center;border:none;
-  background:#f1f2f5;color:#14171d;
+  background:var(--solid);color:var(--solid-ink);
   -webkit-backdrop-filter:none;backdrop-filter:none}
-html.ios[data-skin=light] #rail-live,
-html.ios[data-skin=light].has-draft #sendBtn{background:#1b1f27;color:#fff}
-html.ios #rail-live.on{background:rgba(212,76,71,.95);color:#fff}
+html.ios #rail-live.on{background:var(--hot);color:#fff}
 html.ios #rail-live svg,html.ios.has-draft #sendBtn svg{
   width:19px;height:19px;fill:currentColor}
 html.ios.has-draft #rail-live{display:none}
@@ -366,7 +392,7 @@ html.ios.has-draft #rail-live{display:none}
 html.ios.turning #rail-live,html.ios.turning #sendBtn{display:none}
 html.ios.turning #stopBtn{display:flex;flex:none;width:34px;height:34px;
   border-radius:50%;align-items:center;justify-content:center;padding:0;
-  order:6;border:none;background:#d44c47;color:#fff}
+  order:6;border:none;background:var(--hot);color:#fff}
 html.ios.turning #stopBtn svg{width:16px;height:16px;fill:currentColor}
 /* Her colours can sit right on top of the words. One tap puts her away,
    another brings her back. */
@@ -383,8 +409,8 @@ html.ios .msg .rowacts button{width:30px;height:30px;padding:0;border:none;
   display:flex;align-items:center;justify-content:center;
   -webkit-tap-highlight-color:transparent}
 html.ios .msg .rowacts button svg{width:17px;height:17px;fill:currentColor}
-html.ios .msg .rowacts button.did{opacity:1;color:#1d9e75}
-html.ios #rail #rail-hide.on{background:rgba(124,116,226,.42);color:#efeefe}
+html.ios .msg .rowacts button.did{opacity:1;color:var(--go)}
+html.ios #rail #rail-hide.on{background:var(--tint);color:var(--tint-ink)}
 /* Picture-in-picture was how she kept talking while you did something
    else. Live talk holds its own socket natively now and runs with the
    app in the background, so the little window has nothing left to do
@@ -412,7 +438,7 @@ html.ios #modellist button{display:block;width:100%;text-align:left;
   padding:11px 14px;border:none;background:none;color:var(--card-ink);
   font:inherit;font-size:15px;border-radius:12px;
   -webkit-user-select:none;user-select:none}
-html.ios #modellist button.on{background:rgba(124,116,226,.22);font-weight:600}
+html.ios #modellist button.on{background:var(--tint);font-weight:600}
 html.ios #modellist .note{padding:11px 14px;font-size:13px;opacity:.6}
 html.ios #modellist .sheethead{display:flex;align-items:center;gap:6px;
   padding:8px 14px 10px;font-size:12px;letter-spacing:.06em;
@@ -435,7 +461,7 @@ html.ios #emojirow button{font-size:24px;line-height:1.5;background:none;border:
 html.ios #emojirow button,html.ios #rail button,html.ios #gear,
 html.ios #petBubble{
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-html.ios.talk-mode #micmode{background:rgba(124,116,226,.28);border-color:rgba(124,116,226,.6)}
+html.ios.talk-mode #micmode{background:var(--tint);border-color:var(--tint-line)}
 #talkbar{display:none}
 html.ios.talk-mode #txt{display:none}
 /* ---- listening ---------------------------------------------------------
@@ -446,25 +472,25 @@ html.ios.talk-mode #txt{display:none}
 html.ios #listenWave{order:1;flex:1 0 100%;position:static;transform:none;
   box-sizing:border-box;height:44px;padding:0;gap:12px;
   justify-content:center;border-radius:12px;
-  border:1px solid rgba(124,116,226,.5);background:rgba(124,116,226,.16);
+  border:1px solid var(--tint-line);background:var(--tint);
   -webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none}
 html.ios.listening #txt,html.ios.listening.talk-mode #talkbar{display:none}
 html.ios #listenWaveDot{display:none}
 html.ios #listenWaveBars{gap:4px;height:22px}
 html.ios #listenWaveBars span{width:3px;border-radius:2px;
-  background:rgba(124,116,226,.95)}
+  background:var(--tint-bar)}
 html.ios #listenWaveText{font-size:11px;font-weight:600;letter-spacing:.22em;
   text-transform:uppercase;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-  color:#e7e5ff}
+  color:var(--tint-ink)}
 /* Slide up while holding and the channel turns to an abort. */
-html.ios #listenWave.abort{border-color:rgba(212,76,71,.9);
+html.ios #listenWave.abort{border-color:var(--hot);
   background:rgba(212,76,71,.2)}
 html.ios #listenWave.abort #listenWaveBars span{background:rgba(255,150,145,.95)}
 html.ios #listenWave.abort #listenWaveText{color:#ffe2e0}
 html.ios[data-skin=light] #listenWave{
-  border-color:rgba(108,101,222,.55);background:rgba(108,101,222,.14)}
-html.ios[data-skin=light] #listenWaveBars span{background:rgba(76,68,196,.95)}
-html.ios[data-skin=light] #listenWaveText{color:#2c2a63}
+  border-color:var(--tint-line);background:var(--tint)}
+html.ios[data-skin=light] #listenWaveBars span{background:var(--tint-bar)}
+html.ios[data-skin=light] #listenWaveText{color:var(--tint-ink)}
 /* ---- the talk bar -----------------------------------------------------
    A grey slab that said "Hold to talk" looked like a disabled button.
    This is an INSTRUMENT: a dark channel with a scanning sweep that runs
@@ -474,50 +500,46 @@ html.ios[data-skin=light] #listenWaveText{color:#2c2a63}
    futuristic, 2026-08-04) */
 html.ios.talk-mode #talkbar{display:flex;order:1;flex:1 0 100%;height:46px;
   align-items:center;justify-content:center;position:relative;overflow:hidden;
-  border-radius:13px;border:1px solid rgba(124,116,226,.42);
-  background:
-    repeating-linear-gradient(90deg,rgba(124,116,226,.13) 0 1px,transparent 1px 13px),
-    linear-gradient(180deg,rgba(22,24,34,.96),rgba(14,15,22,.96));
-  color:#cfd2ff;font-size:12px;font-weight:600;letter-spacing:.30em;
+  border-radius:13px;border:1px solid var(--tint);
+  background:linear-gradient(180deg,rgba(38,38,36,.96),rgba(26,26,24,.96));
+  color:var(--tint-ink);font-size:12px;font-weight:600;letter-spacing:.30em;
   text-indent:.30em;text-transform:uppercase;
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-  box-shadow:inset 0 0 22px rgba(124,116,226,.16),0 1px 0 rgba(255,255,255,.05);
+  box-shadow:inset 0 0 22px var(--tint),0 1px 0 rgba(255,255,255,.05);
   touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
   transition:border-color 180ms ease,color 180ms ease,box-shadow 180ms ease}
 /* The sweep: a narrow beam crossing the channel, the way a scanner idles. */
 html.ios.talk-mode #talkbar::before{content:'';position:absolute;
   top:0;bottom:0;width:34%;left:-40%;pointer-events:none;
-  background:linear-gradient(90deg,transparent,rgba(124,116,226,.30),transparent);
+  background:linear-gradient(90deg,transparent,var(--tint),transparent);
   animation:talkSweep 2.6s cubic-bezier(.5,0,.5,1) infinite}
 @keyframes talkSweep{0%{left:-40%}100%{left:106%}}
 /* Held: the scan stops - it is listening now, not waiting - and the
    channel lights from the middle out. */
-html.ios.talk-mode #talkbar.rec{color:#fff;border-color:rgba(124,116,226,.95);
-  box-shadow:inset 0 0 34px rgba(124,116,226,.44),0 0 20px rgba(124,116,226,.30)}
+html.ios.talk-mode #talkbar.rec{color:#fff;border-color:var(--tint-bar);
+  box-shadow:inset 0 0 34px var(--tint),0 0 20px var(--tint)}
 html.ios.talk-mode #talkbar.rec::before{animation:none;left:0;width:100%;
-  background:radial-gradient(60% 130% at 50% 50%,rgba(124,116,226,.42),transparent 70%)}
+  background:radial-gradient(60% 130% at 50% 50%,var(--tint),transparent 70%)}
 html.ios.talk-mode #talkbar.cancel{color:#ffe2e0;
-  border-color:rgba(212,76,71,.95);
+  border-color:var(--hot);
   box-shadow:inset 0 0 34px rgba(212,76,71,.46),0 0 20px rgba(212,76,71,.28)}
 html.ios.talk-mode #talkbar.cancel::before{animation:none;left:0;width:100%;
   background:radial-gradient(60% 130% at 50% 50%,rgba(212,76,71,.45),transparent 70%)}
 /* Light mode keeps the instrument, on a pale plate. */
 html.ios[data-skin=light].talk-mode #talkbar{
-  color:#3b3a72;border-color:rgba(108,101,222,.45);
-  background:
-    repeating-linear-gradient(90deg,rgba(108,101,222,.10) 0 1px,transparent 1px 13px),
-    linear-gradient(180deg,rgba(255,255,255,.96),rgba(240,240,250,.96));
-  box-shadow:inset 0 0 20px rgba(108,101,222,.12)}
-html.ios[data-skin=light].talk-mode #talkbar.rec{color:#1d1b4d;
-  border-color:rgba(108,101,222,.9);
-  box-shadow:inset 0 0 30px rgba(108,101,222,.34),0 0 18px rgba(108,101,222,.22)}
+  color:var(--tint-ink);border-color:var(--tint-line);
+  background:linear-gradient(180deg,#ffffff,#f4f4f2);
+  box-shadow:inset 0 0 20px var(--tint)}
+html.ios[data-skin=light].talk-mode #talkbar.rec{color:var(--tint-ink);
+  border-color:var(--tint-line);
+  box-shadow:inset 0 0 30px var(--tint),0 0 18px var(--tint)}
 html.ios[data-skin=light].talk-mode #talkbar.cancel{color:#6d211d;
-  border-color:rgba(212,76,71,.9);
+  border-color:var(--hot);
   box-shadow:inset 0 0 30px rgba(212,76,71,.34),0 0 18px rgba(212,76,71,.2)}
 /* Motion is decoration; some people cannot have it. */
 @media (prefers-reduced-motion:reduce){
   html.ios.talk-mode #talkbar::before{animation:none;left:0;width:100%;
-    background:linear-gradient(90deg,transparent,rgba(124,116,226,.16),transparent)}
+    background:linear-gradient(90deg,transparent,var(--tint),transparent)}
 }
 /* ---- avatar carousel --------------------------------------------------
    Swipe across her, and the wardrobe opens: every installed face as a
@@ -582,15 +604,17 @@ html.ios.emoji-open #rail{opacity:0;pointer-events:none}
    across the status line. The icon says it alone - and it stands clear of
    the app's own gear in the very corner. */
 html.ios #gearWord{display:none}
-html.ios #gear{top:calc(8px + env(safe-area-inset-top,0px));right:52px;padding:8px}
+/* Top-RIGHT corner, where a settings gear lives. It sat inset at 52px,
+   which reads as "something else belongs to my right" (owner, 2026-08-04). */
+html.ios #gear{top:calc(8px + env(safe-area-inset-top,0px));right:14px;padding:8px}
 html.ios #rail button{width:44px;height:44px;border-radius:50%;padding:0;
   display:flex;align-items:center;justify-content:center;
   border:1px solid var(--chip-line);background:var(--chip);
   -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:var(--chip-ink);
   touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 html.ios #rail svg{width:20px;height:20px;fill:currentColor}
-html.ios #rail button.on{background:rgba(124,116,226,.42);
-  border-color:rgba(124,116,226,.8);color:#efeefe}
+html.ios #rail button.on{background:var(--tint);
+  border-color:var(--tint-line);color:var(--tint-ink)}
 /* Live talk lives in the composer now - its lit state is defined with
    the composer's round button, below, not here in the rail's block. */
 /* Pocket thread: the conversation stacks left-aligned above the input,
@@ -661,14 +685,14 @@ html.ios #thread .msg.working .step{margin-top:7px;padding-left:15px;
   position:relative;font-size:13px;color:#9aa2b1;line-height:1.45}
 html.ios #thread .msg.working .step:before{content:'';position:absolute;
   left:3px;top:7px;width:5px;height:5px;border-radius:50%;
-  background:rgba(124,116,226,.85)}
+  background:var(--tint-bar)}
 html.ios #thread .msg.working .live{margin-top:8px;font-size:14.5px;
   line-height:1.5;color:#e9ecf1;white-space:pre-wrap}
 html.ios #thread .msg.media img,html.ios #thread .msg.media video{margin:0}
 html.ios #thread .msg audio{display:block;width:100%;margin:4px 0}
 html.ios #thread .msg pre{overflow-x:auto;padding:8px 10px;border-radius:8px;
   background:#171a20;border:1px solid #262b33}
-html.ios #thread .msg a{color:#aeb7ff}
+html.ios #thread .msg a{color:#f1f0ee;text-decoration:underline}
 /* ChatGPT-style: the thread scrolls like any messenger, and when you're
    away from the newest message a ↓ pill floats above the bar - one tap
    returns to the freshest reply, fully in view. */
@@ -716,7 +740,7 @@ html.ios.agents-open #agentsheet{display:block;position:fixed;left:16px;right:16
 #agentsheet .agent{display:flex;align-items:center;gap:12px;width:100%;
   padding:10px;border:none;background:none;border-radius:12px;color:#e9ecf1;
   text-align:left;font-size:15px}
-#agentsheet .agent.on{background:rgba(124,116,226,.28)}
+#agentsheet .agent.on{background:var(--tint)}
 #agentsheet .agent img{width:44px;height:44px;border-radius:50%;object-fit:cover;
   background:#20242b;flex:none}
 #agentsheet .agent .who{min-width:0}
@@ -1305,6 +1329,19 @@ function routedStatus(route,fallback=''){
   }
   return fallback?`ready · ${fallback}`:'ready';
 }
+/* A model you JUST chose has not answered anything yet, so last_llm - the
+   route that last replied - still names the old one, and the line looked
+   like the pick had not taken (owner, 2026-08-04). The line should say
+   who will answer NEXT. Held until the engine's own route catches up. */
+const PICKED={label:'',model:''};
+function pickedStatus(route){
+  if(!PICKED.label)return '';
+  const shown=String((route&&route.display)||'').toLowerCase();
+  if(PICKED.model&&shown.includes(PICKED.model.toLowerCase())){
+    PICKED.label='';PICKED.model='';return '';
+  }
+  return 'ready · '+PICKED.label;
+}
 /* Whose brain is answering. Coupled, that is the EnConvo agent by name -
    "EnConvo · Mavis" - not whatever model the Mac would have used. */
 function enconvoStatus(){
@@ -1450,7 +1487,8 @@ async function poll(){
     }else if(h.warm&&providerOK){
       // Coupled, the AGENT is who answers - naming the Mac's own model
       // there is describing a brain nobody is using (owner, 2026-08-03).
-      setStatus(enconvoStatus()||routedStatus(h.last_llm,h.llm),'on');
+      setStatus(enconvoStatus()||pickedStatus(h.last_llm)
+        ||routedStatus(h.last_llm,h.llm),'on');
       ptt.disabled=false;
     }else{
       ptt.disabled=true;
@@ -5449,7 +5487,8 @@ if(IS_IOS){
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({lane:'llm',model:name})});
       await soloLoad();
-      const p=soloLLM();setStatus('solo · '+(p?p.label:'ready'),'on');
+      const p=soloLLM();
+      setStatus('solo · '+(p?p.label:'ready')+' · '+name,'on');
     }else{
       // Send the LANE only, never the whole document: an empty api_key
       // means "unchanged" to the Mac, and posting catalog/globals back
@@ -5459,6 +5498,10 @@ if(IS_IOS){
       await fetch('api/config',{method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({llm})});
+      // Say it NOW. The engine will confirm it on the next turn.
+      PICKED.model=name;
+      PICKED.label=(state.provider||'')+' · '+name;
+      setStatus('ready · '+PICKED.label,'on');
     }
     flashPrompt('Now answering with '+name);
     closeModels();

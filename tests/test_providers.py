@@ -182,8 +182,10 @@ class ProviderDefaultsTests(unittest.TestCase):
         with open(index_path, encoding="utf-8") as handle:
             html = handle.read()
         self.assertIn("return 'enconvo \u00b7 '+(ENCONVO.title||ENCONVO.agent);", html)
-        # the agent wins over the route, and over every idle line
-        self.assertIn("setStatus(enconvoStatus()||routedStatus(h.last_llm,h.llm)", html)
+        # the agent wins over everything else the line could say - a
+        # fresh pick and the engine's own route both come after it
+        self.assertIn("setStatus(enconvoStatus()||pickedStatus(h.last_llm)", html)
+        self.assertIn("||routedStatus(h.last_llm,h.llm),'on');", html)
         self.assertIn("function idleStatus(){return enconvoStatus()||'ready';}", html)
         # no idle site may hard-code 'ready' and clobber the agent's name
         self.assertNotIn("setStatus('ready','on')", html)
@@ -202,9 +204,13 @@ class ProviderDefaultsTests(unittest.TestCase):
         # one round slot, never live talk AND send at once
         self.assertIn("html.ios #rail-live,html.ios.has-draft #sendBtn{", html)
         # the glyph must not be painted with the same token as its disc -
-        # in dark mode both resolve light and the icon vanishes
-        self.assertIn("background:#f1f2f5;color:#14171d;", html)
-        self.assertIn("html.ios[data-skin=light] #rail-live,", html)
+        # in dark mode both resolve light and the icon vanishes. They are
+        # a deliberate PAIR now, defined per skin.
+        self.assertIn("background:var(--solid);color:var(--solid-ink);", html)
+        self.assertIn("--solid:#f1f0ee;", html)      # dark: light disc
+        self.assertIn("--solid-ink:#1f1e1c;", html)
+        self.assertIn("--solid:#37352f;", html)      # light: dark disc
+        self.assertIn("--solid-ink:#ffffff;", html)
         # the rail's old scoped rule would stop matching once it moved out
         self.assertNotIn("html.ios #rail #rail-live.on", html)
 
@@ -378,6 +384,20 @@ class ProviderDefaultsTests(unittest.TestCase):
         self.assertIn("(top.catalog&&top.catalog.llm)||[]", html)
         # switching platform must carry the provider, not just the model
         self.assertIn("provider:state.provider,model:name}", html)
+
+    def test_a_fresh_pick_shows_before_it_has_answered(self):
+        # last_llm is the route that last REPLIED, so a model just chosen
+        # has not touched it yet and the line looked like the pick had not
+        # taken until a turn ran (owner, 2026-08-04).
+        index_path = os.path.join(ROOT, "web", "index.html")
+        with open(index_path, encoding="utf-8") as handle:
+            html = handle.read()
+        self.assertIn("const PICKED={label:'',model:''};", html)
+        self.assertIn("function pickedStatus(route)", html)
+        # the poll must prefer it over the stale route
+        self.assertIn("enconvoStatus()||pickedStatus(h.last_llm)", html)
+        # and it must let go once the engine confirms the same model
+        self.assertIn("PICKED.label='';PICKED.model='';return '';", html)
 
     def test_notices_sit_above_the_composer_and_pip_is_gone(self):
         index_path = os.path.join(ROOT, "web", "index.html")

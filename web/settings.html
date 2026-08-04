@@ -11,8 +11,12 @@
   --line:#e7e6e3; --line-strong:#d6d4cf;
   --ink:#37352f; --dim:#787774; --faint:#a5a29c;
   --hover:rgba(55,53,47,.055); --press:rgba(55,53,47,.09);
-  --accent:#e2483a; --accent-text:#c23a2e;
-  --accent-bg:rgba(226,72,58,.07); --accent-line:rgba(226,72,58,.34);
+  /* The primary action is INK, not a colour. Settings wore an orange
+     that the chat page has nothing like, so the two halves read as two
+     products (owner, 2026-08-04). Colour is kept for meaning only:
+     green for validated, red for broken - the same two the phone uses. */
+  --accent:#37352f; --accent-text:#37352f; --accent-on:#ffffff;
+  --accent-bg:rgba(55,53,47,.055); --accent-line:rgba(55,53,47,.22);
   --ok:#448361; --ok-text:#3f7d5c; --ok-bg:rgba(68,131,97,.09); --ok-line:rgba(68,131,97,.34);
   --warn:#cb912f; --warn-text:#a8781f; --warn-bg:rgba(203,145,47,.1); --warn-line:rgba(203,145,47,.35);
   --bad:#d44c47; --bad-text:#c03e39; --bad-bg:rgba(212,76,71,.08); --bad-line:rgba(212,76,71,.35);
@@ -28,8 +32,8 @@
   --line:#2f2f2f; --line-strong:#3d3d3c;
   --ink:#e6e5e2; --dim:#989794; --faint:#6d6c69;
   --hover:rgba(255,255,255,.055); --press:rgba(255,255,255,.09);
-  --accent:#e2483a; --accent-text:#ef7d70;
-  --accent-bg:rgba(226,72,58,.12); --accent-line:rgba(226,72,58,.42);
+  --accent:#e6e5e2; --accent-text:#e6e5e2; --accent-on:#1f1e1c;
+  --accent-bg:rgba(255,255,255,.07); --accent-line:rgba(255,255,255,.24);
   --ok:#4f9d75; --ok-text:#7bc9a0; --ok-bg:rgba(79,157,117,.13); --ok-line:rgba(79,157,117,.4);
   --warn:#d1953f; --warn-text:#dcae62; --warn-bg:rgba(209,149,63,.13); --warn-line:rgba(209,149,63,.4);
   --bad:#e16f66; --bad-text:#ef8d82; --bad-bg:rgba(225,111,102,.13); --bad-line:rgba(225,111,102,.4);
@@ -46,7 +50,7 @@ body{background:var(--bg);color:var(--ink);
   font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,sans-serif;
   -webkit-font-smoothing:antialiased}
 a{color:inherit}
-::selection{background:rgba(226,72,58,.16)}
+::selection{background:var(--press)}
 header{position:sticky;top:0;z-index:9;display:flex;align-items:center;gap:16px;
   padding:12px 28px;background:var(--glass);backdrop-filter:blur(16px);
   border-bottom:1px solid var(--line)}
@@ -99,7 +103,7 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .pill.ok{background:var(--ok-bg);color:var(--ok-text)}
 .pill.warn{background:var(--warn-bg);color:var(--warn-text)}
 .pill.bad{background:var(--bad-bg);color:var(--bad-text)}
-.pill.act{background:var(--accent);color:#fff}
+.pill.act{background:var(--accent);color:var(--accent-on,#fff)}
 .res{margin-top:12px;font-size:13px;display:none}
 .res.on{display:block}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
@@ -141,9 +145,14 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .jobbox .bar{height:3px;background:var(--press);border-radius:2px;overflow:hidden;margin-top:8px}
 .jobbox .bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .35s}
 .jobbox.ok .bar i{background:var(--ok)}
+/* The home indicator eats the bottom of a fixed bar on iPhone: Save sat
+   half under the screen edge (owner, 2026-08-04). Pay the safe area, and
+   let the page scroll clear of the bar so nothing hides behind it. */
 .savebar{position:fixed;left:0;right:0;bottom:0;padding:12px 28px;
+  padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));
   background:var(--glass);backdrop-filter:blur(16px);border-top:1px solid var(--line);
   display:flex;align-items:center;gap:12px;justify-content:flex-end}
+body{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 .savebar .msg{margin-right:auto;color:var(--dim);font-size:13px}
 .tier{font-size:12px;color:var(--dim);margin-top:8px}
 .tier b{color:var(--ink);font-weight:600}
@@ -281,7 +290,7 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .body-mode-tabs .rig-chip{white-space:nowrap}.body-mode-tabs .mode-count{display:inline-grid;
   place-items:center;min-width:17px;height:17px;margin-left:4px;padding:0 4px;border-radius:999px;
   background:var(--press);color:var(--dim);font-size:9px}
-.body-mode-tabs .rig-chip.on .mode-count{background:var(--accent);color:#fff}
+.body-mode-tabs .rig-chip.on .mode-count{background:var(--accent);color:var(--accent-on,#fff)}
 .motion-library{position:absolute;z-index:2;inset:70px 12px 12px;overflow:auto;text-align:left;
   padding:4px 7px 24px;scrollbar-width:thin;scrollbar-color:var(--line-strong) transparent}
 .motion-library-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 2px 14px}
@@ -346,7 +355,7 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .body-progress .bar{position:relative;height:5px;margin:11px 0 0;background:var(--press);
   border-radius:4px;overflow:hidden}
 .body-progress .bar i{display:block;height:100%;width:0;border-radius:4px;
-  background:linear-gradient(90deg,#e2483a,#f07a55);transition:width .45s cubic-bezier(.4,0,.2,1)}
+  background:var(--accent);transition:width .45s cubic-bezier(.4,0,.2,1)}
 /* Errors land here ("provider is not supported...") - the reader needs every
    word, so wrap instead of truncating. Routine progress lines are short and
    sit on one line either way. */
@@ -368,7 +377,7 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
   animation:bodySheen 2.9s ease-in-out infinite}
 .body-progress.live .body-progress-dot{background:var(--accent);animation:bodyPing 1.4s ease-out infinite}
 .body-progress.live .bar i{background:linear-gradient(115deg,rgba(255,255,255,.28) 0 8px,transparent 8px 20px) 0 0/26px 100% repeat,
-    linear-gradient(90deg,#e2483a,#f07a55);
+    var(--accent);
   animation:bodyStripes .9s linear infinite}
 .body-progress.live .bar.indeterminate i{width:32%!important;transition:none;
   animation:bodyStripes .9s linear infinite,bodySlide 1.7s cubic-bezier(.6,0,.35,1) infinite}
@@ -386,8 +395,8 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
   background:var(--bad-bg);color:var(--bad-text)}
 .body-progress.failed .body-progress-hint b{font-weight:600}
 @keyframes bodySheen{0%{transform:translateX(-140%)}55%,100%{transform:translateX(330%)}}
-@keyframes bodyPing{0%{box-shadow:0 0 0 0 rgba(226,72,58,.4)}
-  70%{box-shadow:0 0 0 8px rgba(226,72,58,0)}100%{box-shadow:0 0 0 0 rgba(226,72,58,0)}}
+@keyframes bodyPing{0%{box-shadow:0 0 0 0 var(--accent-line)}
+  70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
 @keyframes bodyStripes{to{background-position:26px 0,0 0}}
 @keyframes bodySlide{0%{transform:translateX(-105%)}100%{transform:translateX(320%)}}
 @keyframes bodyFlash{0%{transform:scale(.985)}45%{transform:scale(1.014)}100%{transform:scale(1)}}
@@ -657,7 +666,7 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 :root[data-design=atelier] .pill.ok{border-color:var(--ok-line);background:transparent;color:var(--ok-text)}
 :root[data-design=atelier] .pill.warn{border-color:var(--warn-line);background:transparent;color:var(--warn-text)}
 :root[data-design=atelier] .pill.bad{border-color:var(--bad-line);background:transparent;color:var(--bad-text)}
-:root[data-design=atelier] .pill.act{border-color:var(--accent);background:var(--accent);color:#fff}
+:root[data-design=atelier] .pill.act{border-color:var(--accent);background:var(--accent);color:var(--accent-on,#fff)}
 /* Fields sit on paper-white, not muddy craft beige. */
 :root[data-design=atelier] input,:root[data-design=atelier] select,
 :root[data-design=atelier] textarea{background:var(--panel);border-color:var(--line-strong)}
