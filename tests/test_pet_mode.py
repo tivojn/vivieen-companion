@@ -2748,9 +2748,25 @@ class HandsOnAppleDataTests(unittest.TestCase):
         self.assertIn('"/hands/run"', scheme)
         self.assertIn("AgentHands.run(tool:", scheme)
         hands = (ROOT / "ios" / "Vivieen" / "AgentHands.swift").read_text()
-        for tool in ("calendar_list", "calendar_create", "reminders_list",
-                     "reminder_create", "contacts_search"):
+        for tool in ("calendar_list", "calendar_create", "calendar_update",
+                     "calendar_delete", "reminders_list", "reminder_create",
+                     "reminder_complete", "reminder_delete",
+                     "contacts_search", "contact_create", "contact_update"):
             self.assertIn(f'case "{tool}":', hands)
+        # Full contact cards - and the one Apple-gated field says WHY when
+        # it cannot come along, never silently (the substitution rule).
+        for attribute in ("CNContactRelationsKey", "CNContactBirthdayKey",
+                          "CNContactPostalAddressesKey", "CNContactNoteKey"):
+            self.assertIn(attribute, hands)
+        self.assertIn("Apple grants contact-note access", hands)
+        # Both prompts advertise the same expanded belt.
+        server = (ROOT / "server" / "app.py").read_text()
+        page = (ROOT / "web" / "index.html").read_text()
+        for source in (server, page):
+            for tool in ("calendar_update", "calendar_delete",
+                         "reminder_complete", "reminder_delete",
+                         "contact_create", "contact_update"):
+                self.assertIn(f"viv:hands {tool}", source)
         # iOS refuses data access without these strings - loudly, at runtime.
         plist = (ROOT / "ios" / "Vivieen" / "Info.plist").read_text()
         for key in ("NSCalendarsFullAccessUsageDescription",

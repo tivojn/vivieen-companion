@@ -13,5 +13,12 @@
          leaving an empty entitlements dict and -34018 all over again. -->
     <string>com.vivieen.pocket</string>
   </array>
+  <!-- Contact NOTES are Apple-gated: this entitlement works in the
+       Debug/simulator build (which is the only config wired to this
+       file), but a TestFlight/App Store build needs Apple's per-app
+       approval first - apply at developer.apple.com/contact/request/
+       contact-note-field. AgentHands degrades honestly without it. -->
+  <key>com.apple.developer.contacts.notes</key>
+  <true/>
 </dict>
 </plist>
