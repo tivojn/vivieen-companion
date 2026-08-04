@@ -77,7 +77,10 @@ class PromptDraftWiring(unittest.TestCase):
         for button in ("body-prompt-ai", "body-walk-prompt-ai",
                        "body-motion-prompt-ai"):
             self.assertIn(f'id="{button}"', settings)
-        self.assertIn("draftPromptFromGist('body'", settings)
+        # The body field revises its brief rather than redrafting over it;
+        # the motion fields still draft from a gist, which is right for
+        # them - there is no long brief to preserve.
+        self.assertIn("rewriteFromKeyPoints($('#body-prompt')", settings)
         self.assertIn("draftPromptFromGist('walk'", settings)
         self.assertIn("draftPromptFromGist('idle'", settings)
         self.assertIn("'/api/avatar/prompt/expand'", settings)
@@ -85,3 +88,46 @@ class PromptDraftWiring(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RewriteFromKeyPoints(unittest.TestCase):
+    """One button: keep the brief, say what to change."""
+
+    def test_a_base_turns_expansion_into_a_revision(self):
+        # Two buttons used to live here and each destroyed something: one
+        # expanded whatever was in the field over a full prompt, the other
+        # threw the owner's edits away (owner, 2026-08-04).
+        seen = {}
+
+        def fake_chat(route, model, brief, ask, encoded):
+            seen["ask"] = ask
+            return "A long enough rewritten brief. " * 6
+
+        with mock.patch.object(promptsmith, "_chat", fake_chat), \
+             mock.patch.object(promptsmith.wardrobe, "_llm_route",
+                               lambda: ("route", "model")), \
+             mock.patch.object(promptsmith.wardrobe, "_finalise",
+                               lambda text: text):
+            promptsmith.expand("body", "keep the red bandana",
+                               base="A charcoal suit, sharp shoulders.")
+        self.assertIn("CURRENT BRIEF:", seen["ask"])
+        self.assertIn("A charcoal suit, sharp shoulders.", seen["ask"])
+        self.assertIn("KEY POINTS:", seen["ask"])
+        self.assertIn("keep the red bandana", seen["ask"])
+
+        # ...and with no brief yet it is still a plain draft
+        with mock.patch.object(promptsmith, "_chat", fake_chat), \
+             mock.patch.object(promptsmith.wardrobe, "_llm_route",
+                               lambda: ("route", "model")), \
+             mock.patch.object(promptsmith.wardrobe, "_finalise",
+                               lambda text: text):
+            promptsmith.expand("body", "a pirate captain")
+        self.assertTrue(seen["ask"].startswith("Gist:"))
+
+    def test_the_page_offers_one_button_not_two(self):
+        page = (ROOT / "web" / "settings.html").read_text(encoding="utf-8")
+        self.assertIn("Rewrite the prompt from my key points", page)
+        self.assertNotIn("Rewrite for this portrait", page)
+        self.assertNotIn("body-prompt-reset", page)
+        # and it sends the current brief along, or it cannot revise it
+        self.assertIn("gist: points, base", page)

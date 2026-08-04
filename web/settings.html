@@ -1029,8 +1029,7 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
           <div class="body-actions" style="margin-top:8px">
             <p class="note" id="body-prompt-note" style="margin:0" aria-live="polite">Written for this portrait, and editable before every generation.</p>
             <div class="grow"></div>
-            <button class="btn sm" id="body-prompt-ai" type="button" title="Type a rough idea in the field, and AI expands it into a full brief">✦ Draft from my gist</button>
-            <button class="btn sm" id="body-prompt-reset" type="button">Rewrite for this portrait</button>
+            <button class="btn sm" id="body-prompt-ai" type="button" title="Say what to change; the brief above is rewritten around it">✦ Rewrite the prompt from my key points</button>
           </div>
         </div>
         <div id="body-progress-anchor" aria-hidden="true"></div>
@@ -2321,7 +2320,7 @@ function setBodyBusy(busy) {
   $('#body-motion-prompt-ai').disabled = busy || BODY_IDLE_POSE !== 'custom';
   $('#body-walk-prompt-ai').disabled = busy || BODY_WALK_STYLE !== 'custom';
   $('#body-move-prompt-ai').disabled = busy || BODY_MOVE_STYLE !== 'custom';
-  ['body-style', 'body-pose', 'body-prompt', 'body-prompt-reset', 'body-prompt-ai'].forEach(id => {
+  ['body-style', 'body-pose', 'body-prompt', 'body-prompt-ai'].forEach(id => {
     $('#' + id).disabled = busy;
   });
   document.querySelectorAll('[data-body-view]').forEach(button => {
@@ -2829,7 +2828,6 @@ async function tailorBodyPrompt(slug, { refresh = false, force = false } = {}) {
   const field = $('#body-prompt');
   if (!force && field.value.trim() !== BODY_PROMPT_FILLED.trim()) return;
   BODY_PROMPT_BUSY = true;
-  $('#body-prompt-reset').disabled = true;
   setBodyPromptNote('working', null);
   try {
     const result = await api('/api/avatar/body/prompt', {
@@ -2852,7 +2850,6 @@ async function tailorBodyPrompt(slug, { refresh = false, force = false } = {}) {
     if (BODY_SLUG === slug) setBodyPromptNote('preset', null);
   } finally {
     BODY_PROMPT_BUSY = false;
-    if (!BODY_BUSY) $('#body-prompt-reset').disabled = false;
   }
 }
 
@@ -3154,6 +3151,57 @@ $('#body-walk-prompt').onfocus = () => {
 
 // One rough idea in, one field-ready prompt out: the field's current text IS
 // the gist, and the drafted prompt replaces it (still editable afterwards).
+/* One button, and it does the thing anybody actually wanted: keep the
+   brief, say what to change. The two it replaced each destroyed
+   something - one expanded whatever was in the field over a full prompt,
+   the other threw the owner's edits away (owner, 2026-08-04). */
+async function rewriteFromKeyPoints(field, button) {
+  const base = field.value.trim();
+  const points = await new Promise(resolve => {
+    const scrim = document.createElement('div');
+    scrim.className = 'keep-scrim';
+    scrim.innerHTML = `<div class="keep-card">
+      <h3>What should change?</h3>
+      <p>${base ? 'The brief above is kept and rewritten around your key points.'
+                : 'There is no brief yet, so these key points become one.'}</p>
+      <textarea id="kp-note" rows="4" placeholder="e.g. keep the red bandana, swap the coat for a long dark one, flat boots instead of heels"></textarea>
+      <div class="keep-row">
+        <button class="btn" data-keep="cancel">Cancel</button>
+        <button class="btn primary" data-keep="go">Rewrite</button>
+      </div></div>`;
+    document.body.append(scrim);
+    const box = scrim.querySelector('#kp-note');
+    box.focus();
+    const done = v => { scrim.remove(); resolve(v); };
+    box.addEventListener('keydown', e => { if (e.key === 'Escape') done(null); });
+    scrim.addEventListener('click', e => {
+      const act = e.target.dataset && e.target.dataset.keep;
+      if (act === 'go') done(box.value.trim());
+      else if (act === 'cancel' || e.target === scrim) done(null);
+    });
+  });
+  if (points === null) return;
+  if (points.length < 4) { alert('A few words are enough — say what to change.'); return; }
+  const label = button.textContent;
+  button.disabled = true; button.textContent = 'Rewriting…'; field.disabled = true;
+  try {
+    const r = await api('/api/avatar/prompt/expand', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: BODY_SLUG, kind: 'body', gist: points, base })
+    });
+    if (r.detail || !r.prompt) {
+      alert(r.detail || 'Could not rewrite the prompt. Check the AI model in Settings → Models.');
+      return;
+    }
+    field.value = r.prompt;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  } catch (error) {
+    alert('Could not reach the local backend. Check that the Vivieen server is running, then try again.');
+  } finally {
+    button.textContent = label; button.disabled = false; field.disabled = false;
+  }
+}
+
 async function draftPromptFromGist(kind, field, button) {
   const gist = field.value.trim();
   if (gist.length < 4) {
@@ -3186,7 +3234,7 @@ async function draftPromptFromGist(kind, field, button) {
   }
 }
 $('#body-prompt-ai').onclick = () =>
-  draftPromptFromGist('body', $('#body-prompt'), $('#body-prompt-ai'));
+  rewriteFromKeyPoints($('#body-prompt'), $('#body-prompt-ai'));
 $('#body-walk-prompt-ai').onclick = () =>
   draftPromptFromGist('walk', $('#body-walk-prompt'), $('#body-walk-prompt-ai'));
 $('#body-motion-prompt-ai').onclick = () =>
@@ -3200,9 +3248,6 @@ document.querySelectorAll('[data-body-view]').forEach(button => {
     renderBodyPreview();
   };
 });
-$('#body-prompt-reset').onclick = () => {
-  if (BODY_SLUG) tailorBodyPrompt(BODY_SLUG, { refresh: true, force: true });
-};
 $('#body-modal').addEventListener('click', event => { if (event.target === $('#body-modal')) closeBody(); });
 
 const RIG_COLORS = {

@@ -1155,6 +1155,9 @@ class PromptExpandRequest(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
     kind: str = Field(pattern=r"^(body|walk|idle|move)$")
     gist: str = Field(min_length=4, max_length=600)
+    # The prompt already in the field. Given one, the expander REVISES it
+    # rather than starting over.
+    base: str = Field(default="", max_length=4000)
 
 
 @app.post("/api/avatar/prompt/expand")
@@ -1171,7 +1174,8 @@ async def api_prompt_expand(request: PromptExpandRequest):
     directory = reg().adir(request.slug)
     try:
         prompt = await asyncio.to_thread(
-            promptsmith.expand, request.kind, request.gist, directory)
+            promptsmith.expand, request.kind, request.gist, directory,
+            request.base)
     except Exception as error:
         raise HTTPException(400, str(error))
     return {"prompt": prompt, "kind": request.kind}

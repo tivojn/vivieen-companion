@@ -1256,7 +1256,10 @@ class BodyProviderTests(unittest.TestCase):
         settings = (ROOT / "web" / "settings.html").read_text()
         server = (ROOT / "server" / "app.py").read_text()
         self.assertIn('id="body-prompt"', settings)
-        self.assertIn('id="body-prompt-reset"', settings)
+        # The "rewrite for this portrait" button is gone - it threw the
+        # owner's edits away. One button revises instead (2026-08-04).
+        self.assertNotIn('id="body-prompt-reset"', settings)
+        self.assertIn('id="body-prompt-ai"', settings)
         self.assertIn("BODY_STATE.default_prompt", settings)
         self.assertIn("wardrobe.cached_prompt(directory)", server)
         self.assertIn("wardrobe.preset_prompt()", server)

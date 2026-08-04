@@ -128,13 +128,23 @@ def _cleaned(text, limit):
     return text.strip()
 
 
-def expand(kind, gist, avatar_dir=None):
+def expand(kind, gist, avatar_dir=None, base=""):
+    """Turn a few words of direction into a field-ready prompt.
+
+    base is the prompt already in the field. Given one, this is a REWRITE
+    rather than a fresh draft: the existing brief is the starting point
+    and the key points are changes to fold into it. Two buttons used to
+    live here - one expanded whatever was in the field, destroying a full
+    prompt, and the other threw the owner's edits away entirely (owner,
+    2026-08-04). Neither did the thing anybody actually wanted.
+    """
     brief = BRIEFS.get(kind)
     if not brief:
         raise ValueError(f"unknown prompt kind: {kind}")
     gist = re.sub(r"\s+", " ", str(gist or "")).strip()[:GIST_LIMIT]
     if len(gist) < 4:
         raise ValueError("give a few words of direction first")
+    base = re.sub(r"\s+", " ", str(base or "")).strip()[:4000]
     route, model = wardrobe._llm_route()
     encoded = None
     if avatar_dir:
@@ -143,7 +153,14 @@ def expand(kind, gist, avatar_dir=None):
                 wardrobe._identity_reference(avatar_dir))
         except Exception:
             encoded = None  # text-only expansion still works
-    text = _chat(route, model, brief, f"Gist: {gist}", encoded)
+    if base:
+        ask = ("Here is the current brief. Rewrite it so it honours the "
+               "key points below, changing only what they require and "
+               "keeping everything else intact.\n\n"
+               f"CURRENT BRIEF:\n{base}\n\nKEY POINTS:\n{gist}")
+    else:
+        ask = f"Gist: {gist}"
+    text = _chat(route, model, brief, ask, encoded)
     if kind == "body":
         # Same structural contract as the tailored brief: refuse banned
         # garments, then append the silhouette and empty-hands rules.
