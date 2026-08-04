@@ -1553,7 +1553,9 @@ class PetMatteTests(unittest.TestCase):
         main = (ROOT / "electron" / "main.cjs").read_text(encoding="utf-8")
         self.assertIn("const pointerLastSent = { pet: null, buddy: null };", main)
         self.assertIn("|| Date.now() - previous.at > 250;", main)
-        self.assertIn("if (sendNow) window.webContents.send('vivieen:pet-pointer', localPoint);",
+        # Every renderer send goes through post(), which also checks the
+        # RENDER FRAME - a live window can still have a disposed one.
+        self.assertIn("if (sendNow) post(window, 'vivieen:pet-pointer', localPoint);",
                       main)
         # Round 3 (owner: "burning too much battery still"): while a
         # looping alpha-WebM take is on screen (edge idle, stillness, a

@@ -371,9 +371,28 @@ function monitorState() {
   };
 }
 
+// A window that is not destroyed can still have a disposed RENDER FRAME:
+// during quit, and in the gap between a reload tearing the old frame down
+// and the new one existing. send() throws there - "Render frame was
+// disposed before WebFrameMain could be accessed" - and the EnConvo audio
+// monitor fires often enough to fill the console with it on every restart
+// (owner, 2026-08-04). Checking the window was never enough; check what we
+// are actually about to talk to.
+function post(window, channel, payload) {
+  if (!window || window.isDestroyed()) return;
+  const contents = window.webContents;
+  if (!contents || contents.isDestroyed()) return;
+  try {
+    contents.send(channel, payload);
+  } catch (error) {
+    // The frame went away between the check and the call. Nothing to do,
+    // and nothing worth saying: the renderer is gone, so was the message.
+  }
+}
+
 function broadcastMonitorState(value = monitorState()) {
   for (const window of [mainWindow, settingsWindow]) {
-    if (window && !window.isDestroyed()) window.webContents.send('vivieen:monitor-state', value);
+    post(window, 'vivieen:monitor-state', value);
   }
   buildTrayMenu();
 }
@@ -391,9 +410,7 @@ function createEnconvoMonitor() {
     if (enconvoSampleBuffer.length > MAX_ENCONVO_SAMPLE_BACKLOG) {
       enconvoSampleBuffer.splice(0, enconvoSampleBuffer.length - MAX_ENCONVO_SAMPLE_BACKLOG);
     }
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('vivieen:monitor-sample', value);
-    }
+    post(mainWindow, 'vivieen:monitor-sample', value);
   });
 }
 
@@ -440,7 +457,7 @@ async function startBackend() {
     backend = null;
     ownsBackend = false;
     if (!quitting && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('vivieen:state', shellState());
+      post(mainWindow, 'vivieen:state', shellState());
     }
   });
 
@@ -575,7 +592,7 @@ function shellState() {
 function broadcastState() {
   const value = shellState();
   for (const window of [mainWindow, settingsWindow, appearanceWindow]) {
-    if (window && !window.isDestroyed()) window.webContents.send('vivieen:state', value);
+    post(window, 'vivieen:state', value);
   }
   // The second on-desk avatar sees the same state with its own roam,
   // opacity, and motion profile spliced in.
@@ -590,7 +607,7 @@ function pushAppearanceState(force = false) {
   const now = Date.now();
   if (!force && now - appearancePushAt < 70) return;
   appearancePushAt = now;
-  appearanceWindow.webContents.send('vivieen:state', shellState());
+  post(appearanceWindow, 'vivieen:state', shellState());
 }
 
 function applyAlwaysOnTop(value) {
@@ -659,10 +676,10 @@ function startPetPointerTracking() {
         // The window is always interactive, but the gaze still needs the
         // cursor, so the feed keeps flowing in this branch too.
         target.setHit(true, 'click-through-off');
-        if (sendNow) window.webContents.send('vivieen:pet-pointer', localPoint);
+        if (sendNow) post(window, 'vivieen:pet-pointer', localPoint);
         continue;
       }
-      if (sendNow) window.webContents.send('vivieen:pet-pointer', localPoint);
+      if (sendNow) post(window, 'vivieen:pet-pointer', localPoint);
       // A drag in flight owns the window. The cursor legitimately outruns
       // the moving bounds, and forcing click-through in that gap lost the
       // mouseup that would have ended the drag - the renderer's pointer
@@ -852,7 +869,7 @@ function sendPetRoamMotion(payload = null) {
     edge: petRoamRuntime.mode.startsWith('ledge-')
       ? petRoamRuntime.mode.slice('ledge-'.length) : null,
   } : { enabled: false, mode: 'idle', direction: 1, phase: 0, edge: null });
-  mainWindow.webContents.send('vivieen:pet-roam-motion', value);
+  post(mainWindow, 'vivieen:pet-roam-motion', value);
 }
 
 function motionTravelAt(profile, phase) {
@@ -1148,7 +1165,7 @@ function buddyShellState() {
 
 function pushBuddyState() {
   if (!buddyWindow || buddyWindow.isDestroyed()) return;
-  buddyWindow.webContents.send('vivieen:state', buddyShellState());
+  post(buddyWindow, 'vivieen:state', buddyShellState());
 }
 
 function setBuddyHit(interactive) {
@@ -1200,7 +1217,7 @@ function sendBuddyRoamMotion(payload = null) {
     edge: buddyRoamRuntime.mode.startsWith('ledge-')
       ? buddyRoamRuntime.mode.slice('ledge-'.length) : null,
   } : { enabled: false, mode: 'idle', direction: 1, phase: 0, edge: null });
-  buddyWindow.webContents.send('vivieen:pet-roam-motion', value);
+  post(buddyWindow, 'vivieen:pet-roam-motion', value);
 }
 
 function tickBuddyRoam() {
@@ -1425,7 +1442,7 @@ function showBuddyMenu() {
     },
     { name: 'Moves', hint: '2×tap hair', click: () => {
       if (buddyWindow && !buddyWindow.isDestroyed()) {
-        buddyWindow.webContents.send('vivieen:pet-moves');
+        post(buddyWindow, 'vivieen:pet-moves');
       }
     } },
     { type: 'separator' },
@@ -1584,7 +1601,7 @@ function positionSpeechBubble() {
 function sendPendingBubble() {
   if (!pendingBubble || !bubbleWindow || bubbleWindow.isDestroyed()) return;
   positionSpeechBubble();
-  bubbleWindow.webContents.send('vivieen:bubble-text', { text: pendingBubble });
+  post(bubbleWindow, 'vivieen:bubble-text', { text: pendingBubble });
   bubbleWindow.showInactive();
 }
 
@@ -1659,7 +1676,7 @@ function showMenuWindow(spec, onDismiss = null) {
       // row. The menu is never user-zoomable - pin it to 1.
       menuWindow.webContents.setZoomFactor(1);
       menuWindow.webContents.setVisualZoomLevelLimits(1, 1);
-      menuWindow.webContents.send('vivieen:menu-spec', payload);
+      post(menuWindow, 'vivieen:menu-spec', payload);
     }
   });
   // Anywhere else takes focus -> the menu is dismissed, like a native one.
@@ -2118,7 +2135,7 @@ function showPetMenu() {
         }
         mainWindow.show();
         mainWindow.focus();
-        mainWindow.webContents.send('vivieen:pet-chat');
+        post(mainWindow, 'vivieen:pet-chat');
       } },
     { name: followingEnconvo ? 'De-couple from EnConvo' : 'Couple to EnConvo',
       click: () => setEnconvoMonitoring(!followingEnconvo) },
@@ -2126,7 +2143,7 @@ function showPetMenu() {
       hint: liveTalkActive ? 'hang up now' : 'realtime voice',
       click: () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('vivieen:live-toggle');
+          post(mainWindow, 'vivieen:live-toggle');
         }
       } },
     { type: 'separator' },
@@ -2137,7 +2154,7 @@ function showPetMenu() {
       click: () => applyPetRoam(!state.petRoam) },
     { name: 'Moves', hint: '2×tap hair', click: () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('vivieen:pet-moves');
+        post(mainWindow, 'vivieen:pet-moves');
       }
     } },
     { name: 'React', hint: 'tap arm or chest', enabled: false },
@@ -2171,7 +2188,7 @@ function showPetMenu() {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     const point = screen.getCursorScreenPoint();
     const bounds = mainWindow.getBounds();
-    mainWindow.webContents.send('vivieen:pet-pointer', {
+    post(mainWindow, 'vivieen:pet-pointer', {
       x: point.x - bounds.x,
       y: point.y - bounds.y,
       inside: point.x >= bounds.x && point.x < bounds.x + bounds.width

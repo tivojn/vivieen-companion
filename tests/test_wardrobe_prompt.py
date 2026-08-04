@@ -548,7 +548,10 @@ class GrokImagineEdits(unittest.TestCase):
     def test_a_dropped_link_is_retried_but_a_refusal_is_not(self):
         # A dropped socket is not an answer. An HTTP error IS one.
         source = (ROOT / "studio" / "body.py").read_text(encoding="utf-8")
-        self.assertIn("except urllib.error.HTTPError:\n            raise", source)
+        # Still not retried - but the REASON is read out of the body
+        # first, because "HTTP Error 400: Bad Request" is unactionable.
+        self.assertIn("except urllib.error.HTTPError as refusal:", source)
+        self.assertIn("xAI refused the edit", source)
 
     def test_the_divert_says_it_is_metered(self):
         # EnConvo reaches xAI over OAuth, on the owner's subscription;

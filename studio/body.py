@@ -382,8 +382,18 @@ def _xai_edit(prompt, references, output_dir, file_name, key,
             with urllib.request.urlopen(request, timeout=600) as feed:
                 answer = json.loads(feed.read().decode())
             break
-        except urllib.error.HTTPError:
-            raise                      # a real refusal; do not hammer it
+        except urllib.error.HTTPError as refusal:
+            # A real refusal; do not hammer it - but xAI puts the REASON in
+            # the response body, and re-raising bare threw it away. "HTTP
+            # Error 400: Bad Request" is not something anyone can act on
+            # (owner's move build, 2026-08-04).
+            try:
+                detail = refusal.read().decode("utf-8", "replace").strip()
+            except Exception:
+                detail = ""
+            raise RuntimeError(
+                f"xAI refused the edit ({refusal.code}): "
+                f"{detail[:400] or refusal.reason}") from refusal
         except Exception as error:     # dropped socket, DNS, timeout
             last = error
             if attempt == 2:
