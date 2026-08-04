@@ -113,6 +113,13 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             || path.hasPrefix("/assets/")
             || path == "/live-worklet.js"
             || path.hasPrefix("/api/avatar/thumb")
+            // The portrait on every Settings card is /files/<slug>/
+            // keyframe.png - NOT the thumb endpoint, which is what the
+            // chat carousel uses. I warmed the thumbs and left these, so
+            // the one thing missing from an offline Settings page was her
+            // face (owner, 2026-08-04). The path carries the slug, so it
+            // needs no extra keying; only the small stills are taken.
+            || isAvatarStill(path)
             // Settings IS cacheable, as long as the key remembers which
             // avatar it was rendered for: the page bakes the active face
             // and its ACTIVE badge into the markup, so a shared key froze
@@ -127,6 +134,16 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         // active (owner, 2026-08-04). /api/avatars carries the same
         // "active" flag and went stale the same way. Only genuinely static
         // things belong above: the chat page, her sprites, the thumbnails.
+    }
+
+    /// A per-avatar still under /files - the portraits Settings draws.
+    /// Deliberately narrow: /files also serves sheets and previews, which
+    /// are tens of megabytes and belong nowhere near this.
+    private func isAvatarStill(_ path: String) -> Bool {
+        let key = bare(path)
+        guard key.hasPrefix("/files/") else { return false }
+        return key.hasSuffix("/keyframe.png") || key.hasSuffix("/source.png")
+            || key.hasSuffix("/head.png")
     }
 
     /// The path without its query. Boot fetches carry cache-busters
@@ -154,20 +171,23 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
               let rows = top["avatars"] as? [[String: Any]] else { return }
         for row in rows {
             guard let slug = row["slug"] as? String, !slug.isEmpty else { continue }
-            let thumb = "/api/avatar/thumb?slug=\(slug)"
-            if let held = try? Data(contentsOf: cacheURL(thumb)), !held.isEmpty {
-                continue
+            // Both faces of the same avatar: the carousel's thumb and the
+            // still Settings actually draws.
+            for asset in ["/api/avatar/thumb?slug=\(slug)",
+                          "/files/\(slug)/keyframe.png"] {
+                if let held = try? Data(contentsOf: cacheURL(asset)),
+                   !held.isEmpty { continue }
+                guard let url = URL(string: address + asset) else { continue }
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 20
+                request.setValue(token, forHTTPHeaderField: "x-vivieen-token")
+                session.dataTask(with: request) { [weak self] body, response, _ in
+                    guard let self, let body, !body.isEmpty,
+                          (response as? HTTPURLResponse)?.statusCode == 200
+                    else { return }
+                    try? body.write(to: self.cacheURL(asset))
+                }.resume()
             }
-            guard let url = URL(string: address + thumb) else { continue }
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 20
-            request.setValue(token, forHTTPHeaderField: "x-vivieen-token")
-            session.dataTask(with: request) { [weak self] body, response, _ in
-                guard let self, let body, !body.isEmpty,
-                      (response as? HTTPURLResponse)?.statusCode == 200
-                else { return }
-                try? body.write(to: self.cacheURL(thumb))
-            }.resume()
         }
     }
 

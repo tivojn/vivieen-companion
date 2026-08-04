@@ -418,6 +418,25 @@ class ProviderDefaultsTests(unittest.TestCase):
         # and served at once rather than after the relay gives up
         self.assertIn('if method == "GET", let held = snapshot(path) {', swift)
 
+    def test_the_portrait_settings_actually_draws_is_cached(self):
+        # Settings draws /files/<slug>/keyframe.png, NOT the thumb
+        # endpoint - which is what the chat carousel uses. I warmed the
+        # thumbs and left these, so the one thing missing from an offline
+        # Settings page was her face (owner, 2026-08-04).
+        with open(os.path.join(ROOT, "web", "settings.html"),
+                  encoding="utf-8") as handle:
+            page = handle.read()
+        self.assertIn("/files/${a.slug}/keyframe.png", page)
+        with open(os.path.join(ROOT, "ios", "Vivieen", "VivScheme.swift"),
+                  encoding="utf-8") as handle:
+            swift = handle.read()
+        self.assertIn("private func isAvatarStill(", swift)
+        self.assertIn('key.hasSuffix("/keyframe.png")', swift)
+        # warmed alongside the thumb, so both faces of an avatar are held
+        self.assertIn('"/files/\\(slug)/keyframe.png"', swift)
+        # and NOT the heavy things /files also serves
+        self.assertNotIn('key.hasSuffix(".mp4")', swift)
+
     def test_the_picker_chooses_a_platform_before_a_model(self):
         # A brain is a PLATFORM and then a model; listing one provider's
         # models was half the switch (owner, 2026-08-04).
