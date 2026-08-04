@@ -662,7 +662,14 @@ document.documentElement.dataset.design='quiet';</script>
         <select id="live-provider">
           <option value="xai">xAI · Grok realtime (speech-to-speech)</option>
           <option value="elevenlabs">ElevenLabs · Conversational agent</option>
+          <option value="vivieen">Vivieen · her own models (Hear + Think + Speak)</option>
         </select></div>
+      <!-- Split-brain (#24): her own lanes on the live line. Nothing to
+           configure here - the three lanes above ARE the configuration. -->
+      <div class="f hidden" id="live-vivieen"><label>Her own models</label>
+        <p class="note" style="margin:6px 0 0">Soniox hears, Think answers,
+          Speak voices it — the lanes configured above, on a live line. No
+          extra key; needs Hear set to Soniox for realtime ears.</p></div>
       <div class="f" id="live-xai" ><label>xAI API key</label>
         <input id="live-xai-key" type="password" placeholder="stored — leave blank to keep">
         <label style="margin-top:10px">Voice</label>
@@ -3831,9 +3838,10 @@ function renderLiveBlock() {
   $('#live-eleven-key').placeholder = live.has_eleven_api_key
     ? 'stored — leave blank to keep' : 'sk_…';
   const swap = () => {
-    const xai = $('#live-provider').value === 'xai';
-    $('#live-xai').classList.toggle('hidden', !xai);
-    $('#live-eleven').classList.toggle('hidden', xai);
+    const pick = $('#live-provider').value;
+    $('#live-xai').classList.toggle('hidden', pick !== 'xai');
+    $('#live-eleven').classList.toggle('hidden', pick !== 'elevenlabs');
+    $('#live-vivieen').classList.toggle('hidden', pick !== 'vivieen');
   };
   $('#live-provider').onchange = () => { swap(); dirty(); };
   $('#live-xai-preview').onclick = () =>

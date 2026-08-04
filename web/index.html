@@ -3597,7 +3597,8 @@ async function startLiveTalk(){
         try{await liveStartMic(session,m.input_rate||24000);}
         catch(err){setCaption('(microphone: '+err.message+')');stopLiveTalk('mic');return;}
       }else{document.documentElement.classList.add('listening');}
-      setStatus('live talk · '+(m.provider==='xai'?'Grok':'ElevenLabs'),'rec');
+      setStatus('live talk · '+({xai:'Grok',elevenlabs:'ElevenLabs',
+        vivieen:'her own brain'}[m.provider]||m.provider),'rec');
       document.documentElement.classList.add('listening');
       if(SHELL&&typeof SHELL.setLiveTalk==='function')SHELL.setLiveTalk(true);
     }else if(m.type==='audio')livePlay(session,m.data,m.rate||24000);

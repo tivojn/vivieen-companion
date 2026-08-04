@@ -2826,6 +2826,12 @@ def _live_settings():
                     voice=live.get("eleven_voice_id") or "",
                     agent_id=live.get("eleven_agent_id") or "",
                     persona=persona)
+    # Split-brain (#24): live talk on HER OWN models - Soniox hears, the
+    # configured Think answers, the configured Speak voices it. No new
+    # vendor, no tunnel, no second key; the bundled providers stay the
+    # default above.
+    if provider == "vivieen":
+        return dict(provider="vivieen", persona=persona, cfg=cfg)
     return None
 
 
@@ -2894,7 +2900,10 @@ async def live_voice(client: WebSocket):
                                "again."})
                 break
             swap.clear()
-            if settings["provider"] == "xai":
+            if settings["provider"] == "vivieen":
+                swapped = await _vivieen_leg(client, last_audio, swap,
+                                             settings)
+            elif settings["provider"] == "xai":
                 url = f"{XAI_REALTIME_URL}?model={settings['model']}"
                 headers = {"Authorization": "Bearer " + settings["key"]}
                 async with websockets.connect(
@@ -3023,6 +3032,164 @@ async def _live_pump(client, upstream, translate, last_audio, wrap_audio,
     finally:
         for task in tasks:
             task.cancel()
+
+
+async def _vivieen_leg(client, last_audio, swap, settings):
+    """Live talk on her own models (#24): Soniox realtime hears (already
+    bridged for dictation), the configured Think answers, the configured
+    Speak voices it - built from what already exists, no new vendor, no
+    tunnel, no second key. Speaks the same client contract as the other
+    legs, so the page and LiveTap never know the difference.
+
+    Turns are cut by quiet: once something has been heard and the room
+    has been silent for a beat, that is the question. A voice landing
+    while she speaks is a barge-in - playback is cut and the answer task
+    cancelled, exactly the interrupt the other providers signal."""
+    config = await asyncio.to_thread(_soniox_stream_config)
+    if not config:
+        await client.send_json({
+            "type": "error",
+            "message": "Her own ears need Soniox - set Hear to Soniox (or "
+                       "EnConvo's dictation default to a Soniox realtime "
+                       "model), then start live talk again."})
+        return False
+    config = dict(config, audio_format="pcm_s16le", sample_rate=16000,
+                  num_channels=1)
+    import websockets
+    cfg = settings["cfg"]
+    history = []
+    finals = []
+    state = {"speaking": False, "last_voice": 0.0, "pending": None}
+
+    async with websockets.connect(SONIOX_RT_URL, max_size=1 << 22,
+                                  open_timeout=10) as ears:
+        await ears.send(json.dumps(config))
+        await client.send_json({"type": "ready", "provider": "vivieen",
+                                "input_rate": 16000, "output_rate": P.SR})
+
+        async def uplink():
+            while True:
+                message = await client.receive()
+                if message.get("type") == "websocket.disconnect":
+                    return
+                data = message.get("bytes")
+                if data:
+                    samples = np.frombuffer(data, dtype="<i2")
+                    if samples.size and float(np.sqrt(np.mean(
+                            (samples.astype(np.float32) / 32768.0) ** 2))) \
+                            > 0.012:
+                        last_audio[0] = time.time()
+                        state["last_voice"] = time.time()
+                        if state["speaking"]:
+                            state["speaking"] = False
+                            if state["pending"]:
+                                state["pending"].cancel()
+                            await client.send_json({"type": "interrupt"})
+                    await ears.send(data)
+                elif message.get("text"):
+                    if json.loads(message["text"]).get("type") == "stop":
+                        return
+
+        async def hear():
+            async for message in ears:
+                payload = json.loads(message)
+                if payload.get("error_code") or payload.get("error_message"):
+                    await client.send_json({
+                        "type": "error",
+                        "message": str(payload.get("error_message")
+                                       or "hearing failed")[:200]})
+                    return
+                interim = []
+                for token in payload.get("tokens") or []:
+                    text = str(token.get("text") or "")
+                    (finals if token.get("is_final") else interim).append(text)
+                heard = ("".join(finals) + "".join(interim)).strip()
+                if heard:
+                    await client.send_json({"type": "user_text",
+                                            "text": heard})
+
+        async def answer(heard):
+            history.append({"role": "user", "content": heard})
+            try:
+                reply = (await P.chat(
+                    history[-12:], cfg["llm"],
+                    system=settings["persona"] or
+                    "You are a warm companion. Answer in one or two short "
+                    "spoken sentences.")).strip()
+            except Exception as error:
+                await client.send_json({"type": "error",
+                                        "message": P.safe_error(error, 200)})
+                return
+            if not reply:
+                return
+            history.append({"role": "assistant", "content": reply})
+            await client.send_json({"type": "agent_text", "text": reply,
+                                    "final": True})
+            try:
+                samples, _ = await P.speak(reply, cfg["tts"])
+            except Exception as error:
+                await client.send_json({
+                    "type": "error",
+                    "message": "voice: " + P.safe_error(error, 180)})
+                return
+            pcm = (np.clip(np.asarray(samples), -1, 1)
+                   * 32767).astype("<i2").tobytes()
+            state["speaking"] = True
+            try:
+                # Half-second slices, so a barge-in lands between chunks
+                # instead of after the whole reply.
+                step = P.SR  # SR samples * 2 bytes = 0.5 s of PCM16
+                for i in range(0, len(pcm), step):
+                    if not state["speaking"]:
+                        return
+                    await client.send_json({
+                        "type": "audio", "rate": P.SR,
+                        "data": base64.b64encode(pcm[i:i + step])
+                        .decode("ascii")})
+            finally:
+                state["speaking"] = False
+
+        async def turner():
+            while True:
+                await asyncio.sleep(0.15)
+                heard = "".join(finals).strip()
+                if not heard:
+                    continue
+                if time.time() - state["last_voice"] < 0.7:
+                    continue
+                del finals[:]
+                task = asyncio.create_task(answer(heard))
+                state["pending"] = task
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass        # barged in; the next question is coming
+                finally:
+                    state["pending"] = None
+
+        async def watchdog():
+            while True:
+                await asyncio.sleep(5)
+                if time.time() - last_audio[0] > LIVE_SILENCE_HANGUP_S:
+                    await client.send_json({"type": "closed",
+                                            "reason": "silence"})
+                    return
+
+        tasks = [asyncio.create_task(coro(), name=coro.__name__)
+                 for coro in (uplink, hear, turner, watchdog)]
+
+        async def swapwait():
+            await swap.wait()
+        tasks.append(asyncio.create_task(swapwait(), name="swapwait"))
+        try:
+            done, _ = await asyncio.wait(tasks,
+                                         return_when=asyncio.FIRST_COMPLETED)
+            return any(task.get_name() == "swapwait" for task in done)
+        finally:
+            if state["pending"]:
+                state["pending"].cancel()
+            for task in tasks:
+                task.cancel()
 
 
 def _xai_event(payload):

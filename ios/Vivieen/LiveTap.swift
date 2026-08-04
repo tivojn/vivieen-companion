@@ -72,6 +72,15 @@ final class LiveTap: NSObject {
                               + "answering in Grok's \(voice) voice. Open the "
                               + "app once beside your Mac to carry the key over. ·"])
             }
+            // Split-brain (#24) runs on the Mac's own models, which this
+            // phone cannot reach without the Mac. Same rule as above:
+            // stand in, and say so.
+            if want == "vivieen" {
+                toPage(["type": "agent_text", "final": true,
+                        "text": "· Her own models live on your Mac, which is "
+                              + "out of reach — answering in Grok's \(voice) "
+                              + "voice instead. ·"])
+            }
             openXAI(key: xaiKey,
                     model: (cfg["xai_model"] as? String) ?? "grok-voice-think-fast-1.0",
                     voice: voice,

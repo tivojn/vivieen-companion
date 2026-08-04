@@ -2716,6 +2716,37 @@ class LiveTalkSubstitutionTests(unittest.TestCase):
         self.assertIn("SWAPS_TOLD.clear()", page)
 
 
+class SplitBrainLiveTalkTests(unittest.TestCase):
+    """#24: live talk on her own models - Soniox hears, Think answers,
+    Speak voices it. Same client contract as the bundled providers."""
+
+    def test_the_vivieen_leg_exists_and_speaks_the_same_contract(self):
+        server = (ROOT / "server" / "app.py").read_text()
+        self.assertIn('if provider == "vivieen":', server)
+        self.assertIn("async def _vivieen_leg(", server)
+        # The same unified events the other legs emit.
+        for event in ('"type": "ready", "provider": "vivieen"',
+                      '"type": "user_text"', '"type": "agent_text"',
+                      '"type": "interrupt"', '"type": "audio"'):
+            self.assertIn(event, server)
+        # Missing ears refuse with a message that names the fix.
+        self.assertIn("Her own ears need Soniox", server)
+        # Barge-in cancels the answer instead of talking over the owner.
+        self.assertIn('state["pending"].cancel()', server)
+
+    def test_every_surface_names_the_third_provider_honestly(self):
+        settings = (ROOT / "web" / "settings.html").read_text()
+        self.assertIn('<option value="vivieen">', settings)
+        page = (ROOT / "web" / "index.html").read_text()
+        # The status line names all three - the old ternary would have
+        # called her own brain "ElevenLabs".
+        self.assertIn("vivieen:'her own brain'", page)
+        # Solo cannot run the Mac's models: LiveTap stands in and says so.
+        tap = (ROOT / "ios" / "Vivieen" / "LiveTap.swift").read_text()
+        self.assertIn('if want == "vivieen" {', tap)
+        self.assertIn("Her own models live on your Mac", tap)
+
+
 class SoloLanSyncTests(unittest.TestCase):
     """#28: a loopback provider URL means nothing to a phone."""
 
