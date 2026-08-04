@@ -164,6 +164,7 @@ body{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
   border:1px solid var(--line);background:var(--panel-sub);color:var(--ink);
   font:inherit;font-size:14px;resize:vertical}
 .keep-row{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+.keep-card .keep-warn{color:var(--dim);font-size:12.5px;margin-bottom:14px}
 .tier{font-size:12px;color:var(--dim);margin-top:8px}
 .tier b{color:var(--ink);font-weight:600}
 .inherit{margin-top:16px;padding:16px;border:1px solid var(--line);border-radius:8px;
@@ -1992,7 +1993,11 @@ function askKeep(who) {
       <h3>Anything to keep from the portrait?</h3>
       <p>Her look is generated from a house prompt. Name anything the
          source photo has that must survive it &mdash; this is added to
-         that prompt, never instead of it.</p>
+         that prompt, never instead of it. Leave it empty and nothing
+         changes.</p>
+      <p class="keep-warn">Naming something here re-renders the face as
+         well as the body, since accessories like a bandana live on the
+         head plate.</p>
       <textarea id="keep-note" rows="3" placeholder="Add extra comments, e.g. keep the character's original clothing, keep his bandana, keep her earrings"></textarea>
       <div class="keep-row">
         <button class="btn" data-keep="cancel">Cancel</button>

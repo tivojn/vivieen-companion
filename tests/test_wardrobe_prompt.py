@@ -504,6 +504,13 @@ class KeepFromThePortrait(unittest.TestCase):
         # and it reaches the worker from the UI
         self.assertIn('b.add_argument("--keep"', builder)
 
+    def test_a_note_forces_the_face_to_be_rebuilt(self):
+        # One-click SKIPS the face when it is already built. With a note,
+        # skipping means the one thing the owner asked to keep never comes
+        # back - his bandana lives on the head plate (owner, 2026-08-04).
+        source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+        self.assertIn('if manifest.get("status") != "ready" or notes:', source)
+
     def test_the_ui_asks_before_a_long_build(self):
         page = (ROOT / "web" / "settings.html").read_text(encoding="utf-8")
         self.assertIn("function askKeep(", page)

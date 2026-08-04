@@ -564,9 +564,15 @@ def _pipeline_thread(slug, job_id, notes=""):
     try:
         from studio import motion
         manifest = reg().read_manifest(slug) or {}
-        if manifest.get("status") != "ready":
+        # A keep-note CHANGES the head prompt, so the face that is already
+        # built was made without it - skipping the face would have meant
+        # the one thing the owner asked to keep never came back. The head
+        # cache keys on the prompt, so this re-renders rather than reusing
+        # (owner: his bandana is gone, 2026-08-04).
+        if manifest.get("status") != "ready" or notes:
             _job_progress(slug, "face", .02,
-                          "One-click 1/3: building the talking face",
+                          "One-click 1/3: building the talking face"
+                          + (" with your notes" if notes else ""),
                           job_id=job_id)
             manifest = reg().build_avatar(slug, notes=notes) or {}
             if manifest.get("status") != "ready":
