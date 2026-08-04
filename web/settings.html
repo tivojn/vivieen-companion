@@ -859,6 +859,28 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
       avoid markdown. Lists and headings read terribly through a voice.</p>
     </div>
   </div>
+
+  <!-- Pairing lived in a right-click menu on her face, two moves down.
+       The owner could not find it (2026-08-04). It belongs on the page
+       you already open. Hidden on the phone: it is the desk's half. -->
+  <h2 id="pair-title">Your iPhone</h2>
+  <div class="card" id="pair-card">
+    <p class="note" id="pair-state">Looking for this Mac on the network…</p>
+    <div class="row" style="margin-top:10px">
+      <div class="f"><label>Address</label>
+        <input id="pair-address" readonly></div>
+      <div class="f"><label>Pairing code</label>
+        <input id="pair-code" readonly type="password"></div>
+    </div>
+    <div class="row" style="margin-top:10px;gap:8px">
+      <button class="btn" id="pair-copy" type="button">Copy address &amp; code</button>
+      <button class="btn" id="pair-show" type="button">Show code</button>
+    </div>
+    <p class="note" style="margin-top:12px">
+      On the iPhone, open Vivieen and tap <b>Paste address and code</b>, then
+      <b>Connect</b>. Both devices on the same Wi-Fi. The code keeps working
+      across restarts.</p>
+  </div>
 </section>
 </main>
 
@@ -3978,6 +4000,55 @@ $('#save').onclick = async () => {
   $('#live-xai-key').value = '';
   $('#live-eleven-key').value = '';
 };
+/* ---- pairing ------------------------------------------------------------
+   The phone needs two lines: an address and a code. The Mac had them in a
+   right-click menu on her face, behind a toggle - which is why the owner
+   could not pair at all. Here they are, where settings live.
+
+   The endpoint is loopback-only, so on the phone this simply stays hidden
+   rather than showing a card that cannot be filled. */
+async function loadPairing() {
+  const card = $('#pair-card'), title = $('#pair-title');
+  if (!card) return;
+  if (document.documentElement.classList.contains('ios')) {
+    card.hidden = true; if (title) title.hidden = true; return;
+  }
+  let r;
+  try { r = await api('/api/pairing'); } catch (e) { r = null; }
+  if (!r || r.error || !r.code) {
+    card.hidden = true; if (title) title.hidden = true; return;
+  }
+  const address = (r.addresses || [])[0] || '';
+  $('#pair-address').value = address;
+  $('#pair-code').value = r.code;
+  $('#pair-state').textContent = !r.reachable
+    ? 'Her door to the network is shut. Right-click her, switch on '
+      + '"iPhone on This Network", and this address starts answering.'
+    : address
+      ? 'Ready. Enter these two on the iPhone.'
+      : 'No network address - join Wi-Fi first.';
+  $('#pair-show').onclick = () => {
+    const field = $('#pair-code');
+    const hidden = field.type === 'password';
+    field.type = hidden ? 'text' : 'password';
+    $('#pair-show').textContent = hidden ? 'Hide code' : 'Show code';
+  };
+  $('#pair-copy').onclick = async () => {
+    // Two lines, in the order the iPhone's "Paste address and code"
+    // expects - address first, code second.
+    const both = address + '\n' + r.code;
+    try { await navigator.clipboard.writeText(both); }
+    catch (e) {
+      const pad = document.createElement('textarea');
+      pad.value = both; document.body.append(pad); pad.select();
+      try { document.execCommand('copy'); } catch (x) {}
+      pad.remove();
+    }
+    $('#pair-copy').textContent = 'Copied';
+    setTimeout(() => { $('#pair-copy').textContent = 'Copy address & code'; }, 1400);
+  };
+}
+
 $('#revert').onclick = () => boot();
 
 async function boot() {
@@ -4006,6 +4077,7 @@ async function boot() {
   $('#pname').oninput = $('#psys').oninput = dirty;
   await Promise.all([loadAvatars(), refreshMediaDefaults(null, true)]);
   loadStore();
+  void loadPairing();
   note('');
 }
 boot();

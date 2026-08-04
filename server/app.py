@@ -26,7 +26,7 @@ sys.path.insert(0, ROOT)
 
 import numpy as np
 from fastapi import (FastAPI, UploadFile, File, Form, HTTPException, Query,
-                     WebSocket, WebSocketDisconnect)
+                     Request, WebSocket, WebSocketDisconnect)
 from fastapi.responses import (HTMLResponse, FileResponse, JSONResponse,
                                Response, StreamingResponse)
 from pydantic import BaseModel, Field
@@ -677,6 +677,48 @@ def _pipeline_thread(slug, job_id, notes=""):
         writer(f"FAILED: {failure}")
     finally:
         _finish_job(slug, job_id, failure)
+
+
+@app.get("/api/pairing")
+async def api_pairing(request: Request):
+    """What the phone needs to find this Mac, on the page the owner
+    actually opens.
+
+    It was only ever in a right-click menu on the avatar - "iPhone on This
+    Network", then "Pair iPhone..." - which is two moves nobody finds, and
+    the owner had no idea how to pair (owner, 2026-08-04).
+
+    Loopback only. The token is what the caller had to present to get this
+    far, so echoing it back tells a stranger nothing - but the phone has
+    no reason to ask, and a door that only opens where it is needed is one
+    fewer door.
+    """
+    host = (request.client.host if request.client else "") or ""
+    if host not in {"127.0.0.1", "::1", "localhost"}:
+        return JSONResponse({"error": "desk only"}, status_code=403)
+    found = []
+    try:
+        import socket
+        for info in socket.getaddrinfo(socket.gethostname(), None):
+            candidate = info[4][0]
+            if ":" in candidate or candidate.startswith("127."):
+                continue        # IPv6 and loopback are no use to a phone
+            url = f"http://{candidate}:{os.environ.get('VIVIEEN_PORT', '8777')}"
+            if url not in found:
+                found.append(url)
+    except Exception:
+        pass
+    # Bound to loopback only, the phone cannot reach this Mac at all, and
+    # the addresses above would be a promise the engine cannot keep. The
+    # bind is a uvicorn argument, not a setting we hold, so read it back
+    # from the command line that started us.
+    bind = "127.0.0.1"
+    argv = sys.argv
+    for index, word in enumerate(argv):
+        if word == "--host" and index + 1 < len(argv):
+            bind = argv[index + 1]
+    reachable = bind not in {"127.0.0.1", "localhost", "::1"}
+    return {"addresses": found, "code": AUTH_TOKEN, "reachable": reachable}
 
 
 @app.get("/api/avatars")

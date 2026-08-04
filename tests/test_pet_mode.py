@@ -2395,6 +2395,34 @@ class PocketBarAndToolsTests(unittest.TestCase):
         self.assertEqual(
             2, scheme.count("self.noteActivation(asked: body, answered:"))
 
+    def test_pairing_is_on_the_page_the_owner_opens(self):
+        # The address and the code lived in a right-click menu on her face,
+        # behind a toggle, two moves down - so the owner could not pair at
+        # all (owner, 2026-08-04). Settings is where settings live.
+        settings = (ROOT / "web" / "settings.html").read_text()
+        self.assertIn('id="pair-card"', settings)
+        self.assertIn("async function loadPairing()", settings)
+        # Address first, code second - the order the iPhone's paste expects.
+        self.assertIn("const both = address + '\\n' + r.code;", settings)
+        # Masked until asked for.
+        self.assertIn('id="pair-code" readonly type="password"', settings)
+        # The card is the desk's half; the phone must not draw a card it
+        # can never fill.
+        self.assertIn("classList.contains('ios')", settings[
+            settings.index("async function loadPairing()"):][:600])
+
+    def test_the_pairing_code_never_leaves_the_desk(self):
+        # This is the one endpoint that hands back the token itself. The
+        # caller already had to present it, so it tells a stranger nothing
+        # - but only the desk has any reason to ask.
+        app = (ROOT / "server" / "app.py").read_text()
+        block = app[app.index('@app.get("/api/pairing")'):]
+        block = block[:block.index('@app.get("/api/avatars")')]
+        self.assertIn('host not in {"127.0.0.1", "::1", "localhost"}', block)
+        self.assertIn('status_code=403', block)
+        # And it must not promise an address the engine cannot serve.
+        self.assertIn('reachable = bind not in', block)
+
     def test_solo_keys_never_enter_the_page(self):
         # The page learns key NAMES; the native proxy injects values. A
         # compromised script could spend a key but never read one.
