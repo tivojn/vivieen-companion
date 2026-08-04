@@ -2642,3 +2642,27 @@ class LiveTalkSubstitutionTests(unittest.TestCase):
         self.assertIn("ElevenLabs has not reached this phone", tap)
         # ...and it names the voice actually used, not a generic apology.
         self.assertIn("answering in Grok's \\(voice) voice", tap)
+
+
+class AvatarOpacityAndHiding(unittest.TestCase):
+    def test_the_dimmer_cannot_defeat_the_hide_switch(self):
+        # The opacity slider wrote stage.style.opacity, and an inline style
+        # always beats a class rule - so once the slider was touched, hiding
+        # her stopped working for the rest of the session (owner,
+        # 2026-08-04). As a custom property both are ordinary CSS and the
+        # more specific .avatar-hidden rule wins, without !important.
+        page = (ROOT / "web" / "index.html").read_text()
+        self.assertNotIn("stage.style.opacity", page)
+        self.assertIn("--avatar-alpha", page)
+        self.assertIn("html.ios #stage{z-index:4;opacity:var(--avatar-alpha,1)}",
+                      page)
+        self.assertIn("html.ios.avatar-hidden #stage,"
+                      "html.ios.avatar-hidden #vignette{opacity:0}", page)
+
+    def test_the_monitor_line_is_off_but_kept(self):
+        # It was for one debugging session and stayed on the phone. Off,
+        # not deleted - it earned its keep once and will again.
+        page = (ROOT / "web" / "index.html").read_text()
+        self.assertIn("const AUDBG=false;", page)
+        self.assertIn("localStorage.getItem('viv-audbg')", page)
+        self.assertIn("function audbg(line){", page)

@@ -429,7 +429,7 @@ html.ios.avatar-hidden #stage,html.ios.avatar-hidden #vignette{opacity:0}
    every touch meant for the thread. While a turn owns the top, the thread
    IS the surface you touch - and it already hands the taps that miss a
    card back to her, so poking her still works through it. */
-html.ios #stage{z-index:4}
+html.ios #stage{z-index:4;opacity:var(--avatar-alpha,1)}
 html.ios.thread-anchored #stage,html.ios.thread-anchored #cv{pointer-events:none}
 html.ios.avatar-hidden #stage{pointer-events:none}
 /* ---- per-row actions ---------------------------------------------------
@@ -3800,8 +3800,14 @@ window.__vivAudioState=line=>audbg('route: '+line);
 function askAudioState(){
   try{webkit.messageHandlers.audio.postMessage('state');}catch(e){}
 }
+/* The green monitor line. It was for one debugging session and it has been
+   riding along on the phone ever since (owner, 2026-08-04). Off, not
+   deleted - it earned its keep once and will again. Flip AUDBG to true, or
+   set localStorage 'viv-audbg', to bring it back. */
+const AUDBG=false;
 function audbg(line){
   if(!IS_IOS)return;
+  try{if(!AUDBG&&!localStorage.getItem('viv-audbg'))return;}catch(e){return;}
   let el=document.getElementById('audbg');
   if(!el){el=document.createElement('div');el.id='audbg';
     el.style.cssText='position:fixed;left:8px;top:44px;z-index:99;'
@@ -6256,7 +6262,13 @@ if(IS_IOS){
   const stage=document.getElementById('stage');
   alphaRange.addEventListener('input',()=>{
     IOS_ALPHA=Number(alphaRange.value)/100;
-    stage.style.opacity=String(IOS_ALPHA);
+    // A CUSTOM PROPERTY, not an inline opacity. Setting the style directly
+    // beat the .avatar-hidden rule - inline always does - so the moment
+    // the slider was touched, hiding her stopped working for the rest of
+    // the session (owner, 2026-08-04). As a variable, both are ordinary
+    // CSS again and the more specific rule wins.
+    document.documentElement.style.setProperty('--avatar-alpha',
+                                               String(IOS_ALPHA));
     if(domVideo.el)domVideo.el.style.opacity=String(IOS_ALPHA);
   });
   setInterval(()=>{
