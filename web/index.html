@@ -151,6 +151,13 @@ html.listening #listenWave{display:flex}
 #status{position:fixed;top:20px;left:24px;font-size:12px;letter-spacing:.08em;
   text-transform:uppercase;opacity:.55;display:flex;align-items:center;gap:9px}
 #st{max-width:calc(100vw - 190px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The ROAD, kept apart from the brain. One line saying "internet · enconvo ·
+   Mavis" is three variables nobody reads; a chip answers "why is this slow"
+   at a glance and the line goes on answering "who is that". */
+#road{padding:2px 7px;border-radius:6px;border:1px solid var(--tint-line);
+  background:var(--tint);color:var(--tint-ink);font-size:10px;line-height:1;
+  letter-spacing:.1em;opacity:.85}
+#road[hidden]{display:none}
 #dot{width:7px;height:7px;border-radius:50%;background:#5b6472;transition:background .25s}
 #dot.on{background:#38d17a;box-shadow:0 0 10px #38d17a}
 #dot.busy{background:#e8b13a;box-shadow:0 0 10px #e8b13a}
@@ -804,7 +811,7 @@ html.ios #zoombox input{width:100%;flex:1}
   <p>Your portrait stays out of the app bundle and Git repository. Add one in Settings, review the crop, then build the local animation assets.</p>
   <a id="emptyAction" href="/settings">Open Settings</a>
 </div></div>
-<div id="status"><span id="dot"></span><span id="st">booting</span></div>
+<div id="status"><span id="road" hidden></span><span id="dot"></span><span id="st">booting</span></div>
 <div id="vz"></div>
 <a id="gear" href="/settings" title="Avatar, models and voice">
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 15a1.6 1.6 0 0 0 .32 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-.97 1.47V21a2 2 0 1 1-4 0v-.11a1.6 1.6 0 0 0-1.05-1.46 1.6 1.6 0 0 0-1.77.32l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.6 1.6 0 0 0 .32-1.77 1.6 1.6 0 0 0-1.47-.97H3a2 2 0 1 1 0-4h.11a1.6 1.6 0 0 0 1.46-1.05 1.6 1.6 0 0 0-.32-1.77l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.6 1.6 0 0 0 1.77.32H9a1.6 1.6 0 0 0 .97-1.47V3a2 2 0 1 1 4 0v.11a1.6 1.6 0 0 0 .97 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.6 1.6 0 0 0-.32 1.77V9a1.6 1.6 0 0 0 1.47.97H21a2 2 0 1 1 0 4h-.11a1.6 1.6 0 0 0-1.47.97z"/></svg>
@@ -1361,6 +1368,29 @@ function enconvoStatus(){
 }
 /* What the line says when nothing is happening. */
 function idleStatus(){return enconvoStatus()||'ready';}
+/* Which road her answer came down: the Mac on this wifi, the Mac through
+   the relay, or nobody but this phone. The native side STAMPS it on the
+   health reply rather than the page guessing - a guess would be wrong in
+   exactly the case the chip exists for (owner, 2026-08-04).
+
+   Held for a beat before it changes, and never changed mid-answer: at the
+   edge of wifi the two roads trade places every second, and a corner that
+   strobes - or that moves while you are waiting - reads as a crash. */
+const ROAD={shown:'',seen:'',since:0,word:{lan:'LAN',internet:'INTERNET',solo:'SOLO'}};
+function setRoad(name){
+  if(!IS_IOS)return;                       // on the Mac there is no road
+  const el=document.getElementById('road');
+  if(!el)return;
+  if(name!==ROAD.seen){ROAD.seen=name;ROAD.since=Date.now();}
+  if(name===ROAD.shown)return;
+  // Solo is a STATE, not a measurement - it does not need to settle, and
+  // waiting ten seconds to admit the Mac is gone is ten seconds of lying.
+  if(name!=='solo'&&ROAD.shown&&Date.now()-ROAD.since<10000)return;
+  if(TURN.abort)return;
+  ROAD.shown=name;
+  el.textContent=ROAD.word[name]||'';
+  el.hidden=!el.textContent;
+}
 
 (async()=>{
   const assetRev=Date.now().toString(36);
@@ -1488,6 +1518,7 @@ async function poll(){
     // so .json() succeeds and only this check reaches the catch.
     if(h.offline)throw new Error('offline');
     SOLO.misses=0;soloExit();
+    setRoad(h.road||'lan');
     const providerOK=h.llm_ok??h.provider_ok??h.ollama;
     // The chat button's disabled state doubles as a monitor-mode lock, so pet
     // push-to-talk needs its own readiness signal.
@@ -1512,7 +1543,7 @@ async function poll(){
     // - three seconds of "server offline" before she will answer is three
     // seconds of looking broken (owner, 2026-08-04).
     if(IS_IOS){SOLO.misses++;soloEnter();}
-    if(SOLO.active){providerReady=true;}
+    if(SOLO.active){providerReady=true;setRoad('solo');}
     else if(monitorEnabled)renderMonitorStatus();
     else setStatus('server offline','');}
   setTimeout(poll,SOLO.active?5000:1500);
