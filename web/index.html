@@ -656,7 +656,7 @@ html.ios #rail button.on{background:var(--tint);
    scroller, so old messages were unreachable (owner, 2026-08-03). Sized
    to its content, it can own its own touches and still leave the sky
    above her free. */
-html.ios #thread{display:flex;flex-direction:column;justify-content:flex-end;
+html.ios #thread{display:flex;flex-direction:column;justify-content:flex-start;
   gap:8px;position:fixed;left:12px;right:12px;
   max-height:calc(100vh - env(safe-area-inset-top,0px) - 100px
     - var(--bar-h,88px) - var(--kb,0px));
@@ -667,6 +667,28 @@ html.ios #thread{display:flex;flex-direction:column;justify-content:flex-end;
   transition:opacity 350ms ease;
   -webkit-mask-image:linear-gradient(to bottom,transparent,#000 8%);
   mask-image:linear-gradient(to bottom,transparent,#000 8%)}
+/* Once a turn owns the top, the box IS the chat window: full height, so
+   your message can sit at the top of it with her answer growing down into
+   the space below. Sized to its content it had no top to pin to - the two
+   cards simply hovered above the composer as before (measured on the
+   simulator, 2026-08-04). The container paints nothing of its own, so the
+   height costs no ink: only the cards are visible, and her face shows
+   through everywhere they are not.
+
+   And nothing to fade INTO while a turn is pinned to the very top: the
+   fade exists for words sliding under the ceiling, and the first line of
+   the message you just sent is not sliding anywhere. */
+html.ios #thread.anchored{
+  height:calc(100vh - env(safe-area-inset-top,0px) - 100px
+    - var(--bar-h,88px) - var(--kb,0px));
+  -webkit-mask-image:none;mask-image:none}
+/* The pad is what lets your message reach the top when her answer is
+   short. Invisible, untouchable, and the last child always. */
+html.ios #thread .tailpad{flex:none;pointer-events:none;background:none;
+  border:none;padding:0;
+  /* Cancel the flex gap, or the pad delivers eight pixels it did not
+     measure and the anchor never quite reaches the top. */
+  margin-top:-8px}
 /* Empty thread must not swallow taps meant for her. */
 html.ios #thread:empty{pointer-events:none}
 html.ios #thread .msg{pointer-events:auto;align-self:stretch;
@@ -1357,7 +1379,12 @@ function fit(){const d=devicePixelRatio||1;
   // Animation Size zoom outruns the 720p source, and the default bilinear
   // filter is what reads as "low resolution" - high quality costs nothing.
   ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';}
-addEventListener('resize',fit);fit();
+addEventListener('resize',()=>{
+  fit();
+  // Rotation resizes the chat window under a pinned turn.
+  if(typeof threadHold==='function')requestAnimationFrame(threadHold);
+});
+fit();
 function setStatus(s,cls){st.textContent=s;dot.className=cls||'';}
 function routedStatus(route,fallback=''){
   if(route&&route.display){
@@ -3816,13 +3843,15 @@ function threadWorking(){
   dots.className='typing';
   dots.innerHTML='<span></span><span></span><span></span>';
   card.append(dots);
-  if(IS_IOS){container.append(card);threadToBottom(false);}
+  if(IS_IOS){threadPlace(container,card);threadToBottom(false);}
   card.addStep=label=>{
     if(ENCONVO.verbose===false)return;
     const line=document.createElement('div');
     line.className='step';line.textContent=label;
     card.append(line);
-    if(threadNearBottom(container))threadToBottom(false);
+    // TOP.card: her answer growing under a pinned turn has to keep the pad
+    // honest, and threadNearBottom is false the whole time it is pinned.
+    if(TOP.card||threadNearBottom(container))threadToBottom(false);
   };
   // Her sentence as she writes it - a channel sends the reply in pieces,
   // it does not sit silent and then paste a wall.
@@ -3838,7 +3867,9 @@ function threadWorking(){
       dots.remove();
     }
     live.textContent=written;
-    if(threadNearBottom(container))threadToBottom(false);
+    // TOP.card: her answer growing under a pinned turn has to keep the pad
+    // honest, and threadNearBottom is false the whole time it is pinned.
+    if(TOP.card||threadNearBottom(container))threadToBottom(false);
   };
   return card;
 }
@@ -4940,16 +4971,120 @@ function threadAttachments(list){
     const settle=()=>{if(threadNearBottom(container)||stick)threadToBottom(false);};
     node.addEventListener('load',settle);
     node.addEventListener('loadedmetadata',settle);
-    container.append(card);
+    threadPlace(container,card);
   });
-  while(container.children.length>40)container.firstChild.remove();
+  threadPrune(container);
   threadToBottom(false);
 }
 function threadNearBottom(container){
   return container.scrollHeight-container.scrollTop-container.clientHeight<70;
 }
+/* ---- the turn takes the top ---------------------------------------------
+   The thread used to read from the bottom up: every new line pushed the
+   one before it off the ceiling, so the message you just sent appeared at
+   the FLOOR and her answer shoved it upward as it grew. The owner wants
+   what every chat app does - the message you just sent goes to the TOP of
+   the window and her answer grows downward beneath it, pushing the turn
+   before it up and out of sight (owner, 2026-08-04).
+
+   The pad is what makes that possible. With a one-word answer there is
+   nothing below your message to scroll against, so it can never leave the
+   floor; the pad is exactly the missing height, and it shrinks to nothing
+   as her answer fills the space it was holding. */
+const TOP={card:null,pad:null,free:false};
+/* Everything new goes in front of the pad, never after it - the pad is the
+   floor of the thread and has to stay the last child. */
+function threadPlace(container,card){
+  if(TOP.pad&&TOP.pad.parentNode===container)container.insertBefore(card,TOP.pad);
+  else container.append(card);
+}
+function threadPadNow(container){
+  if(!TOP.pad){
+    TOP.pad=document.createElement('div');
+    TOP.pad.className='tailpad';
+    TOP.pad.setAttribute('aria-hidden','true');
+  }
+  if(!TOP.card||!container.contains(TOP.card)){
+    TOP.pad.remove();
+    container.classList.remove('anchored');
+    return false;
+  }
+  if(container.lastElementChild!==TOP.pad)container.append(TOP.pad);
+  container.classList.add('anchored');
+  TOP.pad.style.height='0px';
+  // Measure where the CONTENT ends, not scrollHeight: on a box taller than
+  // its content scrollHeight reports the box, so the pad came out exactly
+  // one short window every time and nothing could ever scroll (measured in
+  // the browser, 2026-08-04).
+  let last=container.lastElementChild;
+  if(last===TOP.pad)last=TOP.pad.previousElementSibling;
+  const end=last?last.offsetTop+last.offsetHeight:0;
+  // Everything from the top of your message to the end of the thread.
+  const below=Math.max(0,end-TOP.card.offsetTop);
+  TOP.pad.style.height=Math.max(0,container.clientHeight-below)+'px';
+  return true;
+}
+/* Hold the pinned turn at the top. Called by every settle the thread
+   already had, so one definition covers streaming text, a step line, an
+   image that finished loading, and the keyboard folding away. */
+function threadHold(){
+  const container=document.getElementById('thread');
+  if(!threadPadNow(container))return false;
+  if(TOP.free)return true;
+  container.scrollTop=TOP.card.offsetTop;
+  return true;
+}
+function threadAnchor(card){
+  TOP.card=card;TOP.free=false;
+  threadHold();
+  // Tall cards and web fonts settle a beat later.
+  requestAnimationFrame(threadHold);
+  setTimeout(threadHold,60);
+  setTimeout(threadHold,300);
+}
+function threadRelease(){
+  TOP.card=null;TOP.free=false;
+  if(TOP.pad)TOP.pad.remove();
+  const container=document.getElementById('thread');
+  if(container)container.classList.remove('anchored');
+}
+/* Forty rows is the ceiling. The pinned turn is never thrown away from
+   under the reader - but a single turn that runs to forty cards on its own
+   would then stop the thread pruning at all, so at that point the pin has
+   outlived its usefulness and the cap wins. */
+function threadPrune(container){
+  while(container.children.length>40){
+    const oldest=container.firstChild;
+    if(oldest===TOP.pad)break;
+    if(oldest===TOP.card){threadRelease();continue;}
+    oldest.remove();
+  }
+}
+/* A finger on the thread wins. Not the scroll event - we fire that
+   ourselves every time we hold the anchor - but an actual drag. */
+if(IS_IOS){
+  const box=document.getElementById('thread');
+  if(box){
+    const letGo=()=>{TOP.free=true;};
+    box.addEventListener('touchmove',letGo,{passive:true});
+    box.addEventListener('wheel',letGo,{passive:true});
+    /* Anchored, the box is as tall as the window, and a scroller has to
+       keep its pointer events or it cannot be dragged at all - so the
+       empty space under the turn is a sheet of glass over her body. Taps
+       that land on nothing are hers: pass them on, so poking her still
+       gets a nod (owner: the sky above her stays free, 2026-08-03). */
+    box.addEventListener('click',event=>{
+      if(event.target!==box&&event.target!==TOP.pad)return;
+      petTapReaction('body');
+    });
+  }
+}
 function threadToBottom(smooth){
   const container=document.getElementById('thread');
+  // While a turn owns the top, "keep up with the newest line" means HOLD
+  // that turn, not jump to the end - otherwise every settle in the file
+  // would drag the view straight back to the floor.
+  if(threadHold())return;
   container.scrollTo({top:container.scrollHeight,
     behavior:smooth?'smooth':'auto'});
 }
@@ -5031,14 +5166,19 @@ function threadPush(role,text){
       .forEach(other=>other.classList.remove('acts-open'));
     card.classList.toggle('acts-open',!open);
   });
-  container.append(card);
-  while(container.children.length>40)container.firstChild.remove();
-  if(stick||role==='user'){
+  threadPlace(container,card);
+  threadPrune(container);
+  if(role==='user'){
+    // Your message takes the top; her answer will grow underneath it.
+    threadAnchor(card);
+  }else if(stick){
     threadToBottom(false);
     // Tall cards finish layout a beat later - settle twice or the last
     // line hides behind the fold (owner, 2026-08-02).
     requestAnimationFrame(()=>threadToBottom(false));
     setTimeout(()=>threadToBottom(false),280);
+  }else{
+    threadHold();
   }
   return card;
 }
@@ -5383,10 +5523,18 @@ if(IS_IOS){
   const threadBox=document.getElementById('thread');
   const threadDown=document.getElementById('threaddown');
   threadBox.addEventListener('scroll',()=>{
+    // A pinned turn is never "near the bottom" - the pad is down there -
+    // so without this the jump-to-newest pill would burn permanently from
+    // the moment you sent anything (workflow review, 2026-08-04). It is
+    // for a thread you scrolled away from by hand, which is exactly the
+    // case TOP.free marks.
+    const pinned=Boolean(TOP.card)&&!TOP.free;
     threadDown.classList.toggle('on',
-      threadBox.children.length>0&&!threadNearBottom(threadBox));
+      !pinned&&threadBox.children.length>0&&!threadNearBottom(threadBox));
   });
   threadDown.addEventListener('click',()=>{
+    // Asking for the newest line is asking to stop being pinned.
+    TOP.free=true;
     threadToBottom(true);
     threadDown.classList.remove('on');
   });
@@ -6106,7 +6254,13 @@ if(IS_IOS){
       const lift=Math.max(0,innerHeight-visualViewport.height-visualViewport.offsetTop);
       document.documentElement.style.setProperty('--kb',lift+'px');
     };
-    visualViewport.addEventListener('resize',()=>{scrollTo(0,0);fitTxtPlaceholder();keyboardLane();});
+    visualViewport.addEventListener('resize',()=>{
+      scrollTo(0,0);fitTxtPlaceholder();keyboardLane();
+      // The window just changed height under a pinned turn - re-pin it, or
+      // the message that owns the top slides off as the keyboard leaves.
+      requestAnimationFrame(threadHold);
+      setTimeout(threadHold,320);
+    });
     keyboardLane();
     // The keyboard also pans the VISUAL viewport, which slid the bar and
     // rail sideways off the glass; snap the layout scroll back each time.
@@ -6126,7 +6280,13 @@ txt.addEventListener('pointerdown',()=>{
 function sendDraft(){
   const v=txt.value.trim();
   if(!v)return;
-  txt.value='';autoSizeTxt();markDraft();turn(v);
+  txt.value='';autoSizeTxt();markDraft();
+  // The keyboard folds back on send. What you want to look at now is the
+  // thread, not the field you just emptied - and with the keyboard down
+  // the window is at its full height, which is the space her answer is
+  // about to take (owner, 2026-08-04).
+  if(IS_IOS)txt.blur();
+  turn(v);
 }
 function markDraft(){
   document.documentElement.classList.toggle('has-draft',
@@ -6146,10 +6306,9 @@ txt.addEventListener('beforeinput',e=>{
 });
 {
   const sendBtn=document.getElementById('sendBtn');
-  if(sendBtn)sendBtn.addEventListener('click',()=>{
-    sendDraft();
-    // Keep the keyboard up - a messenger stays ready for the next line.
-    txt.focus();
-  });
+  // The keyboard folds back (see sendDraft) - it used to be re-focused
+  // here to "stay ready for the next line", which meant the thread you had
+  // just added to was half-hidden behind it (owner, 2026-08-04).
+  if(sendBtn)sendBtn.addEventListener('click',()=>sendDraft());
 }
 </script></body></html>

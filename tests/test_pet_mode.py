@@ -2305,6 +2305,44 @@ class PocketBarAndToolsTests(unittest.TestCase):
         self.assertIn("function roadIsPinned(name)", self.renderer)
         self.assertIn("ROAD.pin==='relay'?name==='internet'", self.renderer)
 
+    def test_the_new_turn_takes_the_top(self):
+        # The thread read bottom-up: the message you just sent appeared at
+        # the FLOOR and her answer shoved it upward. Every chat app does the
+        # opposite - your message takes the top of the window and the answer
+        # grows down beneath it, pushing the turn before it out of sight
+        # (owner, 2026-08-04).
+        self.assertIn("justify-content:flex-start", self.renderer)
+        self.assertIn("html.ios #thread.anchored{", self.renderer)
+        self.assertIn("function threadAnchor(card)", self.renderer)
+        # The pad is what lets a one-word answer still reach the top, and it
+        # must measure where the CONTENT ends: on a box taller than its
+        # content scrollHeight reports the box, so the pad came out exactly
+        # one window short and nothing could scroll (measured, 2026-08-04).
+        self.assertIn("let last=container.lastElementChild;", self.renderer)
+        self.assertIn("const end=last?last.offsetTop+last.offsetHeight:0;",
+                      self.renderer)
+        # Every settle in the file goes through threadToBottom, so holding
+        # the anchor there is what stops them all dragging it to the floor.
+        self.assertIn("if(threadHold())return;", self.renderer)
+        # And the pinned turn is never pruned out from under the reader.
+        self.assertIn("if(oldest===TOP.card){threadRelease();continue;}",
+                      self.renderer)
+
+    def test_the_keyboard_folds_back_on_send(self):
+        # It used to be re-focused so the field "stayed ready", which left
+        # the thread you had just added to half-hidden behind it.
+        self.assertIn("if(IS_IOS)txt.blur();", self.renderer)
+        self.assertNotIn("// Keep the keyboard up", self.renderer)
+
+    def test_the_thread_still_lets_her_be_touched(self):
+        # Anchored, the box is as tall as the window, and a scroller has to
+        # keep its pointer events or it cannot be dragged at all - so the
+        # empty space under the turn is glass over her body. Taps that land
+        # on nothing are hers.
+        self.assertIn("petTapReaction('body');", self.renderer)
+        self.assertIn("if(event.target!==box&&event.target!==TOP.pad)return;",
+                      self.renderer)
+
     def test_solo_keys_never_enter_the_page(self):
         # The page learns key NAMES; the native proxy injects values. A
         # compromised script could spend a key but never read one.
