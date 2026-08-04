@@ -1808,20 +1808,35 @@ async function soloChat(){
 
 /* Voice. ElevenLabs first (it ships character timestamps, so the mouth
    keeps time); OpenAI-shape as the fallback. No key, no voice - text
-   still flows. */
+   still flows. The Mac's chain starts at EnConvo, which no phone can
+   run - so a synced config often names a voice this page cannot honour.
+   Standing in is fine; doing it silently is not (see nameSwap). */
 function soloTTSPick(){
   const c=(SOLO.cfg&&SOLO.cfg.tts)||{};
   if(c.provider==='elevenlabs'&&soloHas('tts.api_key'))
     return{kind:'eleven',key:'tts.api_key',voice:c.voice};
   if(soloHas('live.eleven_api_key'))
-    return{kind:'eleven',key:'live.eleven_api_key',voice:c.voice};
+    // A foreign voice name would only bounce off the ElevenLabs API, so
+    // the stand-in speaks as Rachel and says so.
+    return{kind:'eleven',key:'live.eleven_api_key',
+      voice:c.provider==='elevenlabs'?c.voice:'',
+      standIn:c.provider&&c.provider!=='elevenlabs'
+        ?`her ${c.provider} voice can't run on this phone — Rachel (ElevenLabs) is standing in`
+        :null};
   if(c.provider==='openai'&&soloHas('tts.api_key'))
     return{kind:'openai',key:'tts.api_key',voice:c.voice};
   return null;
 }
 async function soloTTS(text){
   const pick=soloTTSPick();
-  if(!pick)return null;
+  const c=(SOLO.cfg&&SOLO.cfg.tts)||{};
+  if(pick&&pick.standIn)nameSwap('solo-voice',pick.standIn);
+  if(!pick){
+    // Losing the voice entirely is a substitution too - text for speech.
+    if(c.provider)nameSwap('solo-voice',
+      `her ${c.provider} voice can't run on this phone and no other voice key is synced — text only`);
+    return null;
+  }
   if(pick.kind==='eleven'){
     const voice=pick.voice||'21m00Tcm4TlvDq8ikWAM';
     const r=await soloCall({url:'https://api.elevenlabs.io/v1/text-to-speech/'
@@ -1998,17 +2013,24 @@ function soloCharTrack(alignment){
   return ev;
 }
 
-let soloToldEnconvo=false;
+/* Every substitution names itself. The rule came out of one session
+   watching three silent stand-ins - LiveTap falling back to eve, the
+   coupled lane answering solo, and this page swapping her voice without
+   a word (owner, 2026-08-04). One line, said once per stand-in. */
+const SWAPS_TOLD=new Set();
+function nameSwap(key,message){
+  if(SWAPS_TOLD.has(key))return;
+  SWAPS_TOLD.add(key);
+  flashPrompt(message);
+}
 /* `pushed` says the caller already put the message in the thread - the
    coupled lane does, before it discovers the agent cannot be reached. */
 async function soloTurn(text,pushed=false){
   turnBegin();
   history.push({role:'user',content:text});
   if(!pushed)threadPush('user',text);
-  if(window.ENCONVO&&ENCONVO.agent&&!soloToldEnconvo){
-    soloToldEnconvo=true;
-    flashPrompt('EnConvo needs your Mac — her solo brain is answering');
-  }
+  if(window.ENCONVO&&ENCONVO.agent)
+    nameSwap('solo-brain','EnConvo needs your Mac — her solo brain is answering');
   setStatus('solo · thinking','busy');
   try{
     // "draw me / make a picture" works solo too - the xAI key paints.
@@ -2072,7 +2094,9 @@ function soloEnter(){
 }
 function soloExit(){
   if(!SOLO.active)return;
-  SOLO.active=false;soloToldEnconvo=false;SOLO.told=false;
+  // Fresh spell, fresh announcements - a stand-in re-names itself the
+  // next time the Mac drops away.
+  SOLO.active=false;SWAPS_TOLD.clear();SOLO.told=false;
   document.documentElement.classList.remove('solo');
   fetch('solo/sync',{method:'POST'}).catch(()=>{});
 }
