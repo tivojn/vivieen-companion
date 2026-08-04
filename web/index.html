@@ -414,6 +414,12 @@ html.ios #modellist button{display:block;width:100%;text-align:left;
   -webkit-user-select:none;user-select:none}
 html.ios #modellist button.on{background:rgba(124,116,226,.22);font-weight:600}
 html.ios #modellist .note{padding:11px 14px;font-size:13px;opacity:.6}
+html.ios #modellist .sheethead{display:flex;align-items:center;gap:6px;
+  padding:8px 14px 10px;font-size:12px;letter-spacing:.06em;
+  text-transform:uppercase;opacity:.55;color:var(--card-ink)}
+html.ios #modellist .sheethead .back{width:auto;padding:0 8px 0 0;
+  font-size:20px;line-height:1;opacity:.8;background:none;border:none;
+  color:inherit}
 /* Never display:none - WebKit refuses a programmatic .click() on an
    unrendered file input, which is why the plus button did nothing on the
    phone. Rendered, one pixel, invisible, out of the way. */
@@ -447,18 +453,72 @@ html.ios #listenWaveDot{display:none}
 html.ios #listenWaveBars{gap:4px;height:22px}
 html.ios #listenWaveBars span{width:3px;border-radius:2px;
   background:rgba(124,116,226,.95)}
-html.ios #listenWaveText{font-size:13px;font-weight:600;letter-spacing:.01em;
+html.ios #listenWaveText{font-size:11px;font-weight:600;letter-spacing:.22em;
+  text-transform:uppercase;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
   color:#e7e5ff}
+/* Slide up while holding and the channel turns to an abort. */
+html.ios #listenWave.abort{border-color:rgba(212,76,71,.9);
+  background:rgba(212,76,71,.2)}
+html.ios #listenWave.abort #listenWaveBars span{background:rgba(255,150,145,.95)}
+html.ios #listenWave.abort #listenWaveText{color:#ffe2e0}
 html.ios[data-skin=light] #listenWave{
   border-color:rgba(108,101,222,.55);background:rgba(108,101,222,.14)}
 html.ios[data-skin=light] #listenWaveBars span{background:rgba(76,68,196,.95)}
 html.ios[data-skin=light] #listenWaveText{color:#2c2a63}
-html.ios.talk-mode #talkbar{display:block;order:1;flex:1 0 100%;height:44px;border-radius:12px;
-  border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);
-  color:#e8e9ec;font-size:15px;font-weight:600;letter-spacing:.02em;
-  touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-html.ios.talk-mode #talkbar.rec{background:rgba(124,116,226,.4);border-color:rgba(124,116,226,.8)}
-html.ios.talk-mode #talkbar.cancel{background:rgba(212,76,71,.4);border-color:rgba(212,76,71,.8)}
+/* ---- the talk bar -----------------------------------------------------
+   A grey slab that said "Hold to talk" looked like a disabled button.
+   This is an INSTRUMENT: a dark channel with a scanning sweep that runs
+   while it waits, a hairline grid you only half-see, and monospaced
+   letterforms. Pressed, the sweep stops and the whole channel charges.
+   Slide up to cancel and it goes red. (owner: make it geekly fancy and
+   futuristic, 2026-08-04) */
+html.ios.talk-mode #talkbar{display:flex;order:1;flex:1 0 100%;height:46px;
+  align-items:center;justify-content:center;position:relative;overflow:hidden;
+  border-radius:13px;border:1px solid rgba(124,116,226,.42);
+  background:
+    repeating-linear-gradient(90deg,rgba(124,116,226,.13) 0 1px,transparent 1px 13px),
+    linear-gradient(180deg,rgba(22,24,34,.96),rgba(14,15,22,.96));
+  color:#cfd2ff;font-size:12px;font-weight:600;letter-spacing:.30em;
+  text-indent:.30em;text-transform:uppercase;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  box-shadow:inset 0 0 22px rgba(124,116,226,.16),0 1px 0 rgba(255,255,255,.05);
+  touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  transition:border-color 180ms ease,color 180ms ease,box-shadow 180ms ease}
+/* The sweep: a narrow beam crossing the channel, the way a scanner idles. */
+html.ios.talk-mode #talkbar::before{content:'';position:absolute;
+  top:0;bottom:0;width:34%;left:-40%;pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(124,116,226,.30),transparent);
+  animation:talkSweep 2.6s cubic-bezier(.5,0,.5,1) infinite}
+@keyframes talkSweep{0%{left:-40%}100%{left:106%}}
+/* Held: the scan stops - it is listening now, not waiting - and the
+   channel lights from the middle out. */
+html.ios.talk-mode #talkbar.rec{color:#fff;border-color:rgba(124,116,226,.95);
+  box-shadow:inset 0 0 34px rgba(124,116,226,.44),0 0 20px rgba(124,116,226,.30)}
+html.ios.talk-mode #talkbar.rec::before{animation:none;left:0;width:100%;
+  background:radial-gradient(60% 130% at 50% 50%,rgba(124,116,226,.42),transparent 70%)}
+html.ios.talk-mode #talkbar.cancel{color:#ffe2e0;
+  border-color:rgba(212,76,71,.95);
+  box-shadow:inset 0 0 34px rgba(212,76,71,.46),0 0 20px rgba(212,76,71,.28)}
+html.ios.talk-mode #talkbar.cancel::before{animation:none;left:0;width:100%;
+  background:radial-gradient(60% 130% at 50% 50%,rgba(212,76,71,.45),transparent 70%)}
+/* Light mode keeps the instrument, on a pale plate. */
+html.ios[data-skin=light].talk-mode #talkbar{
+  color:#3b3a72;border-color:rgba(108,101,222,.45);
+  background:
+    repeating-linear-gradient(90deg,rgba(108,101,222,.10) 0 1px,transparent 1px 13px),
+    linear-gradient(180deg,rgba(255,255,255,.96),rgba(240,240,250,.96));
+  box-shadow:inset 0 0 20px rgba(108,101,222,.12)}
+html.ios[data-skin=light].talk-mode #talkbar.rec{color:#1d1b4d;
+  border-color:rgba(108,101,222,.9);
+  box-shadow:inset 0 0 30px rgba(108,101,222,.34),0 0 18px rgba(108,101,222,.22)}
+html.ios[data-skin=light].talk-mode #talkbar.cancel{color:#6d211d;
+  border-color:rgba(212,76,71,.9);
+  box-shadow:inset 0 0 30px rgba(212,76,71,.34),0 0 18px rgba(212,76,71,.2)}
+/* Motion is decoration; some people cannot have it. */
+@media (prefers-reduced-motion:reduce){
+  html.ios.talk-mode #talkbar::before{animation:none;left:0;width:100%;
+    background:linear-gradient(90deg,transparent,rgba(124,116,226,.16),transparent)}
+}
 /* ---- avatar carousel --------------------------------------------------
    Swipe across her, and the wardrobe opens: every installed face as a
    card. Two switchable looks - noir stacks a dark diagonal cascade, the
@@ -4991,11 +5051,21 @@ if(IS_IOS){
       holdCancel=lifted;
       talkbar.classList.toggle('cancel',lifted);
       talkbar.textContent=lifted?'Release to cancel':'Hold to talk';
+      // The METER holds this row while recording, so the abort state has
+      // to live there - on the bar it was invisible (2026-08-04).
+      const meter=document.getElementById('listenWave');
+      const label=document.getElementById('listenWaveText');
+      if(meter)meter.classList.toggle('abort',lifted);
+      if(label)label.textContent=lifted?'Release to abort':'Listening…';
     }
   });
   const endHold=()=>{
     talkbar.classList.remove('rec','cancel');
     talkbar.textContent='Hold to talk';
+    const meter=document.getElementById('listenWave');
+    const label=document.getElementById('listenWaveText');
+    if(meter)meter.classList.remove('abort');
+    if(label)label.textContent='Listening…';
     recDiscard=holdCancel;holdCancel=false;
     stopRec();
   };
@@ -5331,8 +5401,27 @@ if(IS_IOS){
   /* Solo asks the provider itself - the same key, the same catalogue the
      Mac would have read. Online, the Mac answers, because only it knows
      the whole configured lane. */
-  async function llmChoices(){
+  /* Two steps, because a brain is a PLATFORM and then a model - listing
+     one provider's models was only ever half the switch (owner,
+     2026-08-04). Step one is the catalogue the Mac already publishes;
+     step two asks that provider what it can run. */
+  async function llmPlatforms(){
     if(SOLO.active){
+      // Offline the phone can only speak to providers whose key reached
+      // it; showing the rest would be an invitation to a dead end.
+      const p=soloLLM();
+      return{solo:true,current:p?p.label:'',
+        rows:p?[{id:p.label,label:p.label+' · the key on this phone'}]:[]};
+    }
+    const top=await(await fetch('api/config')).json();
+    const cfg=top.config||{};
+    const catalog=(top.catalog&&top.catalog.llm)||[];
+    const stored=cfg.llm||{};
+    return{cfg,current:stored.provider||'',
+      rows:catalog.map(p=>({id:p.id,label:p.label||p.id,needsKey:Boolean(p.key)}))};
+  }
+  async function llmChoices(provider,state){
+    if(state.solo){
       const p=soloLLM();
       if(!p)return{provider:'',model:'',models:[]};
       const r=await soloCall({url:p.base+'/models',method:'GET',key:p.key,
@@ -5342,16 +5431,17 @@ if(IS_IOS){
         .filter(Boolean).sort();
       return{provider:p.label,model:p.model,models:rows,solo:true};
     }
-    // /api/config answers {config, catalog, globals, routes, active} -
-    // the lane lives under .config, not at the top.
-    const top=await(await fetch('api/config')).json();
-    const cfg=top.config||{};
-    const llm=cfg.llm||{};
+    const stored=state.cfg.llm||{};
+    // Ask about the provider the user just chose, carrying the stored
+    // block so its key and base URL come along. An empty api_key means
+    // "the one you already hold" to the Mac.
+    const cfg={...stored,provider};
     const r=await(await fetch('api/models',{method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({kind:'llm',cfg:llm})})).json();
-    return{provider:llm.provider||'',model:llm.model||'',
-      models:(r.models||[]).map(m=>String(m.id||m)),cfg,error:r.error};
+      body:JSON.stringify({kind:'llm',cfg})})).json();
+    return{provider,model:stored.provider===provider?(stored.model||''):'',
+      models:(r.models||[]).map(m=>String(m.id||m)),cfg:state.cfg,
+      error:r.error};
   }
   async function pickModel(name,state){
     if(state.solo){
@@ -5364,7 +5454,7 @@ if(IS_IOS){
       // Send the LANE only, never the whole document: an empty api_key
       // means "unchanged" to the Mac, and posting catalog/globals back
       // as if they were config is asking for a wipe.
-      const llm={...(state.cfg.llm||{}),model:name};
+      const llm={...(state.cfg.llm||{}),provider:state.provider,model:name};
       delete llm.api_key;delete llm.has_key;
       await fetch('api/config',{method:'POST',
         headers:{'Content-Type':'application/json'},
@@ -5373,20 +5463,31 @@ if(IS_IOS){
     flashPrompt('Now answering with '+name);
     closeModels();
   }
-  document.getElementById('status').addEventListener('click',async()=>{
-    if(!IS_IOS)return;
-    if(document.documentElement.classList.contains('models-open')){closeModels();return;}
-    // Mid-call or mid-turn the line is saying something else; leave it.
-    if(LIVE||document.documentElement.classList.contains('turning'))return;
-    document.documentElement.classList.add('models-open');
-    modelList.replaceChildren();note('Loading models…');
+  function sheetHead(text,back){
+    const bar=document.createElement('div');
+    bar.className='sheethead';
+    if(back){
+      const b=document.createElement('button');
+      b.type='button';b.className='back';b.textContent='‹';
+      b.addEventListener('click',back);
+      bar.append(b);
+    }
+    const t=document.createElement('span');t.textContent=text;
+    bar.append(t);
+    modelList.append(bar);
+  }
+  async function showModels(provider,platforms){
+    modelList.replaceChildren();
+    sheetHead(provider,()=>void showPlatforms());
+    note('Loading models…');
     try{
-      const state=await llmChoices();
+      const state=await llmChoices(provider,platforms);
       modelList.replaceChildren();
+      sheetHead(state.provider||provider,()=>void showPlatforms());
       if(state.error)note(state.error);
       if(!state.models.length){
-        note(state.provider?('no models listed for '+state.provider)
-                           :'no brain configured yet');
+        note(state.error?'':('nothing listed for '+(state.provider||provider)
+          +' — it may need a key in Settings'));
         return;
       }
       state.models.forEach(name=>{
@@ -5399,8 +5500,42 @@ if(IS_IOS){
       });
     }catch(e){
       modelList.replaceChildren();
+      sheetHead(provider,()=>void showPlatforms());
       note(String(e.message||e).slice(0,120));
     }
+  }
+  async function showPlatforms(){
+    modelList.replaceChildren();note('Loading…');
+    try{
+      const platforms=await llmPlatforms();
+      modelList.replaceChildren();
+      sheetHead('Choose a platform',null);
+      if(!platforms.rows.length){note('no brain configured yet');return;}
+      platforms.rows.forEach(row=>{
+        const button=document.createElement('button');
+        button.type='button';
+        button.className=(row.id===platforms.current?'on':'');
+        button.textContent=row.label;
+        button.addEventListener('click',()=>{
+          if(platforms.solo)return;
+          void showModels(row.id,platforms);
+        });
+        modelList.append(button);
+      });
+      if(platforms.solo&&platforms.rows.length)
+        void showModels(platforms.rows[0].id,platforms);
+    }catch(e){
+      modelList.replaceChildren();
+      note(String(e.message||e).slice(0,120));
+    }
+  }
+  document.getElementById('status').addEventListener('click',()=>{
+    if(!IS_IOS)return;
+    if(document.documentElement.classList.contains('models-open')){closeModels();return;}
+    // Mid-call or mid-turn the line is saying something else; leave it.
+    if(LIVE||document.documentElement.classList.contains('turning'))return;
+    document.documentElement.classList.add('models-open');
+    void showPlatforms();
   });
   addEventListener('pointerdown',event=>{
     if(!document.documentElement.classList.contains('models-open'))return;

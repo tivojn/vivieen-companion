@@ -340,18 +340,44 @@ class ProviderDefaultsTests(unittest.TestCase):
         # only her words are worth hearing again
         self.assertIn("if(role!=='user')button('Play aloud'", html)
 
-    def test_settings_and_the_deck_are_cached_and_warmed(self):
-        # "switching avatar quicker, loading setting pages quicker"
-        # (owner, 2026-08-03). The shells are cached - the VALUES still
-        # come live from /api/config, which must never be cached.
+    def test_server_rendered_state_is_never_cached(self):
+        # I cached /settings and /api/avatars to make them open faster and
+        # it was wrong. /settings is SERVER-RENDERED: the avatar name and
+        # the ACTIVE badge are in its markup, not fetched, so a cached copy
+        # freezes whichever avatar was on stage when it was stored - switch
+        # in the carousel and Settings still swore the old one was active
+        # (owner, 2026-08-04). /api/avatars carries the same "active" flag.
+        # Only genuinely static things may be cached.
         with open(os.path.join(ROOT, "ios", "Vivieen", "VivScheme.swift"),
                   encoding="utf-8") as handle:
             swift = handle.read()
-        self.assertIn('bare(path) == "/settings"', swift)
-        self.assertIn('bare(path) == "/api/avatars"', swift)
-        self.assertNotIn('bare(path) == "/api/config"', swift)
-        # and the deck's faces are warmed the moment the roster is known
+        # Scope the check to cacheable() itself - warmDeck legitimately
+        # names /api/avatars to recognise the roster it warms from.
+        start = swift.index("private func cacheable(")
+        rule = swift[start:swift.index("private func bare(", start)]
+        self.assertNotIn('"/settings"', rule)
+        self.assertNotIn('"/api/avatars"', rule)
+        self.assertNotIn('"/api/config"', rule)
+        # what IS static: the chat page, her sprites, the thumbnails
+        self.assertIn('bare(path) == "/"', rule)
+        self.assertIn('path.hasPrefix("/assets/")', rule)
+        self.assertIn('path.hasPrefix("/api/avatar/thumb")', rule)
+        # the deck's faces are still warmed off the live roster
         self.assertIn("private func warmDeck(", swift)
+
+    def test_the_picker_chooses_a_platform_before_a_model(self):
+        # A brain is a PLATFORM and then a model; listing one provider's
+        # models was half the switch (owner, 2026-08-04).
+        index_path = os.path.join(ROOT, "web", "index.html")
+        with open(index_path, encoding="utf-8") as handle:
+            html = handle.read()
+        self.assertIn("async function llmPlatforms()", html)
+        self.assertIn("async function showPlatforms()", html)
+        self.assertIn("async function showModels(provider,platforms)", html)
+        # the catalogue the Mac already publishes, not a hand-written list
+        self.assertIn("(top.catalog&&top.catalog.llm)||[]", html)
+        # switching platform must carry the provider, not just the model
+        self.assertIn("provider:state.provider,model:name}", html)
 
     def test_notices_sit_above_the_composer_and_pip_is_gone(self):
         index_path = os.path.join(ROOT, "web", "index.html")

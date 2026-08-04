@@ -111,15 +111,15 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             || path.hasPrefix("/assets/")
             || path == "/live-worklet.js"
             || path.hasPrefix("/api/avatar/thumb")
-            // Settings is a PAGE - its shell never changes between
-            // launches, only the values it fetches. Caching the shell is
-            // the difference between opening instantly and waiting for
-            // the Mac; the values still come live from /api/config, which
-            // is deliberately NOT cached (owner, 2026-08-03).
-            || bare(path) == "/settings"
-            // The deck. Cached, the carousel opens at once and still
-            // opens with the Mac asleep.
-            || bare(path) == "/api/avatars"
+        // NOT /settings, and NOT /api/avatars. I cached both to make them
+        // open faster and it was wrong: /settings is SERVER-RENDERED with
+        // the live avatar state baked into its markup - the name and the
+        // ACTIVE badge are in the HTML, not fetched - so a cached copy
+        // freezes whichever avatar was on stage when it was stored. Switch
+        // avatar in the carousel and Settings still swore the old one was
+        // active (owner, 2026-08-04). /api/avatars carries the same
+        // "active" flag and went stale the same way. Only genuinely static
+        // things belong above: the chat page, her sprites, the thumbnails.
     }
 
     /// The path without its query. Boot fetches carry cache-busters
