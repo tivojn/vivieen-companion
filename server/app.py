@@ -2151,6 +2151,10 @@ async def api_assets(path: str):
 @app.get("/api/meta")
 async def api_meta():
     return {"app_id": APP_ID, "active": active_slug(),
+            # Which look the owner picked. It lived in localStorage, which
+            # is PER DEVICE, so the desk and the phone drifted apart and
+            # stayed that way (owner, 2026-08-04). One answer, from here.
+            "design": ((P.load().get("ui") or {}).get("design") or "quiet"),
             "companion": reg().get_companion()}
 
 

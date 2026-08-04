@@ -1184,10 +1184,23 @@ function applyDesign(value) {
   $('#design-toggle').textContent = design === 'atelier' ? 'Atelier' : 'Quiet';
 }
 applyDesign(localStorage.getItem('vivieen-design'));
+/* localStorage paints instantly but is PER DEVICE, which is why the desk
+   and the phone drifted apart and stayed that way (owner, 2026-08-04).
+   The Mac holds the real answer; reconcile once it replies. */
+api('/health').then(h => {
+  if (!h || !h.design) return;
+  localStorage.setItem('vivieen-design', h.design);
+  applyDesign(h.design);
+}).catch(() => {});
 $('#design-toggle').onclick = () => {
   const next = document.documentElement.dataset.design === 'atelier' ? 'quiet' : 'atelier';
   localStorage.setItem('vivieen-design', next);
   applyDesign(next);
+  // Tell the Mac, so every other screen follows.
+  api('/api/config', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ui: { design: next } })
+  }).catch(() => {});
 };
 const SHELL = window.vivieen;
 let CFG = null, CAT = null, GLOBALS = {}, MEDIA_DEFAULTS = {}, ACTIVE = null, COMPANION = null, POLL = null;

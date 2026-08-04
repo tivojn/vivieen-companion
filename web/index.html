@@ -842,6 +842,11 @@ const applyChromeDesign=value=>{
   document.documentElement.dataset.design=value==='atelier'?'atelier':'quiet';
 };
 applyChromeDesign(localStorage.getItem('vivieen-design'));
+/* The Mac decides, so the desk and the phone cannot disagree. */
+fetch('health').then(r=>r.json()).then(h=>{
+  if(h&&h.design){localStorage.setItem('vivieen-design',h.design);
+    applyChromeDesign(h.design);}
+}).catch(()=>{});
 addEventListener('storage',event=>{
   if(event.key==='vivieen-design')applyChromeDesign(event.newValue);
 });
