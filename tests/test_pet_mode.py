@@ -2620,3 +2620,18 @@ class PocketBarAndToolsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LiveTalkSubstitutionTests(unittest.TestCase):
+    def test_the_phone_names_the_voice_it_fell_back_to(self):
+        # The owner picked ElevenLabs for live talk and heard Grok's Eve.
+        # The ElevenLabs key had never reached the phone, and this branch
+        # quietly took the other road with the default voice - no message,
+        # no explanation (owner, 2026-08-04). Substituting is fine; doing
+        # it silently is the bug, and this repo already ruled on that in
+        # the coupled-agent lane.
+        tap = (ROOT / "ios" / "Vivieen" / "LiveTap.swift").read_text()
+        self.assertIn('if want == "elevenlabs" {', tap)
+        self.assertIn("ElevenLabs has not reached this phone", tap)
+        # ...and it names the voice actually used, not a generic apology.
+        self.assertIn("answering in Grok's \\(voice) voice", tap)

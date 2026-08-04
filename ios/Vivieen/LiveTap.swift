@@ -60,9 +60,21 @@ final class LiveTap: NSObject {
             }
             openEleven(agent: agent, key: elevenKey)
         } else if !xaiKey.isEmpty {
+            let voice = (cfg["xai_voice"] as? String) ?? "eve"
+            // The owner picked ElevenLabs and got Grok's Eve, with nothing
+            // said - the ElevenLabs key had simply never reached this phone,
+            // and this branch quietly took the other road (owner: "might be
+            // Eve", 2026-08-04). A substitution nobody announced is the bug,
+            // not the substitution itself: make the call, and name it.
+            if want == "elevenlabs" {
+                toPage(["type": "agent_text", "final": true,
+                        "text": "· ElevenLabs has not reached this phone — "
+                              + "answering in Grok's \(voice) voice. Open the "
+                              + "app once beside your Mac to carry the key over. ·"])
+            }
             openXAI(key: xaiKey,
                     model: (cfg["xai_model"] as? String) ?? "grok-voice-think-fast-1.0",
-                    voice: (cfg["xai_voice"] as? String) ?? "eve",
+                    voice: voice,
                     persona: persona)
         } else {
             fail("no live-talk key has reached this phone yet — open the app "
