@@ -648,7 +648,14 @@ html.ios.rail-folded #rail button{display:none}
    the shrinking box. */
 html.ios.rail-folded #rail{top:auto;transform:none;
   bottom:calc(var(--bar-h,88px) + 26px + var(--kb,0px))}
-html.ios.rail-folded #rail #rail-fold{display:flex;opacity:.55}
+/* A bare chevron, not a disc. Folded, this is the only thing left on that
+   edge, and a filled button sitting over the thread is exactly the
+   furniture folding was meant to remove (owner, 2026-08-05). It keeps its
+   full tap area - only the paint goes. */
+html.ios #rail #rail-fold{background:none;border:none;box-shadow:none;
+  -webkit-backdrop-filter:none;backdrop-filter:none;opacity:.32}
+html.ios #rail #rail-fold:active{opacity:.7}
+html.ios.rail-folded #rail #rail-fold{display:flex;opacity:.28}
 /* Down to tuck them away, up to bring them back. */
 html.ios.rail-folded #rail #rail-fold svg{transform:rotate(180deg)}
 /* The rail's lowest button sat right on top of the plus once a panel
