@@ -277,6 +277,37 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         try? data.write(to: snapshotURL(path))
     }
 
+    /// Stamp the health answer with the ROAD it came down, so the page can
+    /// say so. The owner kept having to guess whether a slow reply meant
+    /// the Mac was far away, asleep, or simply not there - the line named
+    /// the brain but never the route (owner, 2026-08-04).
+    private func stampRoad(_ data: Data, _ road: String) -> Data {
+        guard var top = (try? JSONSerialization.jsonObject(with: data))
+                as? [String: Any] else { return data }
+        top["road"] = road
+        return (try? JSONSerialization.data(withJSONObject: top)) ?? data
+    }
+
+    /// The long way round to the Mac, for the liveness probe only. Used
+    /// both when the direct road just failed and when it is fused off, so
+    /// the two cases report the same road - because they are.
+    private func healthViaRelay(_ task: WKURLSchemeTask, path: String,
+                                requested: URL) {
+        relay.send(path: path, method: "GET", body: nil,
+                   timeout: 15) { [weak self] reply in
+            guard let self else { return }
+            if let reply, reply.status == 200 {
+                self.finish(task, url: requested,
+                            data: self.stampRoad(reply.data, "internet"),
+                            type: "application/json")
+            } else {
+                self.finish(task, url: requested,
+                            data: Data("{\"offline\":true}".utf8),
+                            type: "application/json", status: 503)
+            }
+        }
+    }
+
     private func mime(for path: String) -> String {
         switch (path as NSString).pathExtension.lowercased() {
         case "html", "": return "text/html; charset=utf-8"
@@ -399,6 +430,17 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         // ask, and solo mode could not trigger (2026-08-03). Direct with
         // a short fuse, one brief relay try, then an honest 503.
         if bare(path) == "/health", method == "GET" {
+            // A probe that takes a road the real requests are NOT taking
+            // would lie: the badge would read "lan" while every turn was
+            // fused onto the relay for the next twenty seconds. Honour
+            // the same fuse route() honours, and the road this reports is
+            // the road her answer actually comes down (owner, 2026-08-04).
+            // It costs nothing either: a probe that skips a dead LAN also
+            // stops burning four seconds of every poll on it.
+            if skipDirectNow() {
+                healthViaRelay(task, path: path, requested: requested)
+                return
+            }
             var probe = URLRequest(url: URL(string: address + path)!)
             probe.timeoutInterval = 4
             probe.setValue(token, forHTTPHeaderField: "x-vivieen-token")
@@ -406,7 +448,8 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                 guard let self else { return }
                 if error == nil, let data,
                    (response as? HTTPURLResponse)?.statusCode == 200 {
-                    self.finish(task, url: requested, data: data,
+                    self.finish(task, url: requested,
+                                data: self.stampRoad(data, "lan"),
                                 type: "application/json")
                     return
                 }
@@ -416,17 +459,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                 // timing out while the Mac was perfectly reachable and
                 // the phone declared itself offline (owner, 2026-08-03).
                 // Still a fuse: two misses in a row is what enters solo.
-                self.relay.send(path: path, method: "GET", body: nil,
-                                timeout: 15) { reply in
-                    if let reply, reply.status == 200 {
-                        self.finish(task, url: requested, data: reply.data,
-                                    type: "application/json")
-                    } else {
-                        self.finish(task, url: requested,
-                                    data: Data("{\"offline\":true}".utf8),
-                                    type: "application/json", status: 503)
-                    }
-                }
+                self.healthViaRelay(task, path: path, requested: requested)
             }.resume()
             return
         }
