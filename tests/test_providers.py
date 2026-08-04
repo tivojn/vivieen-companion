@@ -976,6 +976,17 @@ class PublicReleaseSecurityTests(unittest.TestCase):
         self.assertIn("red experimental", source)
         self.assertIn("formatRigError", source)
 
+    def test_store_progress_box_is_born_visible(self):
+        # The store card rendered its jobbox without the `on` class, and
+        # .jobbox is display:none until .jobbox.on - so the percent was
+        # computed, polled every second, and never seen. The owner asked
+        # for "a % indicator" that had existed, invisibly, all along
+        # (2026-08-05).
+        with open(os.path.join(ROOT, "web", "settings.html"), encoding="utf-8") as handle:
+            source = handle.read()
+        self.assertIn('<div class="jobbox on"><div class="note">'
+                      "${STORE_LABEL[job.phase]}", source)
+
     def test_runtime_source_uses_no_predictable_tempfile_api(self):
         for relative in ("server/app.py", "server/providers.py"):
             with open(os.path.join(ROOT, relative), encoding="utf-8") as handle:
