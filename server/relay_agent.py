@@ -113,6 +113,31 @@ def _replay(envelope, engine_port, engine_token, send):
 _RUNNING = None
 
 
+def lan_addresses(port):
+    """Every address this Mac can be reached on from its own network.
+
+    The phone was given ONE address when it paired. The router hands
+    out a new lease and that address is a lie - the phone sits on the
+    same Wi-Fi and cannot find a Mac two feet away, so it falls to the
+    relay and everything gets slow for no reason (owner, 2026-08-04).
+    Module-level because the solo sync needs the same answer: a loopback
+    provider URL means nothing to a phone (#28).
+    """
+    found = []
+    try:
+        import socket
+        for info in socket.getaddrinfo(socket.gethostname(), None):
+            host = info[4][0]
+            if ":" in host or host.startswith("127."):
+                continue        # IPv6 and loopback are no use here
+            url = f"http://{host}:{port}"
+            if url not in found:
+                found.append(url)
+    except Exception:
+        pass
+    return found
+
+
 def start(engine_port):
     """Called from the engine at boot. No relay-url file, no thread."""
     # Exactly one pump per process. Two consumers on one mailbox both read
@@ -143,28 +168,6 @@ def start(engine_port):
         # (owner's wedged pump, 2026-08-04).
         print("[viv] relay: ANSWER DROPPED for %s after 3 tries: %s"
               % (message.get("id", "?"), str(last)[:120]), flush=True)
-
-    def lan_addresses(port):
-        """Every address this Mac can be reached on from its own network.
-
-        The phone was given ONE address when it paired. The router hands
-        out a new lease and that address is a lie - the phone sits on the
-        same Wi-Fi and cannot find a Mac two feet away, so it falls to the
-        relay and everything gets slow for no reason (owner, 2026-08-04).
-        """
-        found = []
-        try:
-            import socket
-            for info in socket.getaddrinfo(socket.gethostname(), None):
-                host = info[4][0]
-                if ":" in host or host.startswith("127."):
-                    continue        # IPv6 and loopback are no use here
-                url = f"http://{host}:{port}"
-                if url not in found:
-                    found.append(url)
-        except Exception:
-            pass
-        return found
 
     def presence(engine_port):
         """Say where we are and what we hold. Short TTL: a Mac that goes

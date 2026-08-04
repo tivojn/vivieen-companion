@@ -996,6 +996,17 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         }
     }
 
+    /// RFC1918 and .local - the addresses a home router can hand out.
+    private static func isPrivateHost(_ host: String) -> Bool {
+        if host.hasSuffix(".local") { return true }
+        let parts = host.split(separator: ".").compactMap { Int($0) }
+        guard parts.count == 4 else { return false }
+        if parts[0] == 10 { return true }
+        if parts[0] == 192 && parts[1] == 168 { return true }
+        if parts[0] == 172 && (16...31).contains(parts[1]) { return true }
+        return false
+    }
+
     /// One provider HTTPS call, made by the app on the page's behalf.
     /// {url, method, headers{}, body_b64, key, key_style}
     ///   key_style: "bearer" | "x-api-key" | "query:<name>" | "header:<Name>"
@@ -1005,8 +1016,12 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                 as? [String: Any],
               let target = spec["url"] as? String,
               var url = URL(string: target),
-              url.scheme == "https",
-              let host = url.host else {
+              let host = url.host,
+              // Cleartext may speak only to the owner's own network: the
+              // Mac's Ollama answers on plain http at a LAN address (#28).
+              // The public internet stays https-only.
+              url.scheme == "https"
+                || (url.scheme == "http" && Self.isPrivateHost(host)) else {
             json(task, requested, ["error": "bad call spec"], status: 400)
             return
         }

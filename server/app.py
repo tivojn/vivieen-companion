@@ -3137,6 +3137,28 @@ async def say(s: Say):
 
 
 # ------------------------------------------------------------ solo sync
+def _lan_base_url(url):
+    """Rewrite a loopback provider URL to this Mac's LAN address, keeping
+    scheme, port, and path. Anything already reachable passes through, and
+    with no LAN address to offer the loopback stays - a wrong address is
+    worse than an honest unreachable one."""
+    from urllib.parse import urlsplit, urlunsplit
+    from server.relay_agent import lan_addresses
+    try:
+        parts = urlsplit(url)
+        if parts.hostname not in ("127.0.0.1", "localhost", "0.0.0.0", "::1"):
+            return url
+        lan = lan_addresses(parts.port or 80)
+        if not lan:
+            return url
+        host = urlsplit(lan[0]).hostname
+        port = f":{parts.port}" if parts.port else ""
+        return urlunsplit((parts.scheme, host + port, parts.path,
+                           parts.query, parts.fragment))
+    except Exception:
+        return url
+
+
 # The phone's independent mode needs the provider config and the keys.
 # Config travels in the clear; every SECRET is AES-GCM encrypted under a
 # key derived (HKDF) from the pairing token - which the relay never sees -
@@ -3176,6 +3198,13 @@ async def api_sync_solo():
         block = dict(cfg.get(name) or {})
         for field in ("api_key", "xai_api_key", "eleven_api_key"):
             block.pop(field, None)
+        # A loopback base_url is this Mac talking to itself. Shipped
+        # verbatim, the phone stores an address that points at the PHONE,
+        # so the provider only ever "worked" where it could never run
+        # (#28). Send the Mac's LAN address instead; off that Wi-Fi the
+        # page falls back to a key it holds - and names the swap.
+        if block.get("base_url"):
+            block["base_url"] = _lan_base_url(block["base_url"])
         config[name] = block
     config["persona"] = dict(cfg.get("persona") or {})
     # The phone answers with whoever is on ITS stage, and that is the

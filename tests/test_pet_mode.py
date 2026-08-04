@@ -2643,6 +2643,73 @@ class LiveTalkSubstitutionTests(unittest.TestCase):
         # ...and it names the voice actually used, not a generic apology.
         self.assertIn("answering in Grok's \\(voice) voice", tap)
 
+    def test_solo_substitutions_route_through_one_helper_that_names_them(self):
+        # Third of the family: the Mac's voice chain starts at EnConvo,
+        # which no phone can run, so solo spoke as Rachel - or fell mute -
+        # without a word (owner, 2026-08-05). One helper now announces
+        # every stand-in once: brain, voice, or the loss of the voice.
+        page = (ROOT / "web" / "index.html").read_text()
+        self.assertIn("function nameSwap(key,message){", page)
+        for swap in ("'solo-brain'", "'solo-voice'", "'solo-brain-lan'"):
+            self.assertIn(f"nameSwap({swap}", page)
+        self.assertIn("Rachel (ElevenLabs) is standing in", page)
+        self.assertIn("no other voice key is synced — text only", page)
+        # A foreign voice name is never sent to the ElevenLabs API.
+        self.assertIn("voice:c.provider==='elevenlabs'?c.voice:''", page)
+        # Leaving solo clears the ledger, so the next spell re-announces.
+        self.assertIn("SWAPS_TOLD.clear()", page)
+
+
+class SoloLanSyncTests(unittest.TestCase):
+    """#28: a loopback provider URL means nothing to a phone."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib
+        global server_app
+        server_app = importlib.import_module("server.app")
+
+    def test_loopback_base_urls_are_rewritten_to_a_lan_address(self):
+        import server.relay_agent as relay
+        original = relay.lan_addresses
+        relay.lan_addresses = lambda port: [f"http://192.0.2.7:{port}"]
+        try:
+            self.assertEqual(server_app._lan_base_url("http://127.0.0.1:11434"),
+                             "http://192.0.2.7:11434")
+            self.assertEqual(server_app._lan_base_url("http://localhost:11434/v1"),
+                             "http://192.0.2.7:11434/v1")
+        finally:
+            relay.lan_addresses = original
+
+    def test_reachable_urls_and_lanless_macs_pass_through(self):
+        import server.relay_agent as relay
+        self.assertEqual(server_app._lan_base_url("https://api.x.ai/v1"),
+                         "https://api.x.ai/v1")
+        original = relay.lan_addresses
+        relay.lan_addresses = lambda port: []
+        try:
+            # No LAN address to offer: the loopback stays - a wrong
+            # address is worse than an honest unreachable one.
+            self.assertEqual(server_app._lan_base_url("http://127.0.0.1:11434"),
+                             "http://127.0.0.1:11434")
+        finally:
+            relay.lan_addresses = original
+
+    def test_the_page_runs_ollama_keyless_and_falls_back_with_a_word(self):
+        page = (ROOT / "web" / "index.html").read_text()
+        self.assertIn("c.provider==='ollama'&&c.base_url&&c.model", page)
+        self.assertIn("is out of reach away from its Wi-Fi — Grok is answering",
+                      page)
+        # The status line shows the brain that ANSWERED, not the wish.
+        self.assertIn("SOLO.brain", page)
+
+    def test_the_proxy_speaks_cleartext_only_into_the_owners_network(self):
+        scheme = (ROOT / "ios" / "Vivieen" / "VivScheme.swift").read_text()
+        self.assertIn('url.scheme == "https"', scheme)
+        self.assertIn('url.scheme == "http" && Self.isPrivateHost(host)',
+                      scheme)
+        self.assertIn("func isPrivateHost(_ host: String) -> Bool", scheme)
+
 
 class AvatarOpacityAndHiding(unittest.TestCase):
     def test_the_dimmer_cannot_defeat_the_hide_switch(self):

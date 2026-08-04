@@ -1707,7 +1707,7 @@ async function poll(){
    reach - the page only ever knows key NAMES. Chat, voice, ears and
    image come straight from the providers; EnConvo and live talk stay
    Mac-bound and say so honestly. */
-const SOLO={active:false,cfg:null,misses:0,told:false,pinned:false};
+const SOLO={active:false,cfg:null,misses:0,told:false,pinned:false,brain:''};
 async function soloLoad(){
   try{SOLO.cfg=await(await fetch('solo/config')).json();}
   catch(e){SOLO.cfg=null;}
@@ -1727,6 +1727,15 @@ function soloLLM(){
     groq:'https://api.groq.com/openai/v1',deepseek:'https://api.deepseek.com/v1',
     openrouter:'https://openrouter.ai/api/v1',mistral:'https://api.mistral.ai/v1',
     together:'https://api.together.xyz/v1'};
+  // Ollama is the Mac's own brain and carries no key at all. The synced
+  // base_url arrives rewritten from loopback to the Mac's LAN address
+  // (#28), so this works exactly while the phone shares that Wi-Fi -
+  // and soloChat names the stand-in when it does not.
+  if(c.provider==='ollama'&&c.base_url&&c.model){
+    const base=c.base_url.replace(/\/+$/,'');
+    return{shape:'openai',base:/\/v1$/.test(base)?base:base+'/v1',
+      model:c.model,key:'',style:'bearer',label:'ollama'};
+  }
   if(soloHas('llm.api_key')){
     if(OPENAI_SHAPE[c.provider])
       return{shape:'openai',base:c.base_url||OPENAI_SHAPE[c.provider],
@@ -1775,6 +1784,28 @@ const soloText=r=>{
 async function soloChat(){
   const p=soloLLM();
   if(!p)throw new Error('no chat key synced - open the app near your Mac once');
+  try{
+    const text=await soloChatWith(p);
+    SOLO.brain=p.label;
+    return text;
+  }catch(e){
+    if(e.name==='AbortError')throw e;
+    // The Mac's own brain lives on its Wi-Fi; anywhere else the call can
+    // only time out. Fall to a key the phone actually holds - and name
+    // the swap. Never a different brain silently (#28).
+    if(p.label==='ollama'&&soloHas('live.xai_api_key')){
+      nameSwap('solo-brain-lan',"the Mac's "+p.model
+        +" is out of reach away from its Wi-Fi — Grok is answering");
+      const fallback={shape:'openai',base:'https://api.x.ai/v1',
+        model:'grok-3-mini',key:'live.xai_api_key',style:'bearer',label:'grok'};
+      const text=await soloChatWith(fallback);
+      SOLO.brain=fallback.label;
+      return text;
+    }
+    throw e;
+  }
+}
+async function soloChatWith(p){
   const system=((SOLO.cfg||{}).persona||{}).system||'Reply briefly.';
   const recent=history.slice(-12);
   let spec;
@@ -2048,12 +2079,14 @@ async function soloTurn(text,pushed=false){
       setStatus('solo · speaking','on');
       await speak(voice.b64,voice.track||(d=>soloEstimateTrack(reply,d)));
     }
+    // The label of the brain that actually ANSWERED, not the one the
+    // config wished for - soloChat may have fallen back with a word.
     const p=soloLLM();
-    setStatus('solo · '+(p?p.label:'ready'),'on');
+    setStatus('solo · '+(SOLO.brain||(p?p.label:'ready')),'on');
   }catch(e){
     if(e.name==='AbortError'){
       threadPush('her','· stopped ·');
-      const p=soloLLM();setStatus('solo · '+(p?p.label:'ready'),'on');
+      const p=soloLLM();setStatus('solo · '+(SOLO.brain||(p?p.label:'ready')),'on');
     }else{
       const why=String(e.message||e).slice(0,110);
       setCaption('(solo trouble: '+why+')');
@@ -2096,7 +2129,7 @@ function soloExit(){
   if(!SOLO.active)return;
   // Fresh spell, fresh announcements - a stand-in re-names itself the
   // next time the Mac drops away.
-  SOLO.active=false;SWAPS_TOLD.clear();SOLO.told=false;
+  SOLO.active=false;SWAPS_TOLD.clear();SOLO.told=false;SOLO.brain='';
   document.documentElement.classList.remove('solo');
   fetch('solo/sync',{method:'POST'}).catch(()=>{});
 }
