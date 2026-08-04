@@ -493,6 +493,12 @@ html.ios.talk-mode #txt{display:none}
    straddling the talk bar and the buttons (owner screenshot, 2026-08-03).
    It is not a floating hint - it is what that row IS while she listens,
    so it takes the row and cannot be mispositioned by anything. */
+/* A long press on hold-to-talk SELECTED the "Listening…" label - blue
+   handles, loupe and all (owner's screenshot, 2026-08-05). Bar chrome is
+   not copy; only the real input keeps selection. */
+html.ios #bar,html.ios #listenWave,html.ios #status,html.ios #petBubble{
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+html.ios #txt{-webkit-user-select:text;user-select:text}
 html.ios #listenWave{order:1;flex:1 0 100%;position:static;transform:none;
   box-sizing:border-box;height:44px;padding:0;gap:12px;
   justify-content:center;border-radius:12px;
@@ -3964,7 +3970,10 @@ function audbg(line){
 async function speak(b64,tr){
   actx=actx||new AudioContext();
   audbg('speak: ctx='+actx.state+' unlocked='+audioUnlocked+' bytes='+b64.length);
-  if(actx.state==='suspended')await actx.resume();
+  // resume() on an interrupted iOS context can simply never settle; the
+  // turn must not hang on it (owner: stop button stuck on, 2026-08-05).
+  if(actx.state==='suspended')
+    await Promise.race([actx.resume(),new Promise(r=>setTimeout(r,1200))]);
   const bin=atob(b64),u8=new Uint8Array(bin.length);
   for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
   let buf;
@@ -3999,7 +4008,15 @@ async function speak(b64,tr){
   audbg('PLAYING '+buf.duration.toFixed(1)+'s ctx='+actx.state
     +' gain='+(masterGain?masterGain.gain.value:'?')+' muted='+window.IOS_MUTED);
   askAudioState();
-  await new Promise(r=>{src.onended=r});
+  // The words are the native app's; this WebAudio source only keeps the
+  // clock. On an interrupted iOS context that clock can freeze and
+  // onended never fires - and the whole TURN hung on it, stop button
+  // burning forever (owner, 2026-08-05). The duration is known: wait
+  // that long plus grace, whichever comes first.
+  await new Promise(r=>{
+    src.onended=r;
+    setTimeout(r,buf.duration*1000+1500);
+  });
   audbg('ended '+buf.duration.toFixed(1)+'s');
   if(localSource===src)localSource=null;
   speaking=monitorEnabled&&externalAudio.active;track=[];curV='sil';
@@ -6451,7 +6468,10 @@ if(IS_IOS){
   const startAlpha=()=>{
     let saved=null;
     try{saved=localStorage.getItem('viv-alpha');}catch(e){}
-    IOS_ALPHA=saved!==null?Number(saved)/100:Number(alphaRange.min)/100;
+    // The floor read as "barely there" on a real phone - one notch up
+    // for the opening dim (owner, 2026-08-05). Still remembered once
+    // touched.
+    IOS_ALPHA=saved!==null?Number(saved)/100:0.2;
     alphaRange.value=String(Math.round(IOS_ALPHA*100));
     document.documentElement.style.setProperty('--avatar-alpha',
                                                String(IOS_ALPHA));
