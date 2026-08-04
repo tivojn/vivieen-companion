@@ -437,6 +437,33 @@ class ProviderDefaultsTests(unittest.TestCase):
         # and NOT the heavy things /files also serves
         self.assertNotIn('key.hasSuffix(".mp4")', swift)
 
+    def test_the_mac_says_where_it_is_and_the_phone_proves_it(self):
+        # Pairing baked in ONE address. The router hands out a new lease
+        # and that address is a lie - the phone sits on the same Wi-Fi and
+        # cannot find a Mac two feet away, so everything falls to the relay
+        # and gets slow for no reason (owner, 2026-08-04).
+        with open(os.path.join(ROOT, "relay", "api", "relay.js"),
+                  encoding="utf-8") as handle:
+            relay = handle.read()
+        self.assertIn('const presence = q.dir === "presence";', relay)
+        # short TTL: a sleeping Mac must stop claiming to be reachable
+        self.assertIn('Math.min(600, Math.max(30, Number(q.ttl) || 120))', relay)
+        with open(os.path.join(ROOT, "server", "relay_agent.py"),
+                  encoding="utf-8") as handle:
+            agent = handle.read()
+        self.assertIn("def lan_addresses(port):", agent)
+        self.assertIn('"dir=presence&ttl=120"', agent)
+        # loopback and IPv6 are no use to a phone
+        self.assertIn('if ":" in host or host.startswith("127.")', agent)
+        with open(os.path.join(ROOT, "ios", "Vivieen", "VivScheme.swift"),
+                  encoding="utf-8") as handle:
+            swift = handle.read()
+        # a published address is a CLAIM; only a reply is evidence
+        self.assertIn("func discoverMac()", swift)
+        self.assertIn('trimmed + "/health"', swift)
+        # and a LAN address that stops answering is dropped, not retried
+        self.assertIn("self.lanAddress = nil", swift)
+
     def test_the_picker_chooses_a_platform_before_a_model(self):
         # A brain is a PLATFORM and then a model; listing one provider's
         # models was half the switch (owner, 2026-08-04).

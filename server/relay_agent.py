@@ -129,6 +129,56 @@ def start(engine_port):
             except Exception:
                 time.sleep(attempt)
 
+    def lan_addresses(port):
+        """Every address this Mac can be reached on from its own network.
+
+        The phone was given ONE address when it paired. The router hands
+        out a new lease and that address is a lie - the phone sits on the
+        same Wi-Fi and cannot find a Mac two feet away, so it falls to the
+        relay and everything gets slow for no reason (owner, 2026-08-04).
+        """
+        found = []
+        try:
+            import socket
+            for info in socket.getaddrinfo(socket.gethostname(), None):
+                host = info[4][0]
+                if ":" in host or host.startswith("127."):
+                    continue        # IPv6 and loopback are no use here
+                url = f"http://{host}:{port}"
+                if url not in found:
+                    found.append(url)
+        except Exception:
+            pass
+        return found
+
+    def presence(engine_port):
+        """Say where we are and what we hold. Short TTL: a Mac that goes
+        to sleep must stop claiming to be reachable on its own."""
+        while True:
+            try:
+                import server.app as _app          # active avatar, version
+            except Exception:
+                _app = None
+            boot = ""
+            try:
+                boot = getattr(_app, "BOOT_ID", "") if _app else ""
+            except Exception:
+                boot = ""
+            record = {"lan": lan_addresses(engine_port),
+                      "boot": boot,
+                      "at": int(time.time())}
+            try:
+                if _app is not None:
+                    record["avatar"] = _app.active_slug() or ""
+            except Exception:
+                pass
+            try:
+                _call_relay(base, channel, proof, "dir=presence&ttl=120",
+                            record, timeout=15)
+            except Exception as error:
+                print("[viv] presence failed:", str(error)[:120], flush=True)
+            time.sleep(45)
+
     def pump():
         # Start at the TIP, never at 0. Requests still sitting in the box
         # are from sessions that timed out minutes ago; replaying them
@@ -173,4 +223,5 @@ def start(engine_port):
 
     thread = threading.Thread(target=pump, daemon=True)
     thread.start()
+    threading.Thread(target=presence, args=(engine_port,), daemon=True).start()
     return thread

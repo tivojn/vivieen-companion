@@ -77,6 +77,12 @@ export default async function handler(request, response) {
   const q = request.query || {};
   const channel = String(q.channel || "");
   const proof = String(request.headers["x-viv-proof"] || "");
+  // "presence" is not a mailbox: it is one small record saying where the
+  // Mac is and what it holds. The phone reads it to prefer the LAN when
+  // it can, instead of trusting the single address baked in at pairing -
+  // which goes stale the moment the router hands out a new lease and
+  // leaves the phone unable to find a Mac sitting beside it.
+  const presence = q.dir === "presence";
   const dir = q.dir === "to_mac" ? "to_mac" : "to_client";
   if (!/^[0-9a-f]{16}$/.test(channel) || !/^[0-9a-f]{64}$/.test(proof)) {
     return response.status(400).json({ error: "bad channel or proof" });
@@ -86,6 +92,33 @@ export default async function handler(request, response) {
   else if (pinned !== proof) {
     return response.status(403).json({ error: "channel claimed by another key" });
   }
+  if (presence) {
+    const slot = `presence:${channel}`;
+    if (request.method === "POST") {
+      const body = typeof request.body === "object" && request.body ? request.body : {};
+      // A SHORT ttl on purpose: a sleeping Mac must stop claiming to be
+      // reachable by itself, rather than leaving the phone to time out
+      // against an address nobody is listening on.
+      const ttl = String(Math.min(600, Math.max(30, Number(q.ttl) || 120)));
+      if (hasRedis()) await redis("SET", slot, JSON.stringify(body), "EX", ttl);
+      else memory.set(slot, { value: JSON.stringify(body),
+                              until: Date.now() + Number(ttl) * 1000 });
+      return response.status(200).json({ ok: true, ttl: Number(ttl) });
+    }
+    let raw = null;
+    if (hasRedis()) raw = await redis("GET", slot);
+    else {
+      const held = memory.get(slot);
+      raw = held && held.until > Date.now() ? held.value : null;
+    }
+    if (!raw) return response.status(200).json({ present: false });
+    try {
+      return response.status(200).json({ present: true, mac: JSON.parse(raw) });
+    } catch {
+      return response.status(200).json({ present: false });
+    }
+  }
+
   const key = `box:${channel}:${dir}`;
 
   if (request.method === "POST") {

@@ -20,7 +20,16 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     static let scheme = "viv"
     static let host = "app"
 
-    private let address: String
+    /// The address pairing gave us. Correct until the router hands the
+    /// Mac a different lease, after which it is a lie.
+    private let pairedAddress: String
+    /// A LAN address the Mac published and we PROVED answers. Preferred
+    /// over the paired one, and dropped the moment it stops answering.
+    private var lanAddress: String?
+    private var address: String {
+        lock.lock(); let found = lanAddress; lock.unlock()
+        return found ?? pairedAddress
+    }
     private let token: String
     private let relay: RelayClient
     private let cacheRoot: URL
@@ -81,7 +90,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     init(address: String, token: String, relayBase: String) {
-        self.address = address.hasSuffix("/") ? String(address.dropLast()) : address
+        self.pairedAddress = address.hasSuffix("/") ? String(address.dropLast()) : address
         self.token = token
         relay = RelayClient(base: relayBase, token: token)
         cacheRoot = FileManager.default
@@ -481,7 +490,13 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                   let http = response as? HTTPURLResponse else {
                 self.lock.lock()
                 self.directOffUntil = Date().addingTimeInterval(20)
+                let stale = self.lanAddress
+                self.lanAddress = nil       // whatever we had is not answering
                 self.lock.unlock()
+                if stale != nil { NSLog("[viv-scheme] LAN address stopped answering") }
+                // It may simply have moved. Ask, prove, adopt - in the
+                // background, while this request takes the relay.
+                self.discoverMac()
                 self.viaRelay(task, requested: requested, path: path,
                               method: method, body: body)
                 return
@@ -566,8 +581,42 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         _ = retire(task)
     }
 
+    /// Ask the relay where the Mac is, then PROVE the answer before
+    /// trusting it. A published address is a claim; only a reply is
+    /// evidence. Runs at boot and whenever the direct road has just
+    /// failed, which is exactly when a moved Mac would be the reason.
+    func discoverMac() {
+        relay.presence { [weak self] mac in
+            guard let self, let mac else { return }
+            let candidates = (mac["lan"] as? [String]) ?? []
+            guard !candidates.isEmpty else { return }
+            for candidate in candidates {
+                let trimmed = candidate.hasSuffix("/")
+                    ? String(candidate.dropLast()) : candidate
+                if trimmed == self.pairedAddress { continue }
+                guard let probe = URL(string: trimmed + "/health") else { continue }
+                var request = URLRequest(url: probe)
+                request.timeoutInterval = 3
+                request.setValue(self.token, forHTTPHeaderField: "x-vivieen-token")
+                self.session.dataTask(with: request) { _, response, _ in
+                    guard (response as? HTTPURLResponse)?.statusCode == 200
+                    else { return }
+                    self.lock.lock()
+                    let changed = self.lanAddress != trimmed
+                    self.lanAddress = trimmed
+                    self.directOffUntil = .distantPast   // it is here after all
+                    self.lock.unlock()
+                    if changed {
+                        NSLog("[viv-scheme] Mac found on the LAN at %@", trimmed)
+                    }
+                }.resume()
+            }
+        }
+    }
+
     /// Pull the solo config + keys from the Mac now (fire-and-forget).
     func syncSolo() {
+        discoverMac()
         SoloStore.shared.sync(address: address, token: token)
         warmPages()
     }

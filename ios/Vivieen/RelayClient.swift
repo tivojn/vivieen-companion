@@ -60,6 +60,25 @@ final class RelayClient {
         }.resume()
     }
 
+    /// Where is the Mac, and what does it hold? A tiny record the Mac
+    /// republishes every 45s on a 120s TTL, so a sleeping one stops
+    /// claiming to be reachable rather than leaving the phone to time out
+    /// against an address nobody is listening on.
+    func presence(_ then: @escaping ([String: Any]?) -> Void) {
+        guard let url = url("dir=presence") else { then(nil); return }
+        var request = URLRequest(url: url)
+        request.setValue(proof, forHTTPHeaderField: "x-viv-proof")
+        request.timeoutInterval = 12
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            guard let data,
+                  let top = try? JSONSerialization.jsonObject(with: data)
+                    as? [String: Any],
+                  (top["present"] as? Bool) == true,
+                  let mac = top["mac"] as? [String: Any] else { then(nil); return }
+            then(mac)
+        }.resume()
+    }
+
     /// Send one request to the Mac and call back with its reply.
     func send(path: String, method: String, body: Data?,
               contentType: String? = nil,
