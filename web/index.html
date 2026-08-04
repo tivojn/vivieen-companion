@@ -963,6 +963,30 @@ const PET_PREVIEW=new URLSearchParams(location.search).has('pet-preview');
 // must work from a finger. Window-level verbs (drag, roam, opacity) stay
 // desk-only.
 const IS_IOS=new URLSearchParams(location.search).has('ios');
+/* Her hands: on the phone (the viv:// origin) the native bridge can
+   touch the owner's calendar, reminders, and contacts. The brain - the
+   Mac's or the phone's own - only ever decides; the data stays on the
+   device that holds it. */
+const HANDS=location.protocol==='viv:';
+const HANDS_CALL=/<<viv:hands\s+([a-z_]+)\s*(\{[^]*?\})?\s*>>/;
+const HANDS_TOOLS='\n\nYou also have hands on the owner\'s iPhone: their '
+  +'calendar, reminders, and contacts. To use one, put ONE of these on its '
+  +'own line and end your reply there - the result comes back to you:\n'
+  +'<<viv:hands calendar_list {"days":7}>>\n'
+  +'<<viv:hands calendar_create {"title":"Dentist","start":"2026-08-07T15:00","minutes":60}>>\n'
+  +'<<viv:hands reminders_list {}>>\n'
+  +'<<viv:hands reminder_create {"title":"Buy milk","due":"2026-08-06T09:00"}>>\n'
+  +'<<viv:hands contacts_search {"query":"Anna"}>>\n'
+  +'Dates are the owner\'s local time. Use these only when the owner asks '
+  +'about their schedule, reminders, or people. Never mention the directive '
+  +'syntax; after a result arrives, answer in one or two short sentences.';
+async function runHands(tool,args){
+  const spec=typeof args==='string'?JSON.parse(args||'{}'):(args||{});
+  const response=await fetch('hands/run',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({tool,args:spec})});
+  return response.json();
+}
 if(IS_IOS){
   document.documentElement.classList.add('ios');
   // iOS auto-zooms the page whenever a sub-16px input takes focus - THE
@@ -1814,8 +1838,29 @@ async function soloChat(){
     throw e;
   }
 }
+/* The hands loop, solo edition: the phone's own brain decided, the same
+   phone executes, and the result goes back for the final word. Bounded,
+   so a confused model cannot walk the calendar forever. */
+async function soloHands(reply){
+  for(let round=0;HANDS&&round<3;round++){
+    const m=HANDS_CALL.exec(reply||'');
+    if(!m)break;
+    const said=reply.replace(HANDS_CALL,'').trim();
+    if(said){setCaption(said);threadPush('her',said);}
+    history.push({role:'assistant',content:reply});
+    setStatus('solo · her hands','busy');
+    let result;
+    try{result=await runHands(m[1],m[2]||'{}');}
+    catch(e){result={error:String(e.message||e)};}
+    history.push({role:'user',content:'[tool '+m[1]+' returned] '
+      +JSON.stringify(result).slice(0,2000)});
+    reply=await soloChat();
+  }
+  return reply;
+}
 async function soloChatWith(p){
-  const system=((SOLO.cfg||{}).persona||{}).system||'Reply briefly.';
+  const system=(((SOLO.cfg||{}).persona||{}).system||'Reply briefly.')
+    +(HANDS?HANDS_TOOLS:'');
   const recent=history.slice(-12);
   let spec;
   if(p.shape==='anthropic'){
@@ -2075,7 +2120,7 @@ async function soloTurn(text,pushed=false){
   try{
     // "draw me / make a picture" works solo too - the xAI key paints.
     const wantsImage=/\b(draw|paint|generate|make|create)\b[^.]{0,40}\b(picture|image|photo|drawing|painting)\b/i.test(text);
-    const reply=await soloChat();
+    const reply=await soloHands(await soloChat());
     history.push({role:'assistant',content:reply});
     setCaption(reply);threadPush('her',reply);
     if(wantsImage){
@@ -4165,9 +4210,24 @@ async function turn(text,spoken=false){
   let llmRoute=null;
   const signal=turnBegin();
   try{
-    const r=await(await fetch('reply',{method:'POST',signal,
+    const ask=()=>fetch('reply',{method:'POST',signal,
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({history})})).json();
+      body:JSON.stringify({history,hands:HANDS})}).then(x=>x.json());
+    let r=await ask();
+    // Her hands, coupled: the Mac's brain decided, THIS phone executes -
+    // the data never leaves the device that holds it - and the result
+    // goes back for the final word. Bounded, like the solo edition.
+    for(let round=0;HANDS&&r.hands&&round<3;round++){
+      if(r.text){history.push({role:'assistant',content:r.text});
+        setCaption(r.text);threadPush('her',r.text);}
+      setStatus('her hands','busy');
+      let result;
+      try{result=await runHands(r.hands.tool,r.hands.args);}
+      catch(e){result={error:String(e.message||e)};}
+      history.push({role:'user',content:'[tool '+r.hands.tool+' returned] '
+        +JSON.stringify(result).slice(0,2000)});
+      r=await ask();
+    }
     llmRoute=r.llm_route||null;
     history.push({role:'assistant',content:r.text});
     // A pet-initiated question deserves a spoken answer even while the

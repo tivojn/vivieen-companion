@@ -531,6 +531,27 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             return
         }
 
+        // Her hands: the owner's calendar, reminders, and contacts live on
+        // THIS device - a hands call is never proxied anywhere. The page
+        // runs the directive loop; whichever brain asked (the Mac's or the
+        // phone's own), the data itself stays here.
+        if bare(path) == "/hands/run", method == "POST" {
+            guard let body,
+                  let spec = try? JSONSerialization.jsonObject(with: body)
+                    as? [String: Any],
+                  let tool = spec["tool"] as? String else {
+                json(task, requested, ["error": "bad hands spec"], status: 400)
+                return
+            }
+            AgentHands.run(tool: tool,
+                           args: (spec["args"] as? [String: Any]) ?? [:]) {
+                [weak self] result in
+                self?.json(task, requested, result,
+                           status: result["error"] == nil ? 200 : 500)
+            }
+            return
+        }
+
         // Health is a LIVENESS PROBE, and a probe must be allowed to
         // fail fast: routed through the relay's ten-minute reply window
         // it never failed at all, the page's poll hung on its very first

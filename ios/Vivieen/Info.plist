@@ -31,6 +31,12 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Take a selfie to build a new avatar face. The photo goes only to your own Mac.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Let Vivieen read and add calendar events when you ask her about your schedule. Nothing leaves your devices.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Let Vivieen read and add reminders when you ask her. Nothing leaves your devices.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Let Vivieen look up people in your contacts when you ask her. Nothing leaves your devices.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Vivieen connects to the companion app running on your Mac.</string>
 	<key>NSMicrophoneUsageDescription</key>

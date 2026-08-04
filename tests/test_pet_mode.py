@@ -2716,6 +2716,49 @@ class LiveTalkSubstitutionTests(unittest.TestCase):
         self.assertIn("SWAPS_TOLD.clear()", page)
 
 
+class HandsOnAppleDataTests(unittest.TestCase):
+    """The iOS agent: her hands on the owner's calendar, reminders, and
+    contacts - the surface an App Store app may touch with permission
+    (verified against current docs, 2026-08-05). The brain decides, the
+    device that holds the data executes."""
+
+    def test_the_server_hands_the_directive_back_instead_of_speaking_it(self):
+        server = (ROOT / "server" / "app.py").read_text()
+        self.assertIn("hands: bool = False", server)
+        self.assertIn("_HANDS_TOOLS", server)
+        # Stripped BEFORE synthesis - she must never read syntax aloud.
+        self.assertIn('text = _HANDS_CALL.sub("", text).strip()', server)
+        self.assertIn('result["hands"] = hands', server)
+        # The tool belt is offered only to a client that has hands.
+        self.assertIn("(_HANDS_TOOLS if t.hands else \"\")", server)
+
+    def test_the_page_runs_the_loop_for_both_brains_bounded(self):
+        page = (ROOT / "web" / "index.html").read_text()
+        self.assertIn("const HANDS=location.protocol==='viv:'", page)
+        self.assertIn("async function runHands(tool,args)", page)
+        # Both lanes: the Mac's brain and the phone's own.
+        self.assertIn("HANDS&&r.hands&&round<3", page)
+        self.assertIn("async function soloHands(reply)", page)
+        self.assertIn("HANDS&&round<3", page)
+        # Solo offers the belt only where the bridge exists.
+        self.assertIn("+(HANDS?HANDS_TOOLS:'')", page)
+
+    def test_the_phone_executes_locally_with_permission_strings(self):
+        scheme = (ROOT / "ios" / "Vivieen" / "VivScheme.swift").read_text()
+        self.assertIn('"/hands/run"', scheme)
+        self.assertIn("AgentHands.run(tool:", scheme)
+        hands = (ROOT / "ios" / "Vivieen" / "AgentHands.swift").read_text()
+        for tool in ("calendar_list", "calendar_create", "reminders_list",
+                     "reminder_create", "contacts_search"):
+            self.assertIn(f'case "{tool}":', hands)
+        # iOS refuses data access without these strings - loudly, at runtime.
+        plist = (ROOT / "ios" / "Vivieen" / "Info.plist").read_text()
+        for key in ("NSCalendarsFullAccessUsageDescription",
+                    "NSRemindersFullAccessUsageDescription",
+                    "NSContactsUsageDescription"):
+            self.assertIn(key, plist)
+
+
 class SplitBrainLiveTalkTests(unittest.TestCase):
     """#24: live talk on her own models - Soniox hears, Think answers,
     Speak voices it. Same client contract as the bundled providers."""

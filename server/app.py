@@ -3234,6 +3234,10 @@ def _eleven_event(payload):
 
 class Turn(BaseModel):
     history: list
+    # The client has HANDS: it is the iPhone app, which can touch the
+    # owner's calendar, reminders, and contacts on-device. The brain runs
+    # here; the fingers stay on the phone.
+    hands: bool = False
 
 
 # Uncoupled Vivieen's own hands. The directive-in-prompt design is
@@ -3247,6 +3251,27 @@ _OWN_TOOLS = (
     "Use them only when the user asks for a picture/image/photo or a "
     "video/clip. Never mention the directive syntax.")
 _OWN_TOOL_CALL = re.compile(r"<<viv:(image|video)\s+(.+?)>>", re.S)
+
+# Her hands on the phone (iOS agent): the DIRECTIVE is decided here, the
+# EXECUTION happens on the device that holds the data. /reply strips the
+# call from the spoken text and returns it in `hands`; the page runs it
+# through the native bridge and posts the result back as the next turn.
+_HANDS_TOOLS = (
+    "\n\nYou also have hands on the owner's iPhone: their calendar, "
+    "reminders, and contacts. To use one, put ONE of these on its own "
+    "line and end your reply there - the result comes back to you:\n"
+    '<<viv:hands calendar_list {"days":7}>>\n'
+    '<<viv:hands calendar_create {"title":"Dentist",'
+    '"start":"2026-08-07T15:00","minutes":60}>>\n'
+    '<<viv:hands reminders_list {}>>\n'
+    '<<viv:hands reminder_create {"title":"Buy milk",'
+    '"due":"2026-08-06T09:00"}>>\n'
+    '<<viv:hands contacts_search {"query":"Anna"}>>\n'
+    "Dates are the owner's local time. Use these only when the owner asks "
+    "about their schedule, reminders, or people. Never mention the "
+    "directive syntax; after a result arrives, answer in one or two "
+    "short sentences.")
+_HANDS_CALL = re.compile(r"<<viv:hands\s+([a-z_]+)\s*(\{.*?\})?\s*>>", re.S)
 
 
 def effective_persona(cfg=None):
@@ -3275,14 +3300,26 @@ async def reply(t: Turn):
     cfg = P.load()
     try:
         text = await P.chat(t.history[-12:], cfg["llm"],
-                            system=effective_persona(cfg) + _OWN_TOOLS)
+                            system=effective_persona(cfg) + _OWN_TOOLS
+                            + (_HANDS_TOOLS if t.hands else ""))
     except Exception as e:
         print("[viv] llm failed:", P.safe_error(e), flush=True)
         hint = P.failure_hint(e)
         text = (f"My model is not answering — {hint}. Check the provider in Settings."
                 if hint else
                 "My model is not answering. Check the provider in Settings.")
-    if not text:
+    # A hands directive belongs to the phone, never to the voice: strip it
+    # BEFORE synthesis or she reads the syntax aloud, and hand it back for
+    # the device to execute. The follow-up turn arrives as history.
+    hands = None
+    if t.hands:
+        grip = _HANDS_CALL.search(text or "")
+        if grip:
+            hands = {"tool": grip.group(1), "args": grip.group(2) or "{}"}
+            text = _HANDS_CALL.sub("", text).strip()
+    if not text and hands:
+        text = ""          # silent tool turn: nothing worth speaking yet
+    elif not text:
         text = "I lost that thread for a second. Say it again?"
     cards = []
     call = _OWN_TOOL_CALL.search(text)
@@ -3305,8 +3342,10 @@ async def reply(t: Turn):
             print("[viv] media generation failed:", detail, flush=True)
             text = (text + " " if text else "") + \
                 f"(I tried to make the {kind}, but the provider said: {detail})"
-    result = await _say(text, cfg)
+    result = await _say(text, cfg) if text else \
+        {"text": "", "audio": "", "track": [], "dur": 0.0, "tier": "none"}
     result["media"] = cards
+    result["hands"] = hands
     result["llm_route"] = P.last_route("llm")
     return result
 
