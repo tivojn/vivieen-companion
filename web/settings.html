@@ -716,7 +716,11 @@ html.ios nav::-webkit-scrollbar{display:none}
 html.ios nav button{flex:none;padding:7px 14px;font-size:14px}
 html.ios .grow{flex:1}
 /* The app's own gear owns the top-right corner; keep clear of it. */
-html.ios .back{font-size:12px;padding:6px 4px;margin-right:34px}
+/* The 34px was clearance for the design switcher, which is gone - it was
+   holding the link off the edge for a button that no longer exists. Sits
+   with the theme toggle now, both hugging the same margin as everything
+   else on the row (owner: "a little off", 2026-08-04). */
+html.ios .back{font-size:12px;padding:6px 8px;margin-right:0}
 /* Clear of the fixed header above and the save bar below. */
 html.ios main{padding:calc(112px + env(safe-area-inset-top,0px)) 14px
   calc(96px + env(safe-area-inset-bottom,0px))}
@@ -736,7 +740,7 @@ html.ios .grid{grid-template-columns:1fr}
   });
 }</script>
 <script>document.documentElement.dataset.theme=localStorage.getItem('vivieen-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
-document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==='atelier'?'atelier':'quiet';</script>
+document.documentElement.dataset.design='quiet';</script>
 
 <header>
   <h1>Vivieen<span>.</span></h1>
@@ -746,9 +750,6 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
     <button data-tab="persona">Persona</button>
   </nav>
   <div class="grow"></div>
-  <button class="theme-toggle" id="design-toggle" type="button" style="width:auto;padding:0 10px;font-size:11px"
-          title="Switch between the two designs: Quiet (calm paper minimalism) and Atelier (editorial couture)"
-          aria-label="Switch interface design">Quiet</button>
   <button class="theme-toggle" id="theme-toggle" type="button" title="Switch light / dark theme" aria-label="Switch color theme">◐</button>
   <a class="back" href="/">&larr; Back to chat</a>
 </header>
@@ -1199,30 +1200,14 @@ $('#theme-toggle').onclick = () => {
 // Two complete designs over identical markup: Quiet (calm paper minimalism)
 // and Atelier (editorial couture). The choice is shared through
 // localStorage, so the pet chrome, menu, and bubble follow along live.
-function applyDesign(value) {
-  const design = value === 'atelier' ? 'atelier' : 'quiet';
-  document.documentElement.dataset.design = design;
-  $('#design-toggle').textContent = design === 'atelier' ? 'Atelier' : 'Quiet';
+/* One design. The second skin - "Atelier" - was dropped: the desk now
+   matches the phone, which is the only pairing worth maintaining (owner,
+   2026-08-04). Kept as a single call rather than deleted outright so the
+   attribute every rule keys off is still set in one obvious place. */
+function applyDesign() {
+  document.documentElement.dataset.design = 'quiet';
 }
-applyDesign(localStorage.getItem('vivieen-design'));
-/* localStorage paints instantly but is PER DEVICE, which is why the desk
-   and the phone drifted apart and stayed that way (owner, 2026-08-04).
-   The Mac holds the real answer; reconcile once it replies. */
-api('/health').then(h => {
-  if (!h || !h.design) return;
-  localStorage.setItem('vivieen-design', h.design);
-  applyDesign(h.design);
-}).catch(() => {});
-$('#design-toggle').onclick = () => {
-  const next = document.documentElement.dataset.design === 'atelier' ? 'quiet' : 'atelier';
-  localStorage.setItem('vivieen-design', next);
-  applyDesign(next);
-  // Tell the Mac, so every other screen follows.
-  api('/api/config', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ui: { design: next } })
-  }).catch(() => {});
-};
+applyDesign();
 const SHELL = window.vivieen;
 let CFG = null, CAT = null, GLOBALS = {}, MEDIA_DEFAULTS = {}, ACTIVE = null, COMPANION = null, POLL = null;
 let RIG = null, RIG_SLUG = null, RIG_PROFILE = null, RIG_POSE = 'closed', RIG_WATCH = null;

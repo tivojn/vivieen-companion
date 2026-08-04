@@ -516,26 +516,14 @@ class ProviderDefaultsTests(unittest.TestCase):
         self.assertEqual(headline("creating canonical HD head"),
                          "creating canonical HD head")
 
-    def test_the_chosen_look_lives_on_the_mac_not_per_device(self):
-        # It lived in localStorage, which is PER DEVICE, so the desk sat on
-        # Atelier while the phone sat on Quiet and neither could see the
-        # other (owner, 2026-08-04). One answer, published by /health.
-        with open(os.path.join(ROOT, "server", "app.py"),
-                  encoding="utf-8") as handle:
-            source = handle.read()
-        self.assertIn('"design": ((cfg.get("ui") or {}).get("design")', source)
+    def test_the_look_is_no_longer_a_per_device_choice(self):
+        # It lived in localStorage, which is PER DEVICE, so the desk and the
+        # phone drifted apart. With the second design dropped there is
+        # nothing left to reconcile - both are Quiet, always.
         for page in ("settings.html", "index.html"):
             with open(os.path.join(ROOT, "web", page), encoding="utf-8") as handle:
                 markup = handle.read()
-            # still paints instantly from localStorage...
-            self.assertIn("localStorage.getItem('vivieen-design')", markup)
-            # ...then reconciles with the Mac
-            self.assertIn("h.design", markup)
-        with open(os.path.join(ROOT, "web", "settings.html"),
-                  encoding="utf-8") as handle:
-            settings = handle.read()
-        # and the toggle tells the Mac, or the other screen never learns
-        self.assertIn("JSON.stringify({ ui: { design: next } })", settings)
+            self.assertNotIn("id=\"design-toggle\"", markup)
 
     def test_notices_sit_above_the_composer_and_pip_is_gone(self):
         index_path = os.path.join(ROOT, "web", "index.html")

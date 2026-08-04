@@ -122,36 +122,17 @@ class SettingsMarkupTest(unittest.TestCase):
         self.assertIn('id="body-motion-frames" size="10"', self.settings)
         self.assertIn("width:96px", self.settings)
 
-    def test_two_designs_share_one_markup(self):
-        # Quiet (calm paper minimalism) and Atelier (editorial couture) are
-        # two complete designs over IDENTICAL markup: Atelier exists purely
-        # as [data-design=atelier] overrides, so switching back restores
-        # Quiet exactly and every feature behaves the same in both.
-        self.assertIn(":root[data-design=atelier]", self.settings)
-        self.assertIn('id="design-toggle"', self.settings)
-        # Atelier is a different LAYOUT, not a reskin: a full-height
-        # numbered contents rail replaces the top tabs, avatars become
-        # editorial spreads instead of a card grid, and the studio tools
-        # flip to controls-left / stage-right - all in CSS over the same
-        # DOM, so Quiet's layout returns untouched on switch.
-        self.assertIn("grid-template-columns:264px minmax(0,1fr);height:auto;min-height:100vh",
+    def test_there_is_one_design(self):
+        # Atelier - the second, editorial skin - was dropped. The desk now
+        # matches the phone, which is the only pairing worth maintaining
+        # (owner: "this theme is not good anyways", 2026-08-04). The
+        # attribute every rule keys off is still set, in one place, so the
+        # remaining CSS keeps working.
+        self.assertNotIn('id="design-toggle"', self.settings)
+        self.assertIn("document.documentElement.dataset.design = 'quiet'",
                       self.settings)
-        # Verified on the live desktop 2026-07-31: without height:auto the
-        # base html,body{height:100%} caps the grid at one viewport and the
-        # sticky rail scrolls away, leaving an empty beige column.
-        self.assertIn("counter(chapter,decimal-leading-zero)", self.settings)
-        self.assertIn(".av{\n  display:grid;grid-template-columns:minmax(220px,300px)",
+        self.assertIn("document.documentElement.dataset.design='quiet'",
                       self.settings)
-        self.assertIn(".rig-grid{direction:rtl}", self.settings)
-        self.assertIn("localStorage.setItem('vivieen-design'", self.settings)
-        self.assertIn("function applyDesign", self.settings)
-        for page in ("index.html", "menu.html", "bubble.html"):
-            source = read("web", page)
-            self.assertIn("data-design=atelier", source)
-            self.assertIn("vivieen-design", source)
-        # Long-lived windows follow a switch live via the storage event.
-        self.assertIn("addEventListener('storage'", read("web", "index.html"))
-        self.assertIn("addEventListener('storage'", read("web", "bubble.html"))
 
     def test_upload_stages_a_naming_step_and_names_stay_editable(self):
         # A raw file name ("IMG_4032") is a bad avatar name: a picked

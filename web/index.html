@@ -647,7 +647,12 @@ html.ios.emoji-open #rail{opacity:0;pointer-events:none}
 html.ios #gearWord{display:none}
 /* Top-RIGHT corner, where a settings gear lives. It sat inset at 52px,
    which reads as "something else belongs to my right" (owner, 2026-08-04). */
-html.ios #gear{top:calc(8px + env(safe-area-inset-top,0px));right:14px;padding:8px}
+/* Above her. Putting the avatar in front of the thread put it in front of
+   the gear too, which has no z-index of its own - so Settings became
+   unreachable from the phone (owner, 2026-08-04). It is a control, like
+   the status line and the rail, and controls sit above her. */
+html.ios #gear{top:calc(8px + env(safe-area-inset-top,0px));right:14px;padding:8px;
+  z-index:30}
 html.ios #rail button{width:44px;height:44px;border-radius:50%;padding:0;
   display:flex;align-items:center;justify-content:center;
   border:1px solid var(--chip-line);background:var(--chip);
