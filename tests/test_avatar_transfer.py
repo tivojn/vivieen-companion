@@ -172,11 +172,13 @@ class StoreProgressTests(unittest.TestCase):
 class AvatarStoreTests(unittest.TestCase):
     """The in-app store: starter avatars pulled from GitHub releases."""
 
-    def test_store_lists_both_starter_avatars_with_github_urls(self):
+    def test_store_lists_the_starter_avatars_with_github_urls(self):
         import asyncio
         listing = asyncio.run(server_app.api_avatar_store())
         items = {item["id"]: item for item in listing["items"]}
-        self.assertEqual(set(items), {"vvn", "vivieen"})
+        self.assertEqual(set(items), {"captain-ayer", "vvn", "vivieen"})
+        # The newest companion leads the shelf (owner, 2026-08-05).
+        self.assertEqual(listing["items"][0]["id"], "captain-ayer")
         for item in items.values():
             self.assertTrue(item["url"].startswith(
                 "https://github.com/tivojn/vivieen-companion/releases/download/"))

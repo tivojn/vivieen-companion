@@ -2048,6 +2048,11 @@ async def api_avatar_import(archive: UploadFile = File(...)):
 AVATAR_STORE_BASE = ("https://github.com/tivojn/vivieen-companion"
                      "/releases/download/avatar-store-v1/")
 AVATAR_STORE = [
+    {"id": "captain-ayer", "name": "Captain Ayer", "file": "Captain-Ayer.avtr",
+     "bytes": 327227995,
+     "face": "captain-ayer-face.jpg", "body": "captain-ayer-body.png",
+     "blurb": ("The captain himself - dreadlocks, red bandana, and a full "
+               "rig with body, walk, and edge idle, ready to hold the desk.")},
     {"id": "vvn", "name": "Vvn", "file": "Vvn.avtr", "bytes": 308302113,
      "face": "vvn-face.jpg", "body": "vvn-body.png",
      "blurb": ("Compact starter companion - face, full body, office walk, "
