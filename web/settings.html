@@ -114,6 +114,23 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .av .thumb{aspect-ratio:1;background:var(--thumb-bg) center/cover no-repeat;position:relative}
 .av .thumb .badge{position:absolute;top:10px;left:10px;backdrop-filter:blur(6px)}
 .av .body{padding:14px 16px 16px}
+/* "On the desk" holds exactly ONE card, and it was standing in a 290px
+   column with the rest of the window empty beside it. Lengthwise once
+   there is room: her portrait at a readable size on the left, everything
+   you can DO with her on the right, filling the row (owner, 2026-08-05).
+   Below that width - and on the phone - it stacks as before, because two
+   columns in a narrow window is worse than one. */
+@media (min-width:860px){
+  #avatars-active{grid-template-columns:1fr}
+  #avatars-active .av{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);
+    align-items:stretch}
+  #avatars-active .av .thumb{aspect-ratio:auto;height:100%;min-height:340px}
+  #avatars-active .av .body{padding:22px 26px;align-self:center}
+  /* Two columns of metrics were right in a narrow card; across a wide one
+     they read as a sparse table, so let them breathe into four. */
+  #avatars-active .metrics{grid-template-columns:repeat(4,minmax(0,1fr));
+    max-width:760px}
+}
 .av h3{margin:0 0 8px;font-size:15px;font-weight:600;display:flex;gap:6px;align-items:center}
 .av-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .av-rename{flex:none;border:0;background:none;color:var(--faint);font-size:12px;
