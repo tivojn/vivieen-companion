@@ -1203,6 +1203,9 @@ def _generate_keyframes(
         if image_provider.get("direct"):
             key = body._xai_key()
             if key:
+                # _run makes this on the way past; the direct call does not,
+                # and _xai_edit writes straight into it.
+                os.makedirs(output_dir, mode=0o700, exist_ok=True)
                 generated = body._xai_edit(
                     prompts[kind], references, output_dir,
                     f"{kind}-keyframe", key, aspect_ratio="2:3")

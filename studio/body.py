@@ -305,24 +305,30 @@ def _xai_key():
     image = cfg.get("image") or {}
     if (image.get("provider") or "") != "xai":
         return ""
-    for value in (image.get("api_key"),
-                  (cfg.get("live") or {}).get("xai_api_key")):
-        value = (value or "").strip()
-        # The file keeps markers, not secrets; a marker means "ask the
-        # vault", which is the one case worth the heavier import.
-        if value.startswith("keychain:") or value == "__vault__":
-            try:
-                sys.path.insert(0, os.path.join(_ROOT, "server"))
-                import providers as _P
-                real = _P.load()
-                value = ((real.get("image") or {}).get("api_key")
-                         or (real.get("live") or {}).get("xai_api_key")
-                         or "").strip()
-            except Exception:
-                value = ""
-        if value:
-            return value
-    return ""
+    # config.json keeps MARKERS, never secrets. This matched on the marker's
+    # spelling - "keychain:" or "__vault__" - and the marker on disk is
+    # "@keychain", so it matched neither and handed that literal string to
+    # xAI as the key. xAI said "Incorrect API key provided", which is both
+    # true and impossible to act on (owner's move build, 2026-08-04).
+    #
+    # So stop guessing spellings: a real xAI key is recognisable, and
+    # anything else is a marker whatever it is called.
+    def stored(block, field):
+        value = ((cfg.get(block) or {}).get(field) or "").strip()
+        return value if value.startswith("xai-") else ""
+
+    plain = stored("image", "api_key") or stored("live", "xai_api_key")
+    if plain:
+        return plain
+    try:
+        sys.path.insert(0, os.path.join(_ROOT, "server"))
+        import providers as _P
+        unlocked = _P.load()
+        return ((unlocked.get("image") or {}).get("api_key")
+                or (unlocked.get("live") or {}).get("xai_api_key")
+                or "").strip()
+    except Exception:
+        return ""
 
 
 def _xai_edit(prompt, references, output_dir, file_name, key,
