@@ -746,7 +746,7 @@ html.ios #thread .msg a{color:#f1f0ee;text-decoration:underline}
    returns to the freshest reply, fully in view. */
 #threaddown{display:none}
 html.ios #threaddown.on{display:flex;position:fixed;right:16px;
-  bottom:calc(104px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:9;
+  bottom:calc(var(--bar-h,88px) + 18px + var(--kb,0px));z-index:9;
   width:40px;height:40px;border-radius:50%;align-items:center;justify-content:center;
   background:rgba(24,26,32,.85);border:1px solid rgba(255,255,255,.2);color:#e8eaee;
   -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
@@ -781,7 +781,7 @@ html.ios #toast.on{opacity:1;transform:none;max-height:120px;
    spoken with her voice. */
 #agentsheet{display:none}
 html.ios.agents-open #agentsheet{display:block;position:fixed;left:16px;right:16px;
-  bottom:calc(96px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:7;
+  bottom:calc(var(--bar-h,88px) + 12px + var(--kb,0px));z-index:9;
   max-height:52vh;overflow-y:auto;border-radius:16px;padding:8px;
   background:rgba(16,18,22,.82);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
   border:1px solid rgba(255,255,255,.14)}
@@ -800,9 +800,14 @@ html.ios #rail #rail-enconvo.on{background:rgba(29,158,117,.4);
 html.ios #rail #rail-mute.on{background:rgba(212,76,71,.42);
   border-color:rgba(212,76,71,.8);color:#ffe9e8}
 #zoombox{display:none}
+/* Above the composer, whatever the composer's height happens to be. The
+   96px here was a guess at that height, and the two-row bar outgrew it -
+   so the panel opened UNDERNEATH the composer and the sliders could not
+   be dragged (owner screenshot, 2026-08-04). --bar-h is the measurement;
+   z-index 8 puts it over the bar, since the bar is what it opens from. */
 html.ios.zoom-open #zoombox{display:flex;flex-direction:column;gap:10px;
   position:fixed;left:16px;right:70px;
-  bottom:calc(96px + env(safe-area-inset-bottom,0px) + var(--kb,0px));z-index:6;padding:12px 14px;
+  bottom:calc(var(--bar-h,88px) + 12px + var(--kb,0px));z-index:8;padding:12px 14px;
   background:rgba(20,22,26,.6);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
   border:1px solid rgba(255,255,255,.14);border-radius:14px}
 html.ios #zoombox .zrow{display:flex;align-items:center;gap:10px}
@@ -6254,6 +6259,18 @@ if(IS_IOS){
       const lift=Math.max(0,innerHeight-visualViewport.height-visualViewport.offsetTop);
       document.documentElement.style.setProperty('--kb',lift+'px');
     };
+    /* The FIRST keyboard of a launch used to swallow the composer whole,
+       and every one after it behaved (owner, 2026-08-04). Because on the
+       first presentation iOS PANS the visual viewport to reveal the field
+       - offsetTop goes to roughly the keyboard's height - and this sum is
+       then height + offsetTop = innerHeight, so the lift comes out ZERO.
+       The pan is undone a beat later, but the only event that reports it
+       is visualViewport's SCROLL, which was snapping the layout back and
+       never recomputing the lane. Recompute on both, and again a few
+       times after focus, because iOS's cadence here is not promised. */
+    const keyboardSettles=()=>{
+      [0,60,180,360,700].forEach(ms=>setTimeout(keyboardLane,ms));
+    };
     visualViewport.addEventListener('resize',()=>{
       scrollTo(0,0);fitTxtPlaceholder();keyboardLane();
       // The window just changed height under a pinned turn - re-pin it, or
@@ -6263,8 +6280,15 @@ if(IS_IOS){
     });
     keyboardLane();
     // The keyboard also pans the VISUAL viewport, which slid the bar and
-    // rail sideways off the glass; snap the layout scroll back each time.
-    visualViewport.addEventListener('scroll',()=>{if(scrollX||scrollY)scrollTo(0,0);});
+    // rail sideways off the glass; snap the layout scroll back each time -
+    // and re-measure, because that pan is exactly what made the first
+    // lift compute to zero.
+    visualViewport.addEventListener('scroll',()=>{
+      if(scrollX||scrollY)scrollTo(0,0);
+      keyboardLane();
+    });
+    txt.addEventListener('focus',keyboardSettles);
+    txt.addEventListener('blur',keyboardSettles);
   }
 }
 addEventListener('keydown',e=>{if(!monitorEnabled&&e.code==='Space'&&document.activeElement!==txt&&!e.repeat){

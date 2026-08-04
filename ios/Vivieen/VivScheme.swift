@@ -223,6 +223,44 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     /// Somewhere to tell the page the face changed under it.
     var onAvatarChanged: (() -> Void)?
 
+    /// Choosing a face in the carousel POSTs the slug and then reloads the
+    /// page - and every one of those reloaded requests is cache-first,
+    /// keyed by the slug we last saw. So the phone re-drew the old avatar
+    /// from its own cache, for the whole launch: the manifest key still
+    /// named the old face, and refreshInBackground had already spent its
+    /// one attempt per path (owner, 2026-08-04).
+    ///
+    /// The request itself carries the answer. Take it from there, before
+    /// the reload, so the very next fetch keys on the new face.
+    private func noteActivation(asked: Data?, answered: Data) {
+        // The MAC is the authority on which face is on stage, so read its
+        // answer first; the request we sent is only the fallback.
+        let field = { (blob: Data?, key: String) -> String? in
+            guard let blob,
+                  let top = try? JSONSerialization.jsonObject(with: blob)
+                    as? [String: Any] else { return nil }
+            let value = top[key] as? String
+            return (value?.isEmpty == false) ? value : nil
+        }
+        guard let slug = field(answered, "active") ?? field(asked, "slug")
+        else { return }
+        lock.lock()
+        let changed = slug != activeSlug
+        activeSlug = slug
+        // Everything learned under the old face is about the old face.
+        refreshed.removeAll()
+        lock.unlock()
+        UserDefaults.standard.set(slug, forKey: "cachedAvatarSlug")
+        // The manifest is the one file the new face cannot share, and its
+        // key just changed - but /api/avatars is not slug-keyed and would
+        // keep insisting the old one is on stage.
+        try? FileManager.default.removeItem(at: snapshotURL("/api/avatars"))
+        NSLog("[viv-scheme] avatar activated: %@ (was new: %@)",
+              slug, changed ? "yes" : "no")
+        // No onAvatarChanged here: the page reloads itself the moment this
+        // request returns, and two reloads race each other.
+    }
+
     private func noteSlug(from data: Data, path: String) {
         guard bare(path) == "/assets/manifest.json",
               let top = try? JSONSerialization.jsonObject(with: data)
@@ -645,6 +683,9 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                               method: method, body: body, generation: era)
                 return
             }
+            if http.statusCode == 200, self.bare(path) == "/api/avatar/activate" {
+                self.noteActivation(asked: body, answered: data)
+            }
             if method == "GET", http.statusCode == 200 {
                 // Keep a last-known copy of live state on the fast path
                 // too - a phone that never needs the relay would otherwise
@@ -715,6 +756,9 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                             data: Data("{\"error\":\"the relay did not answer\"}".utf8),
                             type: "application/json", status: 504)
                 return
+            }
+            if reply.status == 200, self.bare(path) == "/api/avatar/activate" {
+                self.noteActivation(asked: body, answered: reply.data)
             }
             if method == "GET", reply.status == 200 {
                 self.keepSnapshot(reply.data, path: path)

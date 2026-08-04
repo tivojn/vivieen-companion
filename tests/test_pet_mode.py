@@ -2343,6 +2343,58 @@ class PocketBarAndToolsTests(unittest.TestCase):
         self.assertIn("if(event.target!==box&&event.target!==TOP.pad)return;",
                       self.renderer)
 
+    def test_the_first_keyboard_lifts_the_composer_too(self):
+        # The FIRST keyboard of a launch swallowed the composer whole and
+        # every one after it behaved. Because iOS PANS the visual viewport
+        # to reveal a bottom field, and the lift is
+        # innerHeight - height - offsetTop, which with a full pan is
+        # EXACTLY zero. The pan is undone a beat later and the only event
+        # that says so is visualViewport's scroll - which was snapping the
+        # layout back and never re-measuring (owner, 2026-08-04).
+        scroll = self.renderer[self.renderer.index(
+            "visualViewport.addEventListener('scroll'"):]
+        self.assertIn("keyboardLane();", scroll[:400])
+        self.assertIn("const keyboardSettles=()=>{", self.renderer)
+        self.assertIn("txt.addEventListener('focus',keyboardSettles);",
+                      self.renderer)
+
+    def test_the_panels_sit_above_the_composer_it_measures(self):
+        # 96px was a guess at the composer's height. The two-row bar
+        # outgrew it, so the zoom panel opened UNDERNEATH the composer and
+        # its sliders could not be dragged (owner screenshot, 2026-08-04).
+        # --bar-h is the measurement; nothing may guess it again.
+        for rule in ("html.ios.zoom-open #zoombox{",
+                     "html.ios.agents-open #agentsheet{",
+                     "html.ios #threaddown.on{"):
+            block = self.renderer[self.renderer.index(rule):]
+            block = block[:block.index("}")]
+            self.assertIn("var(--bar-h,88px)", block,
+                          rule + " must ride the measured composer height")
+            self.assertNotIn("96px", block)
+            self.assertNotIn("104px", block)
+
+    def test_a_new_face_is_on_stage_at_once(self):
+        # Choosing a face POSTs the slug and reloads - and every request
+        # after that reload is cache-first, keyed by the slug last SEEN.
+        # So the phone redrew the old avatar from its own cache for the
+        # whole launch, while the Mac had already changed (owner,
+        # 2026-08-04). The activation itself carries the answer.
+        scheme = (ROOT / "ios" / "Vivieen" / "VivScheme.swift").read_text()
+        self.assertIn("private func noteActivation(asked: Data?, answered: Data)",
+                      scheme)
+        # The MAC is the authority on which face is on stage.
+        self.assertIn('field(answered, "active") ?? field(asked, "slug")',
+                      scheme)
+        # ...and the one-shot-per-launch refresh has to be allowed to look
+        # again, or the old keys stay frozen anyway.
+        activation = scheme[scheme.index("private func noteActivation"):]
+        activation = activation[:activation.index("private func noteSlug")]
+        self.assertIn("refreshed.removeAll()", activation)
+        self.assertIn('snapshotURL("/api/avatars")', activation)
+        # Both roads must learn it, not just the fast one.
+        self.assertEqual(
+            2, scheme.count("self.noteActivation(asked: body, answered:"))
+
     def test_solo_keys_never_enter_the_page(self):
         # The page learns key NAMES; the native proxy injects values. A
         # compromised script could spend a key but never read one.

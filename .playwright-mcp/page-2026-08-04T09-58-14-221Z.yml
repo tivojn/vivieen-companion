@@ -1,0 +1,30 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e4]:
+    - button "Dance" [ref=e5]
+    - button "Rest" [ref=e8]
+    - button "Closeup" [ref=e11]
+    - button "EnConvo agents" [ref=e14]
+    - button "Mute her voice" [ref=e17]
+    - button "Light or dark" [ref=e20]
+    - button "Switch avatar" [ref=e23]
+    - button "Hide or show her" [ref=e26]
+    - button "Zoom" [ref=e29]
+  - generic [ref=e33]:
+    - generic [ref=e34]: ◉
+    - heading "Create your first avatar" [level=1] [ref=e35]
+    - paragraph [ref=e36]: Your portrait stays out of the app bundle and Git repository. Add one in Settings, review the crop, then build the local animation assets.
+    - link "Open Settings" [ref=e37] [cursor=pointer]:
+      - /url: /settings?ios=1
+  - generic [ref=e38]:
+    - generic [ref=e39]: SOLO
+    - generic [ref=e41]: avatar setup required
+    - text: ▾
+  - link "Avatar, models and voice" [ref=e42] [cursor=pointer]:
+    - /url: /settings?ios=1
+  - generic [ref=e48]:
+    - button "Switch between typing and talking" [ref=e49]
+    - textbox "Type a message…" [disabled] [ref=e52]
+    - button "Emoji" [ref=e53]
+    - button "Attach photo" [ref=e56]
+    - button "Choose File" [ref=e59]
+    - button "Live talk" [ref=e60]
