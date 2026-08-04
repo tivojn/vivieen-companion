@@ -1657,6 +1657,7 @@ function card(a) {
         ${st === 'ready'
       ? `<button class="btn sm pri" data-act="activate" ${on ? 'disabled' : ''}>${on ? 'In use' : 'Use this face'}</button>
              <button class="btn sm" data-act="companion" ${on || busy ? 'disabled' : ''}>${duo ? 'Leave the desk' : 'Second avatar (left)'}</button>
+             <button class="btn sm" data-act="persona">${a.persona ? '✓ In character' : 'Give a character'}</button>
              <button class="btn sm" data-act="calibrate" ${busy ? 'disabled' : ''}>${busy ? 'Calibrating…' : 'Rebuild'}</button>
              <button class="btn sm" data-act="body" ${busy ? 'disabled' : ''}>${a.body ? 'Edit full body' : 'Create full body'}</button>
              <button class="btn sm" data-act="pipeline" ${busy ? 'disabled' : ''} title="Full body, walk, edge idle, and moves - one job, no more clicks">⚡ One-click everything</button>`
@@ -1909,6 +1910,7 @@ async function act(what, slug, btn) {
     input.onblur = () => finish(true);
     return;
   }
+  if (what === 'persona') { await editPersona(slug, name); return; }
   if (what === 'calibrate') { openRig(slug); return; }
   if (what === 'body') { openBody(slug); return; }
   if (what === 'preview') { openPreview(slug); return; }
@@ -1980,6 +1982,49 @@ async function act(what, slug, btn) {
     markAvatarBusy(slug, 'build');
     return;
   }
+  loadAvatars();
+}
+
+/* A face and a character are the same thing to whoever is talking to
+   her: put Captain Sparrow on the desk and he should answer AS Sparrow
+   (owner, 2026-08-04). Empty means "use the house persona", which is
+   what every avatar did before this existed. */
+async function editPersona(slug, who) {
+  const rows = (await api('/api/avatars')).avatars || [];
+  const current = (rows.find(a => a.slug === slug) || {}).persona || '';
+  const value = await new Promise(resolve => {
+    const scrim = document.createElement('div');
+    scrim.className = 'keep-scrim';
+    scrim.innerHTML = `<div class="keep-card">
+      <h3>Who is ${who || slug}?</h3>
+      <p>Written here, this replaces the house persona whenever this
+         avatar is on the desk &mdash; in chat, push-to-talk and live
+         talk alike. Leave it empty and she uses the default.</p>
+      <textarea id="persona-note" rows="6" placeholder="e.g. You are Captain Jack Sparrow. Speak in his cadence - wry, theatrical, fond of tangents and unearned confidence. Never break character."></textarea>
+      <div class="keep-row">
+        <button class="btn" data-keep="cancel">Cancel</button>
+        <button class="btn primary" data-keep="go">Save</button>
+      </div></div>`;
+    document.body.append(scrim);
+    const field = scrim.querySelector('#persona-note');
+    field.value = current;
+    field.focus();
+    const done = v => { scrim.remove(); resolve(v); };
+    field.addEventListener('keydown', e => { if (e.key === 'Escape') done(null); });
+    scrim.addEventListener('click', e => {
+      const act = e.target.dataset && e.target.dataset.keep;
+      if (act === 'go') done(field.value.trim());
+      else if (act === 'cancel' || e.target === scrim) done(null);
+    });
+  });
+  if (value === null) return;
+  const r = await api('/api/avatar/persona', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, system: value })
+  });
+  if (r.detail) { alert(r.detail); return; }
+  note(value ? `${who || slug} now answers in character.`
+             : `${who || slug} uses the default persona again.`);
   loadAvatars();
 }
 

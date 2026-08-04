@@ -2354,7 +2354,9 @@ class PocketBarAndToolsTests(unittest.TestCase):
         source = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
         self.assertIn("<<viv:image", source)
         self.assertIn("<<viv:video", source)
-        self.assertIn('cfg["persona"]["system"] + _OWN_TOOLS', source)
+        # Resolved per avatar now - Sparrow answers as Sparrow - but her
+        # own tools still ride with whoever she is.
+        self.assertIn('effective_persona(cfg) + _OWN_TOOLS', source)
         self.assertIn("media_gen.generate_image", source)
         self.assertIn("media_gen.generate_video", source)
         # The result is a card, and a failure is a sentence - never silence.

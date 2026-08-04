@@ -399,6 +399,27 @@ class ProviderDefaultsTests(unittest.TestCase):
         # and it must let go once the engine confirms the same model
         self.assertIn("PICKED.label='';PICKED.model='';return '';", html)
 
+    def test_a_failing_build_shows_the_reason_not_a_brace(self):
+        # A provider that fails prints multi-line JSON, and the LAST line
+        # is "})" - so the status read "})" while the sentence saying what
+        # broke scrolled past unseen (owner, 2026-08-04).
+        import re as _re
+        with open(os.path.join(ROOT, "server", "app.py"),
+                  encoding="utf-8") as handle:
+            source = handle.read()
+        start = source.index("_PHASE_NOISE")
+        space = {"re": _re}
+        exec(source[start:source.index("def jlog(")], space)
+        headline = space["_phase_headline"]
+        self.assertEqual(headline("})"), "")
+        self.assertEqual(headline("  {"), "")
+        self.assertEqual(
+            headline('  "error": "OpenAI OAuth image response did not include an image result"'),
+            "OpenAI OAuth image response did not include an image result")
+        # ordinary progress still reads through untouched
+        self.assertEqual(headline("creating canonical HD head"),
+                         "creating canonical HD head")
+
     def test_notices_sit_above_the_composer_and_pip_is_gone(self):
         index_path = os.path.join(ROOT, "web", "index.html")
         with open(index_path, encoding="utf-8") as handle:

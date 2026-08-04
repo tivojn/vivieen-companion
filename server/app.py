@@ -261,6 +261,25 @@ def ensure_runtime(slug, log=print):
     return d
 
 
+# Punctuation that opens or closes a machine payload - never a sentence
+# worth putting on screen as the current phase.
+_PHASE_NOISE = "{}[]()\"',^"
+
+
+def _phase_headline(line):
+    """The part of a worker line worth showing as the status, if any."""
+    text = line.strip()
+    if not text:
+        return ""
+    # The one JSON line that IS the message: "error": "...".
+    hit = re.match(r'^"?(?:error|detail|message)"?\s*:\s*"?(.+?)"?,?$', text)
+    if hit:
+        return hit.group(1)
+    if text[0] in _PHASE_NOISE:
+        return ""
+    return text
+
+
 def jlog(slug, phase=None):
     with _jlock:
         j = _jobs.setdefault(slug, {"log": [], "phase": "", "done": False, "error": ""})
@@ -274,7 +293,13 @@ def jlog(slug, phase=None):
         with _jlock:
             j["log"].append(line)
             del j["log"][:-400]
-            j["phase"] = line[:120]
+            # A provider that fails prints a multi-line JSON blob, and the
+            # LAST line of it is "})" - so the status read "})" while the
+            # sentence that said what went wrong scrolled past unseen
+            # (owner: is this normal, 2026-08-04). Show the headline.
+            headline = _phase_headline(line)
+            if headline:
+                j["phase"] = headline[:120]
         print(f"[avatar:{slug}] {line}", flush=True)
     return w
 
@@ -661,6 +686,9 @@ async def api_avatars():
     for a in r.list_avatars():
         s = a.get("slug")
         a["has_runtime"] = os.path.exists(os.path.join(runtime_dir(s), "manifest.json"))
+        # Her own character, if she has been given one. The card edits it.
+        a["persona"] = ((reg().read_manifest(s) or {}).get("persona")
+                        or {}).get("system", "")
         with _jlock:
             j = _jobs.get(s)
         a["job"] = {
@@ -697,6 +725,27 @@ async def api_upload(photo: UploadFile = File(...), name: str = Form("", max_len
 class RenameRequest(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
     name: str = Field(min_length=1, max_length=120)
+
+
+class PersonaRequest(BaseModel):
+    slug: str = Field(pattern=SLUG_PATTERN)
+    system: str = Field(default="", max_length=4000)
+
+
+@app.post("/api/avatar/persona")
+def api_avatar_persona(r: PersonaRequest):
+    """Give one avatar a character of its own. Empty means "use the
+    house persona", which is what every avatar did before this existed."""
+    m = reg().read_manifest(r.slug)
+    if not m:
+        raise HTTPException(404, "unknown avatar")
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+", " ", r.system).strip()
+    if text:
+        m["persona"] = {"system": text}
+    else:
+        m.pop("persona", None)
+    reg().write_manifest(r.slug, m)
+    return {"slug": r.slug, "system": text}
 
 
 @app.post("/api/avatar/rename")
@@ -2540,7 +2589,7 @@ def _live_hot_fields(cfg):
 def _live_settings():
     cfg = P.load()
     live = cfg.get("live") or {}
-    persona = (cfg.get("persona") or {}).get("system") or ""
+    persona = effective_persona(cfg)
     provider = live.get("provider") or "xai"
     if provider == "xai" and live.get("xai_api_key"):
         return dict(provider="xai", key=live["xai_api_key"],
@@ -2808,13 +2857,33 @@ _OWN_TOOLS = (
 _OWN_TOOL_CALL = re.compile(r"<<viv:(image|video)\s+(.+?)>>", re.S)
 
 
+def effective_persona(cfg=None):
+    """Who she is right now.
+
+    A face and a character are the same thing to whoever is talking to
+    her: put Captain Sparrow on the desk and he should answer as Sparrow,
+    not as the house assistant wearing his face (owner, 2026-08-04). The
+    ACTIVE avatar's own persona wins; the global one is the fallback for
+    every avatar that has not been given one, so an empty field keeps
+    today's behaviour exactly.
+    """
+    cfg = cfg if cfg is not None else P.load()
+    house = ((cfg.get("persona") or {}).get("system") or "").strip()
+    slug = active_slug()
+    if not slug:
+        return house
+    manifest = reg().read_manifest(slug) or {}
+    mine = ((manifest.get("persona") or {}).get("system") or "").strip()
+    return mine or house
+
+
 @app.post("/reply")
 async def reply(t: Turn):
     import media_gen
     cfg = P.load()
     try:
         text = await P.chat(t.history[-12:], cfg["llm"],
-                            system=cfg["persona"]["system"] + _OWN_TOOLS)
+                            system=effective_persona(cfg) + _OWN_TOOLS)
     except Exception as e:
         print("[viv] llm failed:", P.safe_error(e), flush=True)
         hint = P.failure_hint(e)
@@ -2901,6 +2970,10 @@ async def api_sync_solo():
             block.pop(field, None)
         config[name] = block
     config["persona"] = dict(cfg.get("persona") or {})
+    # The phone answers with whoever is on ITS stage, and that is the
+    # avatar the Mac has active - send the resolved persona, not the house
+    # one, or solo would break character the moment the Mac was gone.
+    config["persona"]["system"] = effective_persona(cfg)
     return {"v": 1, "updated_at": int(time.time()),
             "config": config, "secrets": sealed}
 
