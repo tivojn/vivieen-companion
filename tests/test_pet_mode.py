@@ -2253,8 +2253,16 @@ class PocketBarAndToolsTests(unittest.TestCase):
         self.assertIn(
             "if(attempt<1&&error.name!=='AbortError'&&ROAD.shown!=='internet')",
             self.renderer)
-        # And the agent sheet's ceiling has to fit a mailbox round trip.
-        self.assertIn("ROAD.shown==='internet'?40000:10000", self.renderer)
+        # The agent LIST is a different matter: it is idempotent, and a
+        # single attempt through the mailbox is a coin toss. Health only
+        # survives that road because it is re-sent every beat.
+        self.assertIn("const askAgents=async attempt=>{", self.renderer)
+        self.assertIn("if(stop.signal.aborted&&far&&attempt<1){", self.renderer)
+        self.assertIn("const bell=setTimeout(()=>stop.abort(),far?25000:10000);",
+                      self.renderer)
+        # And it must never call the Mac silent while the corner is showing
+        # that same Mac answering.
+        self.assertIn("your Mac is answering, ", self.renderer)
 
     def test_the_coupling_survives_a_reload(self):
         # An engine restart trips the boot watchdog, which reloads the page.

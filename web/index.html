@@ -6091,17 +6091,35 @@ if(IS_IOS){
       // fifteen-second list call do not fit, so the sheet was calling an
       // awake Mac dead every time (owner, 2026-08-04). The road knows
       // which one we are on, so let it set the ceiling.
-      const stop=new AbortController();
-      const bell=setTimeout(()=>stop.abort(),
-                            ROAD.shown==='internet'?40000:10000);
-      let r;
-      try{
-        r=await(await fetch('api/enconvo/agents',{signal:stop.signal})).json();
-      }catch(error){
-        throw new Error(stop.signal.aborted
-          ?'your Mac did not answer — EnConvo lives there'
-          :(error.message||error));
-      }finally{clearTimeout(bell);}
+      //
+      // ...and one retry, because through the mailbox a SINGLE attempt is
+      // a coin toss. Health survives the same road only because it is
+      // re-sent every beat; this list gets one shot, and on 5G it lost it
+      // against an awake Mac answering everything else (owner's phone,
+      // 2026-08-04). The Mac is idempotent here - it is a list.
+      const askAgents=async attempt=>{
+        const stop=new AbortController();
+        const far=ROAD.shown==='internet';
+        const bell=setTimeout(()=>stop.abort(),far?25000:10000);
+        try{
+          return await(await fetch('api/enconvo/agents',
+                                   {signal:stop.signal})).json();
+        }catch(error){
+          if(stop.signal.aborted&&far&&attempt<1){
+            agentList.innerHTML=
+              '<div class="agent"><div class="who"><b>Still asking your Mac…</b>'
+              +'<span>the long way round takes a moment</span></div></div>';
+            return askAgents(attempt+1);
+          }
+          // Never say the Mac is silent while the corner says it is
+          // answering. Name what is actually slow.
+          throw new Error(!stop.signal.aborted?(error.message||error)
+            :far?'the relay is not carrying it — your Mac is answering, '
+                +'but this is taking too long'
+            :'your Mac did not answer — EnConvo lives there');
+        }finally{clearTimeout(bell);}
+      };
+      const r=await askAgents(0);
       if(!r.agents)throw new Error(r.detail||'no agents');
       agentList.replaceChildren();
       const off=document.createElement('button');

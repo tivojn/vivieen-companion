@@ -156,10 +156,22 @@ final class RelayClient {
     }
 
     private func poll() {
-        guard let url = url("dir=to_client&after=\(cursor)&wait=25") else { return }
+        // Read it under the lock. Every other shared field here is guarded
+        // and this one was not, while the completion below writes it from
+        // another thread on every poll.
+        lock.lock(); let from = cursor; lock.unlock()
+        // Twenty-five seconds of long-poll is fine for a mailbox nobody is
+        // waiting on, and much too long for one somebody is. Health gets
+        // away with it because it is re-sent every beat, so any single
+        // round trip that loses the race is replaced a second later; a
+        // one-shot request like the agent list has no such luck and simply
+        // ran out its ceiling, on a Mac that was awake and answering
+        // (owner's phone on 5G, 2026-08-04). Ten seconds, so a stalled
+        // poll costs ten and not forty.
+        guard let url = url("dir=to_client&after=\(from)&wait=10") else { return }
         var request = URLRequest(url: url)
         request.setValue(proof, forHTTPHeaderField: "x-viv-proof")
-        request.timeoutInterval = 40
+        request.timeoutInterval = 20
         URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
             guard let self else { return }
             defer {
@@ -186,6 +198,7 @@ final class RelayClient {
             // taking it only on a non-empty poll left the cursor pinned
             // at -1, asking for the tip forever and skipping every reply
             // that landed in between.
+            self.lock.lock()
             if let next = top["next"] as? Int, next >= 0 { self.cursor = next }
             if items.isEmpty {
                 self.quiet += 1
@@ -198,6 +211,7 @@ final class RelayClient {
             } else {
                 self.quiet = 0
             }
+            self.lock.unlock()
             for item in items { self.deliver(item) }
         }.resume()
     }
