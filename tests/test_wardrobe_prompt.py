@@ -558,6 +558,13 @@ class GrokImagineEdits(unittest.TestCase):
         self.assertIn("metered", source)
         self.assertIn("xAI API key", source)
 
+    def test_the_settings_card_admits_which_credential_pays(self):
+        # The card said "Credentials never enter this app", which stopped
+        # being wholly true the moment plates started going direct.
+        page = (ROOT / "web" / "settings.html").read_text(encoding="utf-8")
+        self.assertIn("your own xAI API key", page)
+        self.assertIn("metered per image", page)
+
     def test_the_head_plate_takes_the_same_road(self):
         source = (ROOT / "studio" / "generate.py").read_text(encoding="utf-8")
         self.assertIn("_body._xai_edit(", source)
