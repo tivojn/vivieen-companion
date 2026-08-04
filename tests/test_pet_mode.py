@@ -1295,8 +1295,13 @@ class BodyProviderTests(unittest.TestCase):
         self.assertIn("walk_style", settings)
         self.assertIn("pose_prompt", settings)
 
+    # No xAI choice of our own, so EnConvo's selection decides. Stated
+    # explicitly: this used to pass only because _own_config was reading a
+    # path that does not exist, which made the answer depend on whatever
+    # the developer happened to have saved (2026-08-04).
+    @mock.patch("studio.body._own_config", return_value={})
     @mock.patch("studio.body.subprocess.run")
-    def test_saved_selection_wins_over_static_provider_default(self, run):
+    def test_saved_selection_wins_over_static_provider_default(self, run, _own):
         run.side_effect = [
             mock.Mock(returncode=0, stdout=json.dumps({
                 "selected": "image_create|open_ai",

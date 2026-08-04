@@ -602,3 +602,40 @@ class GrokImagineEdits(unittest.TestCase):
         source = (ROOT / "studio" / "generate.py").read_text(encoding="utf-8")
         self.assertIn("_body._xai_edit(", source)
         self.assertIn('aspect_ratio="1:1"', source)
+
+
+class DirectProviderPlumbing(unittest.TestCase):
+    def test_a_direct_provider_has_no_command_key_and_that_is_fine(self):
+        # Choosing "xAI Grok Image" in Settings returns this app's OWN
+        # provider record - a route, no command_key - and the motion cache
+        # signature subscripted that key hard, so a custom move died one
+        # second in at 3% with a bare KeyError: 'command_key' (owner
+        # screenshot, 2026-08-04).
+        source = (ROOT / "studio" / "motion.py").read_text(encoding="utf-8")
+        self.assertIn("def _provider_id(provider):", source)
+        self.assertIn("_provider_id(image_provider)", source)
+        self.assertIn("_provider_id(video_provider)", source)
+        self.assertNotIn('image_provider["command_key"]', source)
+        self.assertNotIn('video_provider["command_key"]', source)
+
+    def test_the_app_reads_its_own_config_where_it_actually_lives(self):
+        # _own_config decides whether the owner picked xAI. It fell back to
+        # ~/Library/Application Support/Vivieen/config.json, which is not
+        # where the config is, so without VIVIEEN_CONFIG exported it read
+        # {} and answered "no" to every such question - silently routing
+        # back through EnConvo.
+        # VIVIEEN_DATA_DIR is how the engine is actually launched, and it
+        # must be enough on its own - VIVIEEN_CONFIG being set is what was
+        # hiding this.
+        with tempfile.TemporaryDirectory() as directory:
+            written = {"image": {"provider": "xai", "api_key": "xai-abc"}}
+            with open(os.path.join(directory, "config.json"), "w") as handle:
+                json.dump(written, handle)
+            env = dict(os.environ)
+            env.pop("VIVIEEN_CONFIG", None)
+            env["VIVIEEN_DATA_DIR"] = directory
+            with mock.patch.dict(os.environ, env, clear=True):
+                self.assertEqual(
+                    (body._own_config().get("image") or {}).get("provider"),
+                    "xai")
+                self.assertEqual(body._xai_key(), "xai-abc")

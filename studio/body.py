@@ -277,9 +277,15 @@ def _own_config():
     a file and a side effect no caller here wants. EnConvo's own settings
     are never read.
     """
-    path = os.environ.get("VIVIEEN_CONFIG") or os.path.join(
-        os.path.expanduser("~/Library/Application Support/Vivieen"),
-        "config.json")
+    # The SAME file providers.CONFIG resolves, by the same rules. This used
+    # to fall back to ~/Library/Application Support/Vivieen/config.json,
+    # which is not where the config lives - so anywhere VIVIEEN_CONFIG was
+    # not exported this read {} and every "did the owner choose xAI?" test
+    # quietly answered no (owner, 2026-08-04).
+    root = os.path.abspath(os.environ.get(
+        "VIVIEEN_DATA_DIR",
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    path = os.environ.get("VIVIEEN_CONFIG") or os.path.join(root, "config.json")
     try:
         with open(path) as handle:
             return json.load(handle) or {}

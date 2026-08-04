@@ -872,6 +872,20 @@ def _move_video_prompt(move_style=None):
     return _idle_video_prompt({"id": "custom", "prompt": move_style["prompt"]})
 
 
+def _provider_id(provider):
+    """What names a provider inside the cache signature.
+
+    An EnConvo-SELECTED provider carries a command_key like
+    "image_create|x_ai". The app's own direct route - what you get after
+    choosing xAI Grok Image in Settings rather than EnConvo's default -
+    carries a route and no command_key, and subscripting it killed the
+    build one second in, at 3%, with a bare KeyError: 'command_key'
+    (owner, 2026-08-04). The route identifies it just as well.
+    """
+    return str(provider.get("command_key") or provider.get("route")
+               or provider.get("name") or "?")
+
+
 def _image_command(provider, references, output_dir, file_name, prompt):
     route = provider["route"]
     command = [
@@ -3583,8 +3597,8 @@ def _build_context(
         json.dumps(_walk_style_receipt(walk_style), sort_keys=True),
         json.dumps(_walk_frame_receipt(walk_frame), sort_keys=True),
         json.dumps(_move_style_receipt(move_style), sort_keys=True),
-        image_provider["command_key"], str(image_provider.get("model")),
-        video_provider["command_key"], str(video_provider.get("model")),
+        _provider_id(image_provider), str(image_provider.get("model")),
+        _provider_id(video_provider), str(video_provider.get("model")),
         *prompts.values(),
     ))
     signature = hashlib.sha256(signature_source.encode("utf-8")).hexdigest()
