@@ -69,9 +69,16 @@ class MoveStyles(unittest.TestCase):
         self.assertIn("_TRANSIENT_PROVIDER_MARKERS", source)
         self.assertIn('"socket disconnected"', source)
         marker = source.index("def _run(command, output_dir, extensions):")
-        window = source[marker:marker + 1400]
+        window = source[marker:marker + 2400]
         self.assertIn("for attempt in (1, 2):", window)
         self.assertIn("if attempt == 1 and transient:", window)
+        # A non-zero exit does not mean nothing was produced. The CLI can
+        # download a finished plate and then fall over afterwards - losing
+        # EnConvo itself is the case that happened - and throwing that away
+        # costs the owner a generation they already paid for, twice over:
+        # the retry's mtime window is narrower than the file is old.
+        self.assertIn("salvaged = _generated_file(", window)
+        self.assertIn("if salvaged:", window)
 
     def test_move_is_a_first_class_kind(self):
         self.assertIn("move", library.MOTION_KINDS)

@@ -128,16 +128,49 @@ def _reserve_job(slug, kind, label="Queued"):
         _jobs[slug] = dict(
             id=job_id, phase=label, done=False, error="", log=[], kind=kind,
             progress={"stage": "queued", "value": 0.0, "label": label})
-        return job_id
+        # A NEW attempt of the same kind is the only thing that retires the
+        # last failure of that kind - not merely the next job of any kind,
+        # or the automatic publish that follows a build would erase the
+        # explanation before anyone read it.
+        _failures.pop((slug, kind), None)
+    _build_log_write(slug, f"=== {kind} started: {label}")
+    return job_id
 
 
 def _finish_job(slug, job_id, error=""):
+    kind = ""
     with _jlock:
         job = _jobs.get(slug)
         if not job or job.get("id") != job_id:
+            # The record was already replaced. The failure still happened,
+            # and it is still the answer to "why did nothing arrive".
+            if error:
+                _failures[(slug, "")] = {
+                    "kind": "", "error": str(error),
+                    "when": datetime.datetime.now().isoformat(timespec="seconds"),
+                }
             return
+        kind = str(job.get("kind") or "")
         job["error"] = str(error or job.get("error") or "")
         job["done"] = True
+        if job["error"]:
+            _failures[(slug, kind)] = {
+                "kind": kind, "error": job["error"],
+                "when": datetime.datetime.now().isoformat(timespec="seconds"),
+            }
+    if error:
+        _build_log_write(slug, f"=== {kind or 'job'} FAILED: {error}")
+    else:
+        _build_log_write(slug, f"=== {kind or 'job'} finished")
+
+
+def _last_failure(slug):
+    """The most recent failed build for this avatar, whatever ran since."""
+    with _jlock:
+        rows = [row for (key, _), row in _failures.items() if key == slug]
+    if not rows:
+        return None
+    return sorted(rows, key=lambda row: row.get("when") or "")[-1]
 
 
 def _already_running(slug):
@@ -280,11 +313,47 @@ def _phase_headline(line):
     return text
 
 
+# The last failure per avatar, kept OUTSIDE _jobs so it survives the next
+# job. _reserve_job replaces _jobs[slug] wholesale, so a failed build's
+# error and its whole log were destroyed by whatever ran next - which is
+# how a four-minute failure became "it never showed me any error message,
+# it just didn't deliver" (owner, 2026-08-04).
+_failures = {}
+
+
+def _build_log_path(slug):
+    try:
+        return os.path.join(reg().adir(slug), "build.log")
+    except Exception:
+        return ""
+
+
+def _build_log_write(slug, line):
+    """One build line, on disk, timestamped. Memory forgets; this does not."""
+    path = _build_log_path(slug)
+    if not path:
+        return
+    try:
+        stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(f"{stamp}  {line}\n")
+        # Bounded: a build log is for the last few builds, not forever.
+        if os.path.getsize(path) > 512_000:
+            with open(path, encoding="utf-8") as handle:
+                tail = handle.readlines()[-2000:]
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.writelines(tail)
+    except Exception:
+        pass
+
+
 def jlog(slug, phase=None):
     with _jlock:
         j = _jobs.setdefault(slug, {"log": [], "phase": "", "done": False, "error": ""})
         if phase:
             j["phase"] = phase
+    if phase:
+        _build_log_write(slug, f"--- {phase}")
 
     def w(msg):
         line = str(msg).rstrip()
@@ -301,6 +370,7 @@ def jlog(slug, phase=None):
             if headline:
                 j["phase"] = headline[:120]
         print(f"[avatar:{slug}] {line}", flush=True)
+        _build_log_write(slug, line)
     return w
 
 
@@ -1716,7 +1786,9 @@ async def api_progress(slug: str = Query(pattern=SLUG_PATTERN)):
     with _jlock:
         j = _jobs.get(slug) or {"log": [], "phase": "", "done": True, "error": ""}
         j = dict(j)
-    return {"manifest": m, "job": j}
+    # The last failure rides along even when the job that failed is long
+    # gone, so coming back to the page still answers "what happened".
+    return {"manifest": m, "job": j, "last_failure": _last_failure(slug)}
 
 
 def _publish_runtime(slug, label):

@@ -2651,8 +2651,19 @@ function renderBodyStudio() {
   const hasMove = Boolean(BODY_STATE.has_move ?? (motion.move &&
     (motion.move.sheets || motion.move.alpha_stream)));
   const savedMoveStyle = motion.move_style || {};
-  BODY_MOVE_STYLE = MOVE_STYLE_IDS.has(savedMoveStyle.id) ? savedMoveStyle.id : 'viral';
-  $('#body-move-prompt').value = BODY_MOVE_STYLE === 'custom' ? savedMoveStyle.prompt || '' : '';
+  // A FAILED build leaves no move_style in the manifest, so re-rendering
+  // snapped the picker back to "viral" and wiped the words the owner had
+  // just typed - the panel looked untouched, which is most of why a
+  // four-minute failure read as "it just didn't deliver" (owner,
+  // 2026-08-04). What you typed is yours until you change it.
+  const typedMove = $('#body-move-prompt').value.trim();
+  if (MOVE_STYLE_IDS.has(savedMoveStyle.id)) {
+    BODY_MOVE_STYLE = savedMoveStyle.id;
+    $('#body-move-prompt').value =
+      BODY_MOVE_STYLE === 'custom' ? savedMoveStyle.prompt || typedMove : typedMove;
+  } else if (!(BODY_MOVE_STYLE === 'custom' && typedMove)) {
+    BODY_MOVE_STYLE = 'viral';
+  }
   selectMoveStyle(BODY_MOVE_STYLE);
   $('#body-preview').classList.toggle('hidden', !hasBody);
   $('#body-empty').classList.toggle('hidden', hasBody);
@@ -2913,6 +2924,17 @@ async function openBody(slug) {
     startBodyProgress(job.kind, true);
     setBodyBusy(true);
     pollBody(job.id);
+  } else if (progressState.last_failure && progressState.last_failure.error) {
+    // Nothing running, and the last attempt on this avatar failed. Say so
+    // on the way in - a generation can take minutes, and the answer used
+    // to die with the next job, so the studio opened looking untouched
+    // and the owner was left with "it just didn't deliver".
+    const failure = progressState.last_failure;
+    startBodyProgress(failure.kind || 'motion', true);
+    endBodyProgress(true);
+    $('#body-stage').textContent = 'Last attempt failed';
+    $('#body-progress-line').textContent =
+      String(failure.error).slice(0, 400);
   }
 }
 
@@ -3031,7 +3053,25 @@ async function pollBody(expectedJobId) {
   }
   if (BODY_SLUG !== slug) return;
   const job = response.job || {}, progress = job.progress || {};
-  if (expectedJobId && job.id && job.id !== expectedJobId) expectedJobId = job.id;
+  // The job we started may already have been replaced by whatever ran
+  // next - the automatic publish, most often - and following the new id
+  // silently swapped a FAILED build for somebody else's healthy one. The
+  // server keeps the failure outside the job record now; if the id moved
+  // under us, that is what we report (owner: "it never showed me any
+  // error message, it just didn't deliver", 2026-08-04).
+  if (expectedJobId && job.id && job.id !== expectedJobId) {
+    const lost = response.last_failure;
+    if (lost && lost.error) {
+      endBodyProgress(true);
+      BODY_WATCH = null;
+      $('#body-stage').textContent = 'Generation failed';
+      $('#body-progress-line').textContent = String(lost.error).slice(0, 400);
+      setBodyBusy(false);
+      renderBodyStudio();
+      return;
+    }
+    expectedJobId = job.id;
+  }
   const value = Math.max(0, Math.min(1, Number(progress.value) || 0));
   const percent = Math.round(value * 100);
   const finished = Boolean(job.done);

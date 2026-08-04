@@ -993,6 +993,20 @@ def _run(command, output_dir, extensions):
             if result.returncode:
                 detail = (result.stderr or result.stdout
                           or "generation failed").strip()[-1600:]
+                # Look for the artifact BEFORE trusting the exit status. The
+                # CLI can download a perfectly good plate and then exit
+                # non-zero on something afterwards - losing EnConvo itself
+                # is the case that happened - and this threw away a finished
+                # 1.9 MB keyframe the owner had already paid for, then made
+                # it unreusable: the mtime window on the retry is narrower
+                # than the file is old (owner, 2026-08-04).
+                try:
+                    salvaged = _generated_file(
+                        output_dir, extensions, started, result.stdout)
+                except Exception:
+                    salvaged = ""
+                if salvaged:
+                    return salvaged
                 raise RuntimeError(detail)
             return _generated_file(output_dir, extensions, started, result.stdout)
         except RuntimeError as error:
