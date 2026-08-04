@@ -2561,6 +2561,62 @@ class PocketBarAndToolsTests(unittest.TestCase):
         importlib.reload(credentials)
         importlib.reload(providers)
 
+    def test_one_key_per_platform_reaches_every_matching_lane(self):
+        # #25: the owner pasted the same xAI key into Think, Create and
+        # Live voice separately. config["keys"] holds it once; every lane
+        # whose provider matches inherits it at load - in memory only -
+        # and an explicit lane key still wins.
+        import importlib
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        with tempfile.TemporaryDirectory() as work:
+            environ = {"VIVIEEN_DATA_DIR": work,
+                       "VIVIEEN_CONFIG": os.path.join(work, "config.json"),
+                       "VIVIEEN_VAULT_FILE": os.path.join(work, "vault.json")}
+            with mock.patch.dict(os.environ, environ):
+                with open(environ["VIVIEEN_CONFIG"], "w") as handle:
+                    json.dump({
+                        "keys": {"xai": "xai-once", "elevenlabs": "el-once"},
+                        "llm": {"provider": "xai"},
+                        "image": {"provider": "xai"},
+                        "tts": {"provider": "elevenlabs",
+                                "api_key": "explicit-wins"},
+                    }, handle)
+                import credentials
+                import providers
+                importlib.reload(credentials)
+                importlib.reload(providers)
+                cfg = providers.load()
+                # One paste, every matching lane - and live talk too.
+                self.assertEqual(cfg["llm"]["api_key"], "xai-once")
+                self.assertEqual(cfg["image"]["api_key"], "xai-once")
+                self.assertEqual(cfg["live"]["xai_api_key"], "xai-once")
+                self.assertEqual(cfg["live"]["eleven_api_key"], "el-once")
+                # An explicit lane key still wins for its lane.
+                self.assertEqual(cfg["tts"]["api_key"], "explicit-wins")
+                # The keyring is vaulted like every other secret: the file
+                # keeps markers, and the browser only ever learns booleans.
+                disk = json.load(open(environ["VIVIEEN_CONFIG"]))
+                self.assertEqual(disk["keys"]["xai"], "@keychain")
+                shown = providers.redacted(cfg)
+                self.assertEqual(shown["keys"], {"xai": "", "elevenlabs": ""})
+                self.assertEqual(shown["has_keys"],
+                                 {"xai": True, "elevenlabs": True})
+                # Inherited values never reach the file: the lanes on disk
+                # still have no key of their own (defaults leave '').
+                self.assertEqual(disk["llm"].get("api_key", ""), "")
+                # __clear__ empties the vault, and the inheritance with it.
+                providers.save({"keys": {"xai": "__clear__"}})
+                cleared = providers.load()
+                self.assertEqual(cleared["llm"].get("api_key", ""), "")
+                self.assertNotIn("xai", json.load(
+                    open(environ["VIVIEEN_CONFIG"]))["keys"])
+                # Family ids collapse onto their platform.
+                self.assertEqual(providers.platform_of("minimax_llm"),
+                                 "minimax")
+        importlib.reload(credentials)
+        importlib.reload(providers)
+
     def test_the_catalogue_covers_the_market_in_every_slot(self):
         import sys
         sys.path.insert(0, str(ROOT / "server"))

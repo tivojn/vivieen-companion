@@ -93,6 +93,39 @@ def _read_config_file():
 _migrated = [False]
 
 
+# One key per platform (#25). The owner pasted the same xAI key into
+# Think, Create, and Live voice separately - six paste boxes for one
+# secret. config["keys"] holds one key per platform; a lane whose block
+# has no key of its own inherits the platform key for its provider here,
+# at load, in memory only - the file never learns the inherited value,
+# exactly like the vault's materialised secrets. An explicit lane key
+# still wins. The aliases collapse family ids onto their platform.
+_PLATFORM_ALIASES = {"minimax_llm": "minimax", "together_image": "together"}
+
+
+def platform_of(provider):
+    return _PLATFORM_ALIASES.get(provider or "", provider or "")
+
+
+def _inherit_platform_keys(cfg):
+    keys = cfg.get("keys")
+    if not isinstance(keys, dict) or not keys:
+        return cfg
+    for kind in ("llm", "tts", "stt", "image", "video"):
+        block = cfg.get(kind)
+        if isinstance(block, dict) and not block.get("api_key"):
+            inherited = keys.get(platform_of(block.get("provider"))) or ""
+            if inherited:
+                block["api_key"] = inherited
+    live = cfg.get("live")
+    if isinstance(live, dict):
+        if not live.get("xai_api_key") and keys.get("xai"):
+            live["xai_api_key"] = keys["xai"]
+        if not live.get("eleven_api_key") and keys.get("elevenlabs"):
+            live["eleven_api_key"] = keys["elevenlabs"]
+    return cfg
+
+
 def load():
     """Secrets live in the vault (macOS Keychain), the file keeps only
     markers, and load() hands back a config with the real values woven in -
@@ -103,7 +136,7 @@ def load():
         _migrated[0] = True
         if credentials.absorb(cfg):        # first run after the upgrade:
             _write_config_file(cfg)        # sweep plaintext into the vault
-    return credentials.materialise(cfg)
+    return _inherit_platform_keys(credentials.materialise(cfg))
 
 
 def _write_config_file(cfg):
@@ -149,6 +182,11 @@ def redacted(cfg):
     for field in ("xai_api_key", "eleven_api_key"):
         live["has_" + field] = bool(live.get(field))
         live[field] = ""
+    # The platform keyring (#25): same write-only contract as the lanes -
+    # the browser learns which platforms hold a key, never the key.
+    keys = out.get("keys") if isinstance(out.get("keys"), dict) else {}
+    out["keys"] = {name: "" for name in keys}
+    out["has_keys"] = {name: bool(value) for name, value in keys.items()}
     return out
 
 

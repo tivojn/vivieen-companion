@@ -133,6 +133,21 @@ def absorb(cfg):
                 put(f"{block_name}.{field}", value)
                 block[field] = MARKER
                 moved = True
+    # The platform keyring (#25): every field under "keys" is a secret,
+    # named by platform rather than fixed in advance. A cleared platform
+    # leaves the dict entirely - an empty row is not a setting.
+    keys = cfg.get("keys")
+    if isinstance(keys, dict):
+        for name in list(keys):
+            value = keys.get(name) or ""
+            if value == "__clear__":
+                clear(f"keys.{name}")
+                keys.pop(name)
+                moved = True
+            elif value and value != MARKER:
+                put(f"keys.{name}", value)
+                keys[name] = MARKER
+                moved = True
     return moved
 
 
@@ -145,4 +160,9 @@ def materialise(cfg):
         for field in fields:
             if block.get(field) == MARKER:
                 block[field] = get(f"{block_name}.{field}")
+    keys = cfg.get("keys")
+    if isinstance(keys, dict):
+        for name, value in keys.items():
+            if value == MARKER:
+                keys[name] = get(f"keys.{name}")
     return cfg

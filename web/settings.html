@@ -634,6 +634,12 @@ document.documentElement.dataset.design='quiet';</script>
 
 <!-- ------------------------------------------------------------ MODELS -->
 <section id="tab-models">
+  <!-- One key per platform (#25): the owner pasted the same xAI key into
+       six boxes. Paste it here once; every lane whose provider matches
+       inherits it, and a key pasted into a single lane still wins. -->
+  <h2>API keys</h2>
+  <div class="card" id="blk-keys"></div>
+
   <h2>Think · language model</h2>
   <div class="card" id="blk-llm"></div>
 
@@ -3840,6 +3846,77 @@ function renderLiveBlock() {
     .forEach(id => { $('#' + id).onchange = dirty; });
   swap();
 }
+/* ---- one key per platform (#25) -----------------------------------------
+   The keyring card: which platforms hold a key (booleans from has_keys -
+   the values never come back), a paste box per platform in play, and an
+   "another platform" row for the rest. Same write-only contract as the
+   lane keys: blank means unchanged, Clear rides '__clear__' to the vault. */
+const KEY_ALIAS = {minimax_llm: 'minimax', together_image: 'together'};
+let KEYS_CLEARED = new Set();
+function keyPlatformLabels() {
+  const labels = {xai: 'xAI', elevenlabs: 'ElevenLabs'};
+  for (const kind of ['llm', 'tts', 'stt', 'image', 'video'])
+    for (const p of (CAT[kind] || []))
+      if (p.key) {
+        const id = KEY_ALIAS[p.id] || p.id;
+        if (!labels[id]) labels[id] = p.label;
+      }
+  return labels;
+}
+function renderKeys() {
+  const box = $('#blk-keys');
+  if (!box || !CAT) return;
+  KEYS_CLEARED = new Set();
+  const labels = keyPlatformLabels();
+  const has = CFG.has_keys || {};
+  const active = new Set(['llm', 'tts', 'stt', 'image', 'video']
+    .map(k => KEY_ALIAS[(CFG[k] || {}).provider] || (CFG[k] || {}).provider));
+  active.add('xai'); active.add('elevenlabs');
+  const rows = Object.keys(labels).filter(id => has[id] || active.has(id));
+  const others = Object.keys(labels).filter(id => !rows.includes(id)).sort();
+  box.innerHTML = `<p class="note" style="margin:0 0 12px">One key per platform,
+    pasted once. Every lane whose provider matches inherits it; a key pasted
+    into a single lane below still wins for that lane.</p>`
+    + `<div class="row" style="align-items:flex-end">`
+    + rows.map(id => `<div class="f" style="max-width:220px;flex:none">
+        <label>${labels[id]}${has[id] ? ' · stored' : ''}</label>
+        <div style="display:flex;gap:6px">
+          <input data-keyfor="${id}" type="password"
+            placeholder="${has[id] ? 'leave blank to keep' : 'not stored'}">
+          ${has[id] ? `<button class="btn sm" data-keyclear="${id}" type="button"
+            title="Forget this platform's key on save">Clear</button>` : ''}
+        </div></div>`).join('')
+    + `</div>`
+    + (others.length ? `<div class="row" style="align-items:flex-end;margin-top:10px">
+      <div class="f" style="max-width:220px;flex:none"><label>Another platform</label>
+        <select id="key-add"><option value="">—</option>${others.map(id =>
+          `<option value="${id}">${labels[id]}</option>`).join('')}</select></div>
+      <div class="f" style="max-width:280px"><label>Key</label>
+        <input id="key-add-value" type="password" placeholder="paste once, use everywhere"></div>
+    </div>` : '');
+  box.querySelectorAll('[data-keyfor]').forEach(i => { i.oninput = dirty; });
+  box.querySelectorAll('[data-keyclear]').forEach(b => b.onclick = () => {
+    KEYS_CLEARED.add(b.dataset.keyclear);
+    const input = box.querySelector(`[data-keyfor="${b.dataset.keyclear}"]`);
+    input.value = ''; input.placeholder = 'cleared on save'; input.disabled = true;
+    b.disabled = true; dirty();
+  });
+  const extra = box.querySelector('#key-add-value');
+  if (extra) extra.oninput = dirty;
+}
+function collectKeys() {
+  const staged = {};
+  document.querySelectorAll('#blk-keys [data-keyfor]').forEach(i => {
+    const value = i.value.trim();
+    if (value) staged[i.dataset.keyfor] = value;
+  });
+  KEYS_CLEARED.forEach(id => { if (!staged[id]) staged[id] = '__clear__'; });
+  const select = $('#key-add'), value = $('#key-add-value');
+  if (select && value && select.value && value.value.trim())
+    staged[select.value] = value.value.trim();
+  CFG.keys = staged;
+}
+
 function collectLiveBlock() {
   CFG.live = Object.assign({}, CFG.live, {
     provider: $('#live-provider').value,
@@ -3858,6 +3935,7 @@ $('#save').onclick = async () => {
   CFG.persona.name = $('#pname').value;
   CFG.persona.system = $('#psys').value;
   collectLiveBlock();
+  collectKeys();
   const r = await api('/api/config', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(CFG)
   });
@@ -3878,6 +3956,7 @@ $('#save').onclick = async () => {
   ['llm', 'tts', 'stt'].forEach(renderBlock);
   ['image', 'video'].forEach(renderMediaDefault);
   renderLiveBlock();
+  renderKeys();
   $('#live-xai-key').value = '';
   $('#live-eleven-key').value = '';
 };
@@ -3954,6 +4033,7 @@ async function boot() {
   DIRTY = false;
   ['llm', 'tts', 'stt'].forEach(renderBlock);
   renderLiveBlock();
+  renderKeys();
   ['image', 'video'].forEach(renderMediaDefault);
   $('#pname').value = CFG.persona.name || '';
   $('#psys').value = CFG.persona.system || '';

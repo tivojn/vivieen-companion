@@ -2309,6 +2309,14 @@ async def api_config_set(body: dict):
             blk["api_key"] = "__clear__"
         elif not requested_key:
             blk.pop("api_key", None)
+    # The platform keyring (#25): empty means "unchanged", __clear__ rides
+    # through to the vault, and the has_keys echo never touches the file.
+    body.pop("has_keys", None)
+    keyring = body.get("keys")
+    if isinstance(keyring, dict):
+        for name in list(keyring):
+            if not keyring[name]:
+                keyring.pop(name)
     live = body.get("live")
     if isinstance(live, dict):
         for field in ("xai_api_key", "eleven_api_key"):
