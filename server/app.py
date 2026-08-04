@@ -915,7 +915,7 @@ class RigRequest(BaseModel):
 class BodyProfileInput(BaseModel):
     style: str = Field(default="photorealistic", pattern=r"^(photorealistic|editorial|illustrated|anime|soft-3d)$")
     pose: str = Field(default="relaxed", pattern=r"^(relaxed|confident|friendly|formal|casual)$")
-    prompt: str = Field(default="", max_length=2400)
+    prompt: str = Field(default="", max_length=4000)
     outfit: str = Field(default="", max_length=500)
     notes: str = Field(default="", max_length=600)
 
@@ -934,11 +934,11 @@ class MotionRequest(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
     kind: str = Field(default="both", pattern=r"^(walk|idle|move|both)$")
     walk_style: str = Field(default="office", max_length=40)
-    walk_prompt: str = Field(default="", max_length=600)
+    walk_prompt: str = Field(default="", max_length=2400)
     pose: str = Field(default="back-heel", max_length=40)
-    pose_prompt: str = Field(default="", max_length=600)
+    pose_prompt: str = Field(default="", max_length=2400)
     move_style: str = Field(default="viral", max_length=40)
-    move_prompt: str = Field(default="", max_length=600)
+    move_prompt: str = Field(default="", max_length=2400)
 
 
 class MotionRemoveRequest(BaseModel):

@@ -1047,7 +1047,7 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
           </select></div>
         </div>
         <div class="f" style="margin-top:13px"><label for="body-prompt">Editable full-body prompt</label>
-          <textarea id="body-prompt" maxlength="2400" style="min-height:190px" placeholder="Describe wardrobe, silhouette, palette, materials, accessories, and styling…"></textarea>
+          <textarea id="body-prompt" maxlength="4000" style="min-height:190px" placeholder="Describe wardrobe, silhouette, palette, materials, accessories, and styling…"></textarea>
           <div class="body-actions" style="margin-top:8px">
             <p class="note" id="body-prompt-note" style="margin:0" aria-live="polite">Written for this portrait, and editable before every generation.</p>
             <div class="grow"></div>
@@ -1131,7 +1131,7 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
               <button class="walk-style-card" type="button" data-walk-style="cartwheel" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-cartwheel"></use></svg><span><b>Cartwheel</b><small>One lateral pass</small></span></button>
               <button class="walk-style-card" type="button" data-walk-style="custom" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-custom"></use></svg><span><b>Custom gait</b><small>Your own described movement</small></span></button>
             </div>
-            <textarea class="idle-pose-prompt hidden" id="body-walk-prompt" maxlength="600" placeholder="Example: skip lightly with a small bounce · or: sneak on tip-toes with exaggerated knee lifts. She performs it in place, and the desktop slides her along the screen."></textarea>
+            <textarea class="idle-pose-prompt hidden" id="body-walk-prompt" maxlength="2400" placeholder="Example: skip lightly with a small bounce · or: sneak on tip-toes with exaggerated knee lifts. She performs it in place, and the desktop slides her along the screen."></textarea>
             <div class="body-motion-actions hidden" id="body-walk-prompt-tools" style="margin-top:6px"><div class="grow"></div><button class="btn sm" id="body-walk-prompt-ai" type="button" title="Type a rough idea above, and AI expands it into a full gait direction">✦ Draft from my gist</button></div>
             <p class="note">Uses the generated side body automatically. Identity, wardrobe, and facial rig remain locked; only the traversal changes.</p>
             <div class="motion-set-list hidden" id="body-walk-sets" role="group" aria-label="Generated Horizon Walk sets"></div>
@@ -1151,7 +1151,7 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
               <button class="idle-pose-card" type="button" data-idle-pose="side-cross" aria-pressed="false"><svg aria-hidden="true"><use href="#idle-pose-side-cross"></use></svg><span>Side lean</span><small>shoulder + hip contact</small></button>
               <button class="idle-pose-card" type="button" data-idle-pose="custom" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M5 20.5l1-5 10.8-10.8a2 2 0 012.8 0l1.7 1.7a2 2 0 010 2.8L10.5 20zM14.8 6.7l6.5 6.5M5 23h18"/></svg><span>Custom act</span><small>Any pose or movement, performed at the edge</small></button>
             </div>
-            <textarea class="idle-pose-prompt hidden" id="body-motion-prompt" maxlength="600" placeholder="Example: dance an upbeat little routine for the audience · or: stretch and yawn, then check an imaginary watch. She performs it in place at the screen edge and loops back to standing."></textarea>
+            <textarea class="idle-pose-prompt hidden" id="body-motion-prompt" maxlength="2400" placeholder="Example: dance an upbeat little routine for the audience · or: stretch and yawn, then check an imaginary watch. She performs it in place at the screen edge and loops back to standing."></textarea>
             <div class="body-motion-actions hidden" id="body-motion-prompt-tools" style="margin-top:6px"><div class="grow"></div><button class="btn sm" id="body-motion-prompt-ai" type="button" title="Type a rough idea above, and AI expands it into a full act direction">✦ Draft from my gist</button></div>
             <p class="note">This controls Edge Idle only. It no longer regenerates or changes Horizon Walk.</p>
             <div class="motion-set-list hidden" id="body-idle-sets" role="group" aria-label="Generated Edge Idle sets"></div>
@@ -1170,7 +1170,7 @@ document.documentElement.dataset.design=localStorage.getItem('vivieen-design')==
               <button class="walk-style-card" type="button" data-move-style="salsa" aria-pressed="false"><svg aria-hidden="true"><use href="#move-style-salsa"></use></svg><span><b>Salsa heat</b><small>Latin rhythm · playful spin</small></span></button>
               <button class="walk-style-card" type="button" data-move-style="custom" aria-pressed="false"><svg aria-hidden="true"><use href="#walk-style-custom"></use></svg><span><b>Custom move</b><small>Your own described performance</small></span></button>
             </div>
-            <textarea class="idle-pose-prompt hidden" id="body-move-prompt" maxlength="600" placeholder="Example: vogue with sharp arm frames and a dramatic final pose · or: an energetic victory dance with a fist pump. Performed in place and looping back to the opening stance."></textarea>
+            <textarea class="idle-pose-prompt hidden" id="body-move-prompt" maxlength="2400" placeholder="Example: vogue with sharp arm frames and a dramatic final pose · or: an energetic victory dance with a fist pump. Performed in place and looping back to the opening stance."></textarea>
             <div class="body-motion-actions hidden" id="body-move-prompt-tools" style="margin-top:6px"><div class="grow"></div><button class="btn sm" id="body-move-prompt-ai" type="button" title="Type a rough idea above, and AI expands it into full choreography">✦ Draft from my gist</button></div>
             <div class="motion-set-list hidden" id="body-move-sets" role="group" aria-label="Generated move sets"></div>
             <div class="body-motion-actions"><div class="grow"></div><button class="btn hidden" id="body-move-recut" title="Reprocess the retained raw take through the current pipeline - no generation cost">Re-cut</button><button class="btn pri" id="body-move-generate">Generate Moves</button></div>

@@ -336,7 +336,7 @@ def resolve_walk_style(style_id=None, custom_prompt=""):
         style_id = style_id.get("id")
     style_id = _clean(style_id, 40) or DEFAULT_WALK_STYLE
     if style_id == "custom":
-        prompt = _clean(custom_prompt, 600)
+        prompt = _clean(custom_prompt, 2400)
         if len(prompt) < 12:
             raise ValueError(
                 "describe the custom gait in at least 12 characters")
@@ -530,7 +530,7 @@ def resolve_move_style(style_id=None, custom_prompt=""):
         style_id = style_id.get("id")
     style_id = _clean(style_id, 40) or DEFAULT_MOVE_STYLE
     if style_id == "custom":
-        prompt = _clean(custom_prompt, 600)
+        prompt = _clean(custom_prompt, 2400)
         if len(prompt) < 12:
             raise ValueError("describe the custom move in at least 12 characters")
         return {"id": "custom", "label": "Custom move",
@@ -559,7 +559,7 @@ def resolve_idle_pose(pose_id=None, custom_prompt=""):
         pose_id = pose_id.get("id")
     pose_id = _clean(pose_id, 40) or DEFAULT_IDLE_POSE
     if pose_id == "custom":
-        prompt = _clean(custom_prompt, 600)
+        prompt = _clean(custom_prompt, 2400)
         if len(prompt) < 12:
             raise ValueError("describe the custom edge act in at least 12 characters")
         # A custom act is FREE: positioned at the screen edge by the window,

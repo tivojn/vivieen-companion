@@ -159,3 +159,42 @@ class MoveRuntime(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PromptRoom(unittest.TestCase):
+    def test_a_long_custom_prompt_survives_all_three_gates(self):
+        # A custom move description was cut off: 600 characters, enforced in
+        # THREE places that all had to agree - the textarea, the request
+        # model, and _clean inside the resolver, where it truncated in
+        # silence (owner, 2026-08-04).
+        source = (ROOT / "studio" / "motion.py").read_text()
+        self.assertNotIn("_clean(custom_prompt, 600)", source)
+        self.assertEqual(3, source.count("_clean(custom_prompt, 2400)"))
+        app = (ROOT / "server" / "app.py").read_text()
+        for field in ("walk_prompt", "pose_prompt", "move_prompt"):
+            self.assertIn(
+                f'{field}: str = Field(default="", max_length=2400)', app)
+        settings = (ROOT / "web" / "settings.html").read_text()
+        for field in ("body-walk-prompt", "body-motion-prompt",
+                      "body-move-prompt"):
+            self.assertIn(f'id="{field}" maxlength="2400"', settings)
+        # the full-body brief is the longest of the lot
+        self.assertIn('id="body-prompt" maxlength="4000"', settings)
+        self.assertIn('prompt: str = Field(default="", max_length=4000)', app)
+
+    def test_the_three_gates_never_disagree(self):
+        # The textarea must never let through more than the resolver keeps,
+        # or the cut happens after the owner has already typed it.
+        import re
+        settings = (ROOT / "web" / "settings.html").read_text()
+        app = (ROOT / "server" / "app.py").read_text()
+        for field, api in (("body-walk-prompt", "walk_prompt"),
+                           ("body-motion-prompt", "pose_prompt"),
+                           ("body-move-prompt", "move_prompt")):
+            ui = int(re.search(
+                rf'id="{field}" maxlength="(\d+)"', settings).group(1))
+            server = int(re.search(
+                rf'{api}: str = Field\(default="", max_length=(\d+)\)',
+                app).group(1))
+            self.assertEqual(ui, server, f"{field} and {api} disagree")
+            self.assertEqual(2400, ui)
