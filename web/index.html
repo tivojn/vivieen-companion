@@ -879,15 +879,19 @@ html.ios #zoombox input{width:100%;flex:1}
   <button id="rail-skin" type="button" aria-label="Light or dark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg></button>
   <button id="rail-faces" type="button" aria-label="Switch avatar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3v10H4V7zm4.5-2h7v14h-7V5zM17 7h3v10h-3V7z"/></svg></button>
   <button id="rail-hide" type="button" aria-label="Hide or show her"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-9 7s4 7 9 7 9-4.5 9-7-4-7-9-7zm0 2c3.6 0 6.5 3 7 5-.5 2-3.4 5-7 5s-6.5-3-7-5c.5-2 3.4-5 7-5zm0 1.8A3.2 3.2 0 1 0 12 15.2 3.2 3.2 0 0 0 12 8.8z"/></svg></button>
-  <button id="rail-zoom" type="button" aria-label="Adjust how she looks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9v2H4V7zm13 0h3v2h-3V7zm-2-3h2v8h-2V4zM4 15h3v2H4v-2zm7 0h9v2h-9v-2zM8 12h2v8H8v-8z"/></svg></button>
+  <!-- The droplet, not the sliders: with zoom gone to the pinch, this
+       panel is her opacity and the text size - the glass, not the body. -->
+  <button id="rail-zoom" type="button" aria-label="Opacity and text size"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2s6 7.1 6 12a6 6 0 0 1-12 0c0-4.9 6-12 6-12zm0 16a4 4 0 0 0 4-4c0-.6-.1-1.2-.4-1.9L8.4 15.3A4 4 0 0 0 12 18z"/></svg></button>
   <button id="rail-fold" type="button" aria-label="Fold the tools away"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.4 5.6 9l1.4-1.4 5 5 5-5L18.4 9 12 15.4z"/></svg></button>
 </div>
 <div id="thread"></div>
 <div id="agentsheet"><div id="agentlist"></div></div>
 <div id="modelsheet"><div id="modellist"></div></div>
 <button id="threaddown" type="button" aria-label="Jump to newest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16.5 4.5 9l1.4-1.4L12 13.7l6.1-6.1L19.5 9 12 16.5z"/></svg></button>
+<!-- The zoom slider is gone: two fingers on her ARE the zoom (0a0cd37),
+     and one control per verb is the rule. The panel keeps what has no
+     gesture - the words and the glass. -->
 <div id="zoombox">
-  <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12z"/></svg><input id="zoomrange" type="range" min="60" max="600" step="5" value="100" aria-label="Avatar zoom"></div>
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h9v2H8.5v12h-2V7H3V5zm10 5h8v2h-3v7h-2v-7h-3v-2z"/></svg><input id="fontrange" type="range" min="12" max="26" step="0.5" value="14.5" aria-label="Thread text size"></div>
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2s6 7.1 6 12a6 6 0 0 1-12 0c0-4.9 6-12 6-12zm0 16a4 4 0 0 0 4-4c0-.6-.1-1.2-.4-1.9L8.4 15.3A4 4 0 0 0 12 18z"/></svg><input id="alpharange" type="range" min="10" max="100" step="5" value="100" aria-label="Avatar opacity"></div>
 </div>
@@ -6294,7 +6298,6 @@ if(IS_IOS){
   // Tap the button again to reset (all Cmd+Shift+0 ever promised).
   const railClose=document.getElementById('rail-close');
   const railZoom=document.getElementById('rail-zoom');
-  const zoomRange=document.getElementById('zoomrange');
   const faceCloseupZoom=()=>{
     if(!(BODY&&M.body))return 6;
     const width=BODY.width,height=BODY.height;
@@ -6313,7 +6316,6 @@ if(IS_IOS){
   const setZoom=(value,headAnchor)=>{
     IOS_ZOOM=Math.max(.6,Math.min(faceCloseupZoom(),value));
     IOS_HEAD_ANCHOR=Boolean(headAnchor)&&IOS_ZOOM>1.01;
-    zoomRange.value=String(Math.round(IOS_ZOOM*100));
   };
   /* One slot, two framings: her face, or all of her. The icon shows WHERE
      THE TAP GOES, not where you are - a bust while you are full length,
@@ -6346,8 +6348,6 @@ if(IS_IOS){
     document.documentElement.classList.remove('emoji-open');
     document.documentElement.classList.toggle('zoom-open');
   });
-  zoomRange.addEventListener('input',()=>setZoom(Number(zoomRange.value)/100,
-    Number(zoomRange.value)>140));
   // Picture in picture: her canvas becomes a floating video, so a live
   // call keeps its face while you use another app. Where WebKit refuses
   // stream-backed PiP (some simulators), the call STILL survives in the
@@ -6469,10 +6469,6 @@ if(IS_IOS){
   });
   setInterval(()=>{
     const now=performance.now();
-    // The slider's right edge IS the face closeup - recalibrated once the
-    // body plate lands (its face box sets the ceiling per avatar).
-    const ceiling=String(Math.round(faceCloseupZoom()*100));
-    if(zoomRange.max!==ceiling)zoomRange.max=ceiling;
     document.documentElement.classList.toggle('stage-mode',
       moveShowActive(now)||idleShowActive(now)||walkShowActive(now)||
       IOS_HEAD_ANCHOR||IOS_ZOOM>1.05||

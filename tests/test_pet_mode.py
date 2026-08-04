@@ -2729,6 +2729,21 @@ class SoloLanSyncTests(unittest.TestCase):
         self.assertIn("func isPrivateHost(_ host: String) -> Bool", scheme)
 
 
+class OneControlPerVerbTests(unittest.TestCase):
+    """#27: the pinch is the zoom; the panel keeps what has no gesture."""
+
+    def test_the_zoom_slider_is_gone_and_the_pinch_remains(self):
+        page = (ROOT / "web" / "index.html").read_text()
+        self.assertNotIn('id="zoomrange"', page)
+        self.assertIn("Pinch her the way you pinch a photo", page)
+        # The rail button turned from "adjust" sliders into the droplet.
+        self.assertIn('aria-label="Opacity and text size"', page)
+        self.assertNotIn('aria-label="Adjust how she looks"', page)
+        # The panel still holds the two slider rows that have no gesture.
+        self.assertIn('id="fontrange"', page)
+        self.assertIn('id="alpharange"', page)
+
+
 class OneThemeSwitchTests(unittest.TestCase):
     """#30: the rail and Settings were two controls over two keys."""
 
