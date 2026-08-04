@@ -857,7 +857,7 @@ html.ios #zoombox input{width:100%;flex:1}
 <button id="threaddown" type="button" aria-label="Jump to newest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16.5 4.5 9l1.4-1.4L12 13.7l6.1-6.1L19.5 9 12 16.5z"/></svg></button>
 <div id="zoombox">
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12z"/></svg><input id="zoomrange" type="range" min="60" max="600" step="5" value="100" aria-label="Avatar zoom"></div>
-  <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2s6 7.1 6 12a6 6 0 0 1-12 0c0-4.9 6-12 6-12zm0 16a4 4 0 0 0 4-4c0-.6-.1-1.2-.4-1.9L8.4 15.3A4 4 0 0 0 12 18z"/></svg><input id="alpharange" type="range" min="25" max="100" step="5" value="100" aria-label="Avatar opacity"></div>
+  <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2s6 7.1 6 12a6 6 0 0 1-12 0c0-4.9 6-12 6-12zm0 16a4 4 0 0 0 4-4c0-.6-.1-1.2-.4-1.9L8.4 15.3A4 4 0 0 0 12 18z"/></svg><input id="alpharange" type="range" min="10" max="100" step="5" value="100" aria-label="Avatar opacity"></div>
 </div>
 <!-- Avatar carousel: horizontal swipe across her opens the deck. Two
      looks, both owner-picked: "noir" (dark cascade, Netflix) and
@@ -6202,8 +6202,22 @@ if(IS_IOS){
     IOS_HEAD_ANCHOR=Boolean(headAnchor)&&IOS_ZOOM>1.01;
     zoomRange.value=String(Math.round(IOS_ZOOM*100));
   };
+  /* One slot, two framings: her face, or all of her. The icon shows WHERE
+     THE TAP GOES, not where you are - a bust while you are full length,
+     a full figure while you are close on her face. The old diagonal
+     arrows read as "expand", which is neither (owner, 2026-08-04). */
+  const BUST_ICON='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 10c4 0 7 2.2 7 5v3H5v-3c0-2.8 3-5 7-5z"/></svg>';
+  const BODY_ICON='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a2.2 2.2 0 1 1 0 4.4A2.2 2.2 0 0 1 12 2zM8 7.6h8c.7 0 1.2.6 1.1 1.3l-.9 5c-.1.5-.5.8-1 .8h-.4l.5 6.6c0 .4-.3.7-.7.7h-1.3c-.4 0-.7-.3-.7-.7L12 15.4l-.6 5.9c0 .4-.3.7-.7.7H9.4c-.4 0-.7-.3-.7-.7l.5-6.6h-.4c-.5 0-.9-.3-1-.8l-.9-5c-.1-.7.4-1.3 1.1-1.3z"/></svg>';
+  const paintFraming=()=>{
+    railClose.innerHTML=IOS_HEAD_ANCHOR?BODY_ICON:BUST_ICON;
+    railClose.setAttribute('aria-label',
+      IOS_HEAD_ANCHOR?'Show all of her':'Close up on her face');
+  };
   railClose.addEventListener('click',()=>{
     if(IOS_HEAD_ANCHOR)setZoom(1,false);else setZoom(faceCloseupZoom(),true);
+    try{localStorage.setItem('viv-framing',IOS_HEAD_ANCHOR?'face':'full');}
+    catch(e){}
+    paintFraming();
   });
   railZoom.addEventListener('click',()=>{
     // One panel at a time - sliders drawn over the emoji grid was two
@@ -6260,7 +6274,35 @@ if(IS_IOS){
   // Opacity: her whole stage fades - handy when she sits over your reading.
   const alphaRange=document.getElementById('alpharange');
   const stage=document.getElementById('stage');
+  /* How she opens, the first time and every time after.
+     Dimmed to the floor and framed on her face: at this opacity she never
+     competes with the thread, and her expression is the thing worth
+     seeing. Anyone who wants the words alone has the eye in the rail,
+     which takes her off the glass entirely (owner, 2026-08-04). Both are
+     remembered once touched, so this is a starting point and not a
+     preference imposed twice. */
+  const startAlpha=()=>{
+    let saved=null;
+    try{saved=localStorage.getItem('viv-alpha');}catch(e){}
+    IOS_ALPHA=saved!==null?Number(saved)/100:Number(alphaRange.min)/100;
+    alphaRange.value=String(Math.round(IOS_ALPHA*100));
+    document.documentElement.style.setProperty('--avatar-alpha',
+                                               String(IOS_ALPHA));
+  };
+  const startFraming=()=>{
+    let saved=null;
+    try{saved=localStorage.getItem('viv-framing');}catch(e){}
+    if(saved==='full')setZoom(1,false);
+    else setZoom(faceCloseupZoom(),true);
+    paintFraming();
+  };
+  startAlpha();
+  // The face box that sets the closeup ceiling arrives with the body
+  // plate, so ask again once she is actually drawn.
+  startFraming();
+  setTimeout(startFraming,1200);
   alphaRange.addEventListener('input',()=>{
+    try{localStorage.setItem('viv-alpha',alphaRange.value);}catch(e){}
     IOS_ALPHA=Number(alphaRange.value)/100;
     // A CUSTOM PROPERTY, not an inline opacity. Setting the style directly
     // beat the .avatar-hidden rule - inline always does - so the moment
