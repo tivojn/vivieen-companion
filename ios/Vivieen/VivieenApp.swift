@@ -13,6 +13,10 @@ struct VivieenApp: App {
         // iPhone 2026-08-03). MicDriver escalates to .playAndRecord only
         // while the microphone is actually open, and drops back after.
         AudioSession.playbackOnly()
+        // The keyboard extension hears through the mirrored essentials;
+        // refresh them on every launch so a key synced last week reaches
+        // a keyboard installed today.
+        SoloStore.shared.mirrorForKeyboard()
     }
 
     @AppStorage("serverAddress") private var serverAddress = ""

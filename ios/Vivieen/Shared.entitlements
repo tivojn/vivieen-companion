@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The one entitlement the app and the keyboard share: the group
+       container where the app mirrors the dictation essentials (Soniox
+       key, model, language) so the keyboard can hear without the app
+       running. App Group ids take no team prefix, so this same literal
+       is valid for ad-hoc simulator signing AND a real device archive -
+       unlike keychain-access-groups, which is why THIS file is safe at
+       base config while Vivieen.entitlements stays Debug-only. -->
+  <key>com.apple.security.application-groups</key>
+  <array>
+    <string>group.com.vivieen.pocket</string>
+  </array>
+</dict>
+</plist>

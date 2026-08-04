@@ -73,6 +73,26 @@ final class SoloStore {
         #endif
     }
 
+    // ------------------------------------------------- keyboard mirror
+    //
+    // The Vivieen Keys keyboard runs in its own process and cannot read
+    // this store's keychain items (different default access group) - so
+    // the app mirrors the DICTATION essentials, and only those, into the
+    // shared App Group container: the Soniox key, model, and language.
+    // One key, scoped to one purpose, refreshed on every sync and every
+    // launch; everything else stays in the Keychain.
+    static let groupSuite = "group.com.vivieen.pocket"
+
+    func mirrorForKeyboard() {
+        guard let shared = UserDefaults(suiteName: Self.groupSuite) else {
+            return
+        }
+        let stt = (config["stt"] as? [String: Any]) ?? [:]
+        shared.set(secret("stt.api_key"), forKey: "keys.soniox")
+        shared.set((stt["model"] as? String) ?? "", forKey: "keys.model")
+        shared.set((stt["language"] as? String) ?? "", forKey: "keys.language")
+    }
+
     func secret(_ name: String) -> String {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -159,6 +179,7 @@ final class SoloStore {
             }
             NSLog("[viv-solo] sync: %d secrets, config %d blocks",
                   stored, (top["config"] as? [String: Any])?.count ?? 0)
+            self.mirrorForKeyboard()
         }.resume()
     }
 

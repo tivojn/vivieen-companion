@@ -8,9 +8,17 @@ targets:
     type: application
     platform: iOS
     sources: [Vivieen]
+    dependencies:
+      - target: VivieenKeys
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vivieen.pocket
+        # App Group only - safe at base for BOTH simulator ad-hoc and a
+        # device archive (group ids carry no team prefix). Debug's
+        # Vivieen.entitlements REPLACES this file and carries the group
+        # too, plus the simulator-only keychain bits.
+        CODE_SIGN_ENTITLEMENTS: Vivieen/Shared.entitlements
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.9"
         SWIFT_OBJC_BRIDGING_HEADER: Vivieen/Vivieen-Bridging-Header.h
@@ -39,3 +47,28 @@ targets:
           CODE_SIGN_IDENTITY: "-"
           CODE_SIGNING_ALLOWED: YES
           CODE_SIGN_ENTITLEMENTS: Vivieen/Vivieen.entitlements
+
+  # Vivieen Keys - her ears as a keyboard in every app (Wispr Flow's
+  # trick on her stack). Shares SonioxTap with the app; the dictation
+  # essentials arrive through the App Group mirror, never the keychain.
+  VivieenKeys:
+    type: app-extension
+    platform: iOS
+    sources:
+      - VivieenKeys
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vivieen.pocket.keys
+        INFOPLIST_FILE: VivieenKeys/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.10.1"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_ENTITLEMENTS: Vivieen/Shared.entitlements
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGNING_ALLOWED: YES

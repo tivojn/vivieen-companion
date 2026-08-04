@@ -20,5 +20,11 @@
        contact-note-field. AgentHands degrades honestly without it. -->
   <key>com.apple.developer.contacts.notes</key>
   <true/>
+  <!-- Debug REPLACES the base entitlements file rather than merging, so
+       the shared app group must ride here too (see Shared.entitlements). -->
+  <key>com.apple.security.application-groups</key>
+  <array>
+    <string>group.com.vivieen.pocket</string>
+  </array>
 </dict>
 </plist>
