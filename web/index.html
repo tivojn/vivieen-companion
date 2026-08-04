@@ -637,6 +637,14 @@ html.ios #rail{display:flex;flex-direction:column;gap:14px;position:fixed;
   right:10px;top:50%;transform:translateY(-58%);z-index:5;
   opacity:1;transition:opacity 500ms ease}
 html.ios #rail.dim{opacity:.26}
+/* Folded: nine buttons down the edge is a lot of furniture when you only
+   want to read. Everything goes but the fold itself, which turns into the
+   way back (owner, 2026-08-05). */
+html.ios.rail-folded #rail button{display:none}
+html.ios.rail-folded #rail #rail-fold{display:flex;opacity:.4}
+html.ios.rail-folded #rail{gap:0;background:none;border:none;box-shadow:none;
+  -webkit-backdrop-filter:none;backdrop-filter:none}
+html.ios.rail-folded #rail #rail-fold svg{transform:rotate(180deg)}
 /* The rail's lowest button sat right on top of the plus once a panel
    raised the bar - every attempt to attach a photo opened the zoom
    sliders instead. When a panel is up, the rail steps aside. */
@@ -717,7 +725,7 @@ html.ios #thread .msg{pointer-events:auto;align-self:stretch;
   flex:none;
   width:100%;min-width:0;max-width:100%;box-sizing:border-box;
   padding:9px 12px;border-radius:13px;
-  font-size:14.5px;line-height:1.5;color:var(--card-ink);overflow-wrap:anywhere;
+  font-size:var(--thread-font,14.5px);line-height:1.5;color:var(--card-ink);overflow-wrap:anywhere;
   overflow:hidden;background:var(--card);
   border:1px solid var(--card-line);
   -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
@@ -855,6 +863,7 @@ html.ios #zoombox input{width:100%;flex:1}
   <button id="rail-faces" type="button" aria-label="Switch avatar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3v10H4V7zm4.5-2h7v14h-7V5zM17 7h3v10h-3V7z"/></svg></button>
   <button id="rail-hide" type="button" aria-label="Hide or show her"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-9 7s4 7 9 7 9-4.5 9-7-4-7-9-7zm0 2c3.6 0 6.5 3 7 5-.5 2-3.4 5-7 5s-6.5-3-7-5c.5-2 3.4-5 7-5zm0 1.8A3.2 3.2 0 1 0 12 15.2 3.2 3.2 0 0 0 12 8.8z"/></svg></button>
   <button id="rail-zoom" type="button" aria-label="Adjust how she looks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9v2H4V7zm13 0h3v2h-3V7zm-2-3h2v8h-2V4zM4 15h3v2H4v-2zm7 0h9v2h-9v-2zM8 12h2v8H8v-8z"/></svg></button>
+  <button id="rail-fold" type="button" aria-label="Fold the tools away"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.4 6.4 8 7.8 12.2 12 8 16.2l1.4 1.4L15 12 9.4 6.4z"/></svg></button>
 </div>
 <div id="thread"></div>
 <div id="agentsheet"><div id="agentlist"></div></div>
@@ -862,6 +871,7 @@ html.ios #zoombox input{width:100%;flex:1}
 <button id="threaddown" type="button" aria-label="Jump to newest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16.5 4.5 9l1.4-1.4L12 13.7l6.1-6.1L19.5 9 12 16.5z"/></svg></button>
 <div id="zoombox">
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12z"/></svg><input id="zoomrange" type="range" min="60" max="600" step="5" value="100" aria-label="Avatar zoom"></div>
+  <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h9v2H8.5v12h-2V7H3V5zm10 5h8v2h-3v7h-2v-7h-3v-2z"/></svg><input id="fontrange" type="range" min="12" max="22" step="0.5" value="14.5" aria-label="Thread text size"></div>
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2s6 7.1 6 12a6 6 0 0 1-12 0c0-4.9 6-12 6-12zm0 16a4 4 0 0 0 4-4c0-.6-.1-1.2-.4-1.9L8.4 15.3A4 4 0 0 0 12 18z"/></svg><input id="alpharange" type="range" min="10" max="100" step="5" value="100" aria-label="Avatar opacity"></div>
 </div>
 <!-- Avatar carousel: horizontal swipe across her opens the deck. Two
@@ -6318,6 +6328,39 @@ if(IS_IOS){
   // plate, so ask again once she is actually drawn.
   startFraming();
   setTimeout(startFraming,1200);
+  /* Her size, her opacity, and now the size of the words - the three
+     things you tune while reading. Text is a variable so the cards, the
+     steps and the captions all move together (owner, 2026-08-05). */
+  const fontRange=document.getElementById('fontrange');
+  const paintFont=value=>{
+    document.documentElement.style.setProperty('--thread-font',value+'px');
+    fontRange.value=String(value);
+  };
+  let savedFont=null;
+  try{savedFont=localStorage.getItem('viv-font');}catch(e){}
+  paintFont(savedFont!==null?Number(savedFont):Number(fontRange.value));
+  fontRange.addEventListener('input',()=>{
+    try{localStorage.setItem('viv-font',fontRange.value);}catch(e){}
+    paintFont(Number(fontRange.value));
+    // The pinned turn's geometry just changed under it.
+    threadHold();
+  });
+  /* Fold: nine buttons down the edge is a lot of furniture when all you
+     want is to read. The fold button stays, and becomes the way back. */
+  const railFold=document.getElementById('rail-fold');
+  const paintFold=folded=>{
+    document.documentElement.classList.toggle('rail-folded',folded);
+    railFold.setAttribute('aria-label',
+      folded?'Bring the tools back':'Fold the tools away');
+  };
+  let savedFold=null;
+  try{savedFold=localStorage.getItem('viv-rail-folded');}catch(e){}
+  paintFold(savedFold==='1');
+  railFold.addEventListener('click',()=>{
+    const folded=!document.documentElement.classList.contains('rail-folded');
+    try{localStorage.setItem('viv-rail-folded',folded?'1':'0');}catch(e){}
+    paintFold(folded);
+  });
   alphaRange.addEventListener('input',()=>{
     try{localStorage.setItem('viv-alpha',alphaRange.value);}catch(e){}
     IOS_ALPHA=Number(alphaRange.value)/100;

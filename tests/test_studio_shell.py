@@ -183,3 +183,13 @@ class HeadFramingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_a_pasted_key_can_be_checked(self):
+        # A key field is unreadable by design, which is fine until you need
+        # to confirm you pasted the right one (owner, 2026-08-05). The
+        # handler is DELEGATED because the blocks re-render on every
+        # provider change and a bound one would be lost.
+        self.assertIn('data-peek="${kind}"', self.settings)
+        self.assertIn('class="keyrow"', self.settings)
+        self.assertIn("event.target.closest('[data-peek]')", self.settings)
+        self.assertIn("field.type = shown ? 'password' : 'text';", self.settings)

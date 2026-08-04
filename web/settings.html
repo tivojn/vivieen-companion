@@ -62,6 +62,16 @@ nav button{background:none;border:0;color:var(--dim);font:inherit;font-weight:50
 nav button:hover{background:var(--hover);color:var(--ink)}
 nav button.on{background:var(--press);color:var(--ink);font-weight:600}
 .grow{flex:1}
+.keyrow{display:flex;gap:6px;align-items:center}
+.keyrow input{flex:1;min-width:0}
+/* A pasted key is unreadable by design, which is fine until you need to
+   check you pasted the right one (owner, 2026-08-05). */
+.peek{flex:none;width:34px;height:34px;padding:0;display:flex;align-items:center;
+  justify-content:center;border:1px solid var(--line);background:var(--panel);
+  border-radius:8px;color:var(--faint);cursor:pointer}
+.peek:hover{color:var(--ink);background:var(--hover)}
+.peek.on{color:var(--ink);border-color:var(--accent-line)}
+.peek svg{width:17px;height:17px;fill:currentColor}
 .back{color:var(--dim);text-decoration:none;font-size:13px;padding:6px 10px;border-radius:6px}
 .back:hover{color:var(--ink);background:var(--hover)}
 .theme-toggle{display:grid;place-items:center;width:30px;height:30px;border:1px solid var(--line);
@@ -1209,6 +1219,19 @@ document.documentElement.dataset.design='quiet';</script>
 <script>
 const $ = s => document.querySelector(s);
 const api = async (p, o) => (await fetch(p, o)).json();
+/* Show the key you just pasted. Delegated, because the blocks re-render
+   whenever a provider changes and a bound handler would be lost. */
+document.addEventListener('click', event => {
+  const button = event.target.closest && event.target.closest('[data-peek]');
+  if (!button) return;
+  const field = button.parentElement.querySelector('[data-api-key]');
+  if (!field) return;
+  const shown = field.type === 'text';
+  field.type = shown ? 'password' : 'text';
+  button.classList.toggle('on', !shown);
+  button.title = shown ? 'Show the key' : 'Hide the key';
+  button.setAttribute('aria-label', button.title);
+});
 $('#theme-toggle').onclick = () => {
   const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
   document.documentElement.dataset.theme = next;
@@ -1494,7 +1517,7 @@ function renderBlock(kind) {
     element.innerHTML = `${providerField}
       <div class="row" style="margin-top:14px">
         ${provider.key ? `<div class="f"><label>API key ${keyBadge}</label>
-          <input type="password" data-api-key="${kind}" placeholder="${config.has_key ? '•••••••• leave blank to keep' : 'paste key'}"></div>` : ''}
+          <div class="keyrow"><input type="password" data-api-key="${kind}" placeholder="${config.has_key ? '•••••••• leave blank to keep' : 'paste key'}"><button class="peek" type="button" data-peek="${kind}" title="Show the key" aria-label="Show the key"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-9 7s4 7 9 7 9-4.5 9-7-4-7-9-7zm0 2c3.6 0 6.5 3 7 5-.5 2-3.4 5-7 5s-6.5-3-7-5c.5-2 3.4-5 7-5zm0 1.8A3.2 3.2 0 1 0 12 15.2 3.2 3.2 0 0 0 12 8.8z"/></svg></button></div></div>` : ''}
         <div class="f"><label>Endpoint</label>
           <input data-endpoint="${kind}" value="${esc(config.base_url || '')}" placeholder="${esc(provider.base || 'default')}"></div>
       </div>
