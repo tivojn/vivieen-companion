@@ -148,15 +148,28 @@ html.listening #listenWave{display:flex}
   background:rgba(255,255,255,.82);transition:height 80ms ease}
 #listenWaveText{color:rgba(255,255,255,.6);font-family:inherit;font-size:11px;
   font-weight:500;line-height:1;letter-spacing:.02em}
-#status{position:fixed;top:20px;left:24px;font-size:12px;letter-spacing:.08em;
+/* Above the empty-avatar card. A phone pinned to solo with a cold cache
+   draws that card and nothing else, and the chip painted underneath it was
+   an app with no way out (workflow review, 2026-08-04). */
+#status{z-index:30;position:fixed;top:20px;left:24px;font-size:12px;letter-spacing:.08em;
   text-transform:uppercase;opacity:.55;display:flex;align-items:center;gap:9px}
 #st{max-width:calc(100vw - 190px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* The ROAD, kept apart from the brain. One line saying "internet · enconvo ·
    Mavis" is three variables nobody reads; a chip answers "why is this slow"
    at a glance and the line goes on answering "who is that". */
-#road{padding:2px 7px;border-radius:6px;border:1px solid var(--tint-line);
+/* The word is 14px tall and it is the ONLY way out of a pin, so the thing
+   you can hit is 44 - the padding is a hit area, not decoration. */
+#road{position:relative;padding:2px 7px;border-radius:6px;
+  border:1px solid var(--tint-line);
   background:var(--tint);color:var(--tint-ink);font-size:10px;line-height:1;
   letter-spacing:.1em;opacity:.85}
+#road::before{content:'';position:absolute;left:-10px;right:-10px;
+  top:-15px;bottom:-15px}
+#road:active{opacity:1;transform:scale(.94)}
+/* Filled = you chose this road. Outlined = this is merely the one she
+   found. No extra word, and it reads at a glance from across the desk. */
+#road.pinned{background:var(--solid);color:var(--solid-ink);
+  border-color:var(--solid);opacity:1}
 #road[hidden]{display:none}
 #dot{width:7px;height:7px;border-radius:50%;background:#5b6472;transition:background .25s}
 #dot.on{background:#38d17a;box-shadow:0 0 10px #38d17a}
@@ -446,7 +459,13 @@ html.ios #modellist button{display:block;width:100%;text-align:left;
   font:inherit;font-size:15px;border-radius:12px;
   -webkit-user-select:none;user-select:none}
 html.ios #modellist button.on{background:var(--tint);font-weight:600}
-html.ios #modellist .note{padding:11px 14px;font-size:13px;opacity:.6}
+/* A road is a choice with a consequence, so the consequence is on the row
+   rather than learned the hard way. */
+html.ios #modellist button .why{font-size:12px;opacity:.6;margin-top:3px;
+  font-weight:400;line-height:1.35;white-space:normal}
+/* .6 over a blurred card sitting on her face was not readable - and the
+   road sheet's note is the sentence that says which road is live. */
+html.ios #modellist .note{padding:11px 14px;font-size:13px;opacity:.78}
 html.ios #modellist .sheethead{display:flex;align-items:center;gap:6px;
   padding:8px 14px 10px;font-size:12px;letter-spacing:.06em;
   text-transform:uppercase;opacity:.55;color:var(--card-ink)}
@@ -1368,6 +1387,15 @@ function enconvoStatus(){
 }
 /* What the line says when nothing is happening. */
 function idleStatus(){return enconvoStatus()||'ready';}
+/* A request refused because the OWNER pinned the phone is not a fault, and
+   must never be reported as one. The native side marks those refusals; the
+   page turns them into a sentence that names the cause and the switch. */
+function pinnedRefusal(thing){
+  return /\bpinned\b/i.test(String((thing&&thing.message)||thing||''));
+}
+function pinnedSorry(what){
+  return what+' needs your Mac. Tap SOLO in the corner to let her reach it.';
+}
 /* Which road her answer came down: the Mac on this wifi, the Mac through
    the relay, or nobody but this phone. The native side STAMPS it on the
    health reply rather than the page guessing - a guess would be wrong in
@@ -1376,20 +1404,38 @@ function idleStatus(){return enconvoStatus()||'ready';}
    Held for a beat before it changes, and never changed mid-answer: at the
    edge of wifi the two roads trade places every second, and a corner that
    strobes - or that moves while you are waiting - reads as a crash. */
-const ROAD={shown:'',seen:'',since:0,word:{lan:'LAN',internet:'INTERNET',solo:'SOLO'}};
+const ROAD={shown:'',seen:'',since:0,pin:'auto',sheet:false,grace:0,
+  word:{lan:'LAN',internet:'INTERNET',solo:'SOLO'}};
+/* Filled means you chose THIS road and you are on it. A relay pin whose
+   relay has gone quiet falls back to solo - and that solo must read
+   outlined, because you did not choose it and it is spending your keys. */
+function roadIsPinned(name){
+  return ROAD.pin==='solo'?name==='solo'
+        :ROAD.pin==='relay'?name==='internet'
+        :false;
+}
 function setRoad(name){
   if(!IS_IOS)return;                       // on the Mac there is no road
   const el=document.getElementById('road');
   if(!el)return;
   if(name!==ROAD.seen){ROAD.seen=name;ROAD.since=Date.now();}
-  if(name===ROAD.shown)return;
+  if(name===ROAD.shown){el.classList.toggle('pinned',roadIsPinned(name));return;}
   // Solo is a STATE, not a measurement - it does not need to settle, and
   // waiting ten seconds to admit the Mac is gone is ten seconds of lying.
-  if(name!=='solo'&&ROAD.shown&&Date.now()-ROAD.since<10000)return;
-  if(TURN.abort)return;
+  //
+  // Nor does the settling apply just after YOU moved the road. Letting go
+  // of a pin walks through solo and the relay on the way back to the wifi,
+  // and each step reset the clock - so the corner sat on SOLO for twenty
+  // seconds after a tap that said Automatic. Right after a tap, the chip
+  // follows immediately; the smoothing is for a marginal wifi, not for a
+  // decision (owner, 2026-08-04).
+  if(ROAD.pin==='auto'&&name!=='solo'&&ROAD.shown
+     &&Date.now()>ROAD.grace&&Date.now()-ROAD.since<10000)return;
+  if(TURN.abort&&ROAD.pin==='auto')return;
   ROAD.shown=name;
   el.textContent=ROAD.word[name]||'';
   el.hidden=!el.textContent;
+  el.classList.toggle('pinned',roadIsPinned(name));
 }
 
 (async()=>{
@@ -1403,6 +1449,18 @@ function setRoad(name){
     if(SHELL&&SHELL.isElectron)SHELL.setPetHit(true);
     setStatus('avatar setup required','busy');
     ptt.disabled=true;txt.disabled=true;
+    // She may exist and simply be on the far side of a pin. The poll below
+    // is the only thing that raises the chip, and this branch used to
+    // return before it ever ran - a phone with a cold cache, pinned to
+    // solo, drew a "create your first avatar" card over the one control
+    // that could have undone it (workflow review, 2026-08-04). One probe,
+    // enough to raise the chip - not the full poll, which would re-enable
+    // a composer this branch just switched off.
+    if(IS_IOS)fetch('health').then(r=>r.json()).then(h=>{
+      if(h.pin)ROAD.pin=h.pin;
+      if(h.offline){SOLO.pinned=Boolean(h.pinned);setRoad('solo');}
+      else setRoad(h.road||'lan');
+    }).catch(()=>setRoad('solo'));
     return;
   }
   Object.assign(BT,M.blink||{});
@@ -1514,9 +1572,15 @@ function setRoad(name){
 
 async function poll(){
   try{const h=await(await fetch('health')).json();
+    // The pin rides on every health answer, offline or not, so the page and
+    // the native router can never disagree about what the owner chose.
+    if(h.pin)ROAD.pin=h.pin;
     // The scheme answers an unreachable Mac with {offline:true} - JSON,
     // so .json() succeeds and only this check reaches the catch.
-    if(h.offline)throw new Error('offline');
+    // A Mac we chose not to reach is not a Mac that is asleep, and every
+    // sentence downstream depends on knowing which (owner, 2026-08-04).
+    if(h.offline){SOLO.pinned=Boolean(h.pinned);throw new Error('offline');}
+    SOLO.pinned=false;
     SOLO.misses=0;soloExit();
     setRoad(h.road||'lan');
     const providerOK=h.llm_ok??h.provider_ok??h.ollama;
@@ -1542,10 +1606,14 @@ async function poll(){
     // that syncs when the Mac is there, not a terminal that waits for it
     // - three seconds of "server offline" before she will answer is three
     // seconds of looking broken (owner, 2026-08-04).
-    if(IS_IOS){SOLO.misses++;soloEnter();}
-    if(SOLO.active){providerReady=true;setRoad('solo');}
+    // The chip goes up whether or not solo could START. A phone with no
+    // key synced is exactly the phone that needs to find its way back out,
+    // and the chip is the only door there is (workflow review, 2026-08-04).
+    if(IS_IOS){SOLO.misses++;soloEnter();setRoad('solo');}
+    if(SOLO.active){providerReady=true;}
     else if(monitorEnabled)renderMonitorStatus();
-    else setStatus('server offline','');}
+    // Never "offline" for a road the owner chose.
+    else setStatus(SOLO.pinned?'pinned · solo only':'server offline','');}
   setTimeout(poll,SOLO.active?5000:1500);
 }
 
@@ -1557,7 +1625,7 @@ async function poll(){
    reach - the page only ever knows key NAMES. Chat, voice, ears and
    image come straight from the providers; EnConvo and live talk stay
    Mac-bound and say so honestly. */
-const SOLO={active:false,cfg:null,misses:0,told:false};
+const SOLO={active:false,cfg:null,misses:0,told:false,pinned:false};
 async function soloLoad(){
   try{SOLO.cfg=await(await fetch('solo/config')).json();}
   catch(e){SOLO.cfg=null;}
@@ -1904,7 +1972,10 @@ function soloEnter(){
           ?'no API key has reached this phone yet — open the app once beside your Mac'
           :'this build has no solo mode';
         setStatus('offline · '+(SOLO.cfg?'no key synced':'no solo'),'');
-        flashPrompt('Your Mac is asleep and '+why);
+        // Never blame the Mac for a road the owner chose.
+        flashPrompt(SOLO.pinned
+          ?'You pinned her to this phone, and '+why
+          :'Your Mac is asleep and '+why);
       });
     }
     return;
@@ -1914,7 +1985,7 @@ function soloEnter(){
   document.documentElement.classList.add('solo');
   const p=soloLLM();
   setStatus('solo · '+(p?p.label:'ready'),'on');
-  flashPrompt('Mac unreachable · running solo on your own keys');
+  if(!SOLO.pinned)flashPrompt('Mac unreachable · running solo on your own keys');
 }
 function soloExit(){
   if(!SOLO.active)return;
@@ -3350,7 +3421,18 @@ async function startLiveTalk(){
   // the provider's socket anyway, because a backgrounded WebView is
   // suspended and would take it down. Solo hands the whole audio path to
   // the app and keeps only the display (owner, 2026-08-03).
-  const ws=SOLO.active?nativeLiveSocket():new WebSocket(wsURL('/live/voice'));
+  // Pinned to this phone, her own realtime leg carries the call - that is
+  // what the pin asked for. Pinned to the relay, there is nothing to carry
+  // it: a mailbox cannot hold a socket, and the LAN is the road you said
+  // not to take.
+  if(ROAD.pin==='relay'){
+    setStatus(idleStatus(),'on');
+    flashPrompt('A call cannot go through the relay — it needs this wi-fi. '
+      +'Tap INTERNET in the corner and choose Automatic.');
+    return;
+  }
+  const ws=(SOLO.active||ROAD.pin==='solo')
+    ?nativeLiveSocket():new WebSocket(wsURL('/live/voice'));
   ws.binaryType='arraybuffer';
   const session={ws,ctx:null,stream:null,cap:null,queueT:0,sources:new Set(),
     agentText:'',echoGuardUntil:0};
@@ -4146,6 +4228,11 @@ async function interimTranscribe(){
    microphone - use it, collect PCM, and post one WAV when the finger
    lifts. */
 function wsURL(path){
+  // A WebSocket never passes through the native router, so the pin cannot
+  // refuse it there - this is the one door the phone opens by itself, and
+  // it carries the pairing token onto the LAN. Under any pin it stays shut
+  // (workflow review, 2026-08-04).
+  if(ROAD.pin!=='auto')return '';
   const lan=window.VIV_LAN||'';
   if(lan){
     const base=lan.replace(/^http/,'ws').replace(/\/$/,'');
@@ -5232,25 +5319,45 @@ if(IS_IOS){
       body.append('photo',chosen,chosen.name||'photo.jpg');
       const up=await(await fetch('api/enconvo/photo',{method:'POST',body})).json();
       if(up.detail)throw new Error(up.detail);
+      // A refusal is a valid JSON body, so "no path" is a FAILED upload,
+      // not a successful one. Pushing undefined here announced "Photo
+      // attached" and then sent the agent a broken path (workflow review,
+      // 2026-08-04).
+      if(!up.path)throw new Error(up.error||'the photo did not land');
       ENCONVO.pending=(ENCONVO.pending||[]);
       ENCONVO.pending.push(up.path);
       flashPrompt('Photo attached · say something about it and send');
     }catch(error){
-      flashPrompt('Photo upload failed: '+String(error.message||error).slice(0,80));
+      flashPrompt(pinnedRefusal(error)
+        ?pinnedSorry('Photos')
+        :'Photo upload failed: '+String(error.message||error).slice(0,80));
     }
   });
   // A long-lived phone page across a Mac engine restart runs stale code
   // (it faked the photo-upload failure, 2026-08-02). Watch the boot id;
   // when the engine is reborn, be reborn with it.
+  //
+  // A SECOND poller, and setInterval does not care whether the first one
+  // came back. Over the mailbox a health probe can take longer than the
+  // fifteen seconds between ticks, so these stacked: every tick added
+  // another unanswered request to a box that was already behind, and the
+  // Mac replayed health in bursts while the phone timed out on all of them
+  // (backend log, 2026-08-04). Wait for each one, and do not run it at all
+  // when the main poll has already told us the Mac is not there.
   let bootSeen='';
-  setInterval(async()=>{
-    try{
-      const h=await(await fetch('health',{cache:'no-store'})).json();
-      if(h.offline||!h.boot)return;
-      if(!bootSeen)bootSeen=h.boot;
-      else if(bootSeen!==h.boot)location.reload();
-    }catch(e){}
-  },15000);
+  const watchBoot=async()=>{
+    if(!SOLO.active&&ROAD.pin==='auto'){
+      try{
+        const h=await(await fetch('health',{cache:'no-store'})).json();
+        if(!h.offline&&h.boot){
+          if(!bootSeen)bootSeen=h.boot;
+          else if(bootSeen!==h.boot){location.reload();return;}
+        }
+      }catch(e){}
+    }
+    setTimeout(watchBoot,15000);
+  };
+  setTimeout(watchBoot,15000);
   // Mute: her voice, one tap. Lips keep moving - a muted TV, not a
   // frozen one.
   const railMute=document.getElementById('rail-mute');
@@ -5334,7 +5441,9 @@ if(IS_IOS){
           location.reload();
         }catch(err){
           use.textContent='Failed';
-          flashPrompt('Could not switch: '+String(err.message||err).slice(0,80));
+          flashPrompt(pinnedRefusal(err)
+            ?pinnedSorry('Switching avatars')
+            :'Could not switch: '+String(err.message||err).slice(0,80));
         }
       });
       avfanDetail.append(label,use);
@@ -5588,12 +5697,19 @@ if(IS_IOS){
     bar.append(t);
     modelList.append(bar);
   }
+  /* One sheet, two contents. Over the relay a model list can take many
+     seconds, and it used to land on top of whatever the owner had opened
+     since - including the road sheet, the one control that could have
+     ended the wait (workflow review, 2026-08-04). */
+  let sheetSeq=0;
   async function showModels(provider,platforms){
+    const mine=++sheetSeq;
     modelList.replaceChildren();
     sheetHead(provider,()=>void showPlatforms());
     note('Loading models…');
     try{
       const state=await llmChoices(provider,platforms);
+      if(mine!==sheetSeq)return;
       modelList.replaceChildren();
       sheetHead(state.provider||provider,()=>void showPlatforms());
       if(state.error)note(state.error);
@@ -5611,18 +5727,27 @@ if(IS_IOS){
         modelList.append(row);
       });
     }catch(e){
+      if(mine!==sheetSeq)return;
       modelList.replaceChildren();
       sheetHead(provider,()=>void showPlatforms());
       note(String(e.message||e).slice(0,120));
     }
   }
   async function showPlatforms(){
+    const mine=++sheetSeq;
     modelList.replaceChildren();note('Loading…');
     try{
       const platforms=await llmPlatforms();
+      if(mine!==sheetSeq)return;
       modelList.replaceChildren();
       sheetHead('Choose a platform',null);
-      if(!platforms.rows.length){note('no brain configured yet');return;}
+      if(!platforms.rows.length){
+        note(SOLO.pinned
+          ?'Pinned to this phone — your Mac’s brains are out of reach.'
+          :'no brain configured yet');
+        if(SOLO.pinned)note('Tap SOLO in the corner and choose Automatic.');
+        return;
+      }
       platforms.rows.forEach(row=>{
         const button=document.createElement('button');
         button.type='button';
@@ -5637,18 +5762,108 @@ if(IS_IOS){
       if(platforms.solo&&platforms.rows.length)
         void showModels(platforms.rows[0].id,platforms);
     }catch(e){
+      if(mine!==sheetSeq)return;
       modelList.replaceChildren();
       note(String(e.message||e).slice(0,120));
     }
   }
+  /* ---- the road, and the one time a person knows better ----------------
+     Auto is right almost always. It is wrong in one shape the code cannot
+     diagnose: a network the phone and the Mac both sit on which will not
+     carry a packet between them - hotel wifi, guest wifi, a segmented
+     office VLAN. Every direct attempt there is a black hole, and no probe
+     can tell a black hole from a Mac that is merely busy. Only the person
+     standing in the hotel room can. So the road is the thing that gets a
+     manual override, and the pin dies with the app because where you are
+     standing is not where you will be tomorrow (owner, 2026-08-04). */
+  const ROADS=[
+    {id:'auto',label:'Automatic',
+     why:'Your Mac when it is there, this phone when it is not.'},
+    {id:'relay',label:'Through the internet',
+     why:'Skip this wi-fi and go the long way round. For a network that '
+        +'will not reach your Mac. About five seconds a message.'},
+    {id:'solo',label:'Solo — only this phone',
+     why:'Your own keys, charged per message. No EnConvo, no key refresh, '
+        +'and this conversation is held here and not saved.'},
+  ];
+  const ROAD_NOW={
+    lan:'Right now: your Mac is on this wi-fi.',
+    internet:'Right now: reaching your Mac the long way round.',
+    solo:'Right now: nothing but this phone.',
+  };
+  const ROAD_SET={
+    auto:'Finding her own way again.',
+    relay:'Going the long way round — about five seconds a message.',
+    solo:'Pinned to this phone. Your own keys, and EnConvo stays on the Mac.',
+  };
+  async function pickRoad(id,row){
+    if(row){row.disabled=true;row.classList.add('working');}
+    let failed='';
+    try{
+      const r=await(await fetch('solo/road',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({pin:id})})).json();
+      // A body that lost the ticket race comes back 409 with the OLD pin.
+      // Say so rather than announcing a road nobody took.
+      if(r.error)failed=r.error;
+      ROAD.pin=r.pin||id;
+    }catch(e){failed=String(e.message||e).slice(0,80);}
+    if(row){row.disabled=false;row.classList.remove('working');}
+    if(failed){flashPrompt('That did not take — tap it again');showRoads();return;}
+    // Say it NOW, do not wait for a poll to notice.
+    SOLO.pinned=(ROAD.pin==='solo');
+    ROAD.shown='';ROAD.grace=Date.now()+20000;
+    const el=document.getElementById('road');
+    if(el)el.classList.remove('pinned');
+    if(ROAD.pin==='relay')setRoad('internet');
+    else if(ROAD.pin==='solo')setRoad('solo');
+    flashPrompt(ROAD_SET[ROAD.pin]||'');
+    closeModels();
+  }
+  function showRoads(){
+    sheetSeq++;                       // any brain fetch still in flight loses
+    modelList.replaceChildren();
+    sheetHead('Where she thinks',null);
+    ROADS.forEach(road=>{
+      const button=document.createElement('button');
+      button.type='button';
+      button.className=(road.id===ROAD.pin?'on':'');
+      const name=document.createElement('div');name.textContent=road.label;
+      const why=document.createElement('div');
+      why.className='why';why.textContent=road.why;
+      button.append(name,why);
+      button.addEventListener('click',()=>void pickRoad(road.id,button));
+      modelList.append(button);
+    });
+    note((ROAD_NOW[ROAD.shown]||'')
+      +' A choice here lasts until you close her.');
+  }
+  /* The chip is the ROAD and the line is the BRAIN, so they are two tap
+     targets in one corner. Tapping the chip must not also open the brain
+     picker underneath it - and while the brain sheet is open it SWITCHES to
+     the roads rather than closing, because a tap that looks like nothing
+     happened is how you lose the only door out of a pin. */
+  document.getElementById('road').addEventListener('click',event=>{
+    if(!IS_IOS)return;
+    event.stopPropagation();
+    if(document.documentElement.classList.contains('models-open')
+       &&ROAD.sheet){closeModels();return;}
+    document.documentElement.classList.add('models-open');
+    ROAD.sheet=true;
+    showRoads();
+  });
   document.getElementById('status').addEventListener('click',()=>{
     if(!IS_IOS)return;
-    if(document.documentElement.classList.contains('models-open')){closeModels();return;}
+    if(document.documentElement.classList.contains('models-open')
+       &&!ROAD.sheet){closeModels();return;}
     // Mid-call or mid-turn the line is saying something else; leave it.
     if(LIVE||document.documentElement.classList.contains('turning'))return;
     document.documentElement.classList.add('models-open');
+    ROAD.sheet=false;
     void showPlatforms();
   });
+  // The pin itself comes from the health reply - see poll(). One source,
+  // polled every beat, so the corner cannot disagree with the router.
   addEventListener('pointerdown',event=>{
     if(!document.documentElement.classList.contains('models-open'))return;
     if(modelSheet.contains(event.target))return;
@@ -5703,9 +5918,11 @@ if(IS_IOS){
     // window - so the sheet sat on "Looking for EnConvo..." forever
     // (owner, 2026-08-03). Refuse now, and say which part is missing.
     if(SOLO.active){
-      flashPrompt(ROAD.shown==='internet'
-        ?'still finding your Mac through the relay — try again in a moment'
-        :'EnConvo lives on your Mac — wake it to couple an agent');
+      flashPrompt(SOLO.pinned
+        ?pinnedSorry('EnConvo')
+        :ROAD.shown==='internet'
+          ?'still finding your Mac through the relay — try again in a moment'
+          :'EnConvo lives on your Mac — wake it to couple an agent');
       return;
     }
     document.documentElement.classList.add('agents-open');

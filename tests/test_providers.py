@@ -396,8 +396,11 @@ class ProviderDefaultsTests(unittest.TestCase):
                   encoding="utf-8") as handle:
             page = handle.read()
         self.assertIn("window.__vivAvatarChanged", page)
-        # solo on the FIRST miss - waiting for a second looks broken
-        self.assertIn("if(IS_IOS){SOLO.misses++;soloEnter();}", page)
+        # solo on the FIRST miss - waiting for a second looks broken - and
+        # the road chip goes up in the same breath, whether or not solo
+        # could start: a phone with no key synced is exactly the one that
+        # needs to find its way back out of a pin.
+        self.assertIn("if(IS_IOS){SOLO.misses++;soloEnter();setRoad('solo');}", page)
 
     def test_live_state_keeps_a_last_known_copy(self):
         # Settings opened instantly and then sat BARE: no avatars, no

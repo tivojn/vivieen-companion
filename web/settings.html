@@ -3958,6 +3958,15 @@ $('#save').onclick = async () => {
   const r = await api('/api/config', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(CFG)
   });
+  // A refused save is still valid JSON, so "no config came back" is the
+  // only tell. Never print "Saved." over a refusal.
+  if (!r || !r.config) {
+    note(r && r.pinned
+      ? 'Not saved — this phone is pinned to Solo only. Tap SOLO in the '
+        + 'corner of her screen, choose Automatic, then save again.'
+      : 'Not saved — ' + String((r && r.error) || 'your Mac did not answer'));
+    return;
+  }
   CFG = r.config;
   GLOBALS = r.globals || GLOBALS;
   ['llm', 'tts', 'stt'].forEach(resetModelState);
@@ -3973,6 +3982,16 @@ $('#revert').onclick = () => boot();
 
 async function boot() {
   const r = await api('/api/config');
+  // Every one of these settings lives on the Mac. Pinned to the phone, the
+  // page used to throw here and leave a blank screen with an empty message
+  // bar - and the chip that undoes the pin is on her screen, not this one
+  // (workflow review, 2026-08-04). Say what happened and where the switch
+  // is, before anything else can fail more obscurely.
+  if (r && r.pinned) {
+    note('Settings live on your Mac, and this phone is pinned to Solo only. '
+       + 'Tap SOLO in the corner of her screen and choose Automatic.');
+    return;
+  }
   CFG = r.config;
   CAT = r.catalog;
   GLOBALS = r.globals || {};

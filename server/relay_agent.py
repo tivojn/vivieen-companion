@@ -110,8 +110,17 @@ def _replay(envelope, engine_port, engine_token, send):
               "body": json.dumps({"error": str(error)[:200]})})
 
 
+_RUNNING = None
+
+
 def start(engine_port):
     """Called from the engine at boot. No relay-url file, no thread."""
+    # Exactly one pump per process. Two consumers on one mailbox both read
+    # and both replay - the Mac answers everything twice, and the two
+    # cursors leapfrog past each other's items.
+    global _RUNNING
+    if _RUNNING is not None and _RUNNING.is_alive():
+        return _RUNNING
     base = _read(os.path.join(SUPPORT, "relay-url"))
     token = _read(os.path.join(SUPPORT, "remote-token"))
     if not base or not token:
@@ -126,8 +135,14 @@ def start(engine_port):
                 _call_relay(base, channel, proof, "dir=to_client",
                             {"items": [message]}, timeout=15)
                 return
-            except Exception:
+            except Exception as error:
+                last = error
                 time.sleep(attempt)
+        # A dropped answer is a phone that waits out its whole window and
+        # then blames the relay. Say it here, where it is still diagnosable
+        # (owner's wedged pump, 2026-08-04).
+        print("[viv] relay: ANSWER DROPPED for %s after 3 tries: %s"
+              % (message.get("id", "?"), str(last)[:120]), flush=True)
 
     def lan_addresses(port):
         """Every address this Mac can be reached on from its own network.
@@ -222,6 +237,7 @@ def start(engine_port):
                 time.sleep(5)
 
     thread = threading.Thread(target=pump, daemon=True)
+    _RUNNING = thread
     thread.start()
     threading.Thread(target=presence, args=(engine_port,), daemon=True).start()
     return thread

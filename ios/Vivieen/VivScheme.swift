@@ -37,6 +37,26 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     /// One failed direct attempt is enough to stop trying for a while;
     /// otherwise every asset pays the timeout on cellular.
     private var directOffUntil = Date.distantPast
+    /// The road the OWNER chose, when the automatic choice is wrong.
+    ///
+    /// "auto" is the road-finding above. "relay" is for a network the
+    /// phone and the Mac both sit on but which will not carry a packet
+    /// between them - hotel and guest wifi, a segmented office VLAN - where
+    /// every direct attempt is a black hole no probe can tell apart from a
+    /// Mac that is merely busy. "solo" is nothing but this phone.
+    ///
+    /// Held in MEMORY, never written down. A pin is a fact about where you
+    /// are standing, and you do not stand there tomorrow: relaunching the
+    /// app clears it, so a pin set in a hotel cannot poison the walk home
+    /// or quietly answer "why can't it find EnConvo" a month later
+    /// (owner, 2026-08-04).
+    private var roadPin = "auto"
+    /// Bumped every time the pin changes. A request already in flight when
+    /// the owner pins the phone must not be allowed to land: the whole
+    /// point of reaching for "solo only" mid-conversation is to STOP
+    /// something, and an answer that arrives ten minutes later out of the
+    /// relay's reply window would walk right past the pin.
+    private var pinGeneration: UInt64 = 0
     private let lock = NSLock()
     /// WebKit hands a scheme handler the URL and the headers of a fetch,
     /// but NEVER its body - so every POST arrived empty and she answered
@@ -281,29 +301,53 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     /// say so. The owner kept having to guess whether a slow reply meant
     /// the Mac was far away, asleep, or simply not there - the line named
     /// the brain but never the route (owner, 2026-08-04).
+    /// The pin rides along on every health answer, so the page never has
+    /// to ask separately and can never disagree with this file about what
+    /// the owner chose.
     private func stampRoad(_ data: Data, _ road: String) -> Data {
         guard var top = (try? JSONSerialization.jsonObject(with: data))
                 as? [String: Any] else { return data }
         top["road"] = road
+        top["pin"] = pin()
         return (try? JSONSerialization.data(withJSONObject: top)) ?? data
+    }
+
+    /// "The Mac is not answering", with the pin attached. A relay pin whose
+    /// relay has gone quiet lands here, and without the pin the page would
+    /// read it as an ordinary dead Mac, enter solo, and start spending
+    /// metered keys under a chip still claiming the relay - a pin turning
+    /// itself into a bill (workflow review, 2026-08-04).
+    private func offlineHealth(_ task: WKURLSchemeTask, requested: URL,
+                               pinned: Bool) {
+        var body: [String: Any] = ["offline": true, "pin": pin()]
+        if pinned { body["pinned"] = true }
+        let data = (try? JSONSerialization.data(withJSONObject: body))
+            ?? Data("{\"offline\":true}".utf8)
+        finish(task, url: requested, data: data,
+               type: "application/json", status: 503)
     }
 
     /// The long way round to the Mac, for the liveness probe only. Used
     /// both when the direct road just failed and when it is fused off, so
     /// the two cases report the same road - because they are.
     private func healthViaRelay(_ task: WKURLSchemeTask, path: String,
-                                requested: URL) {
+                                requested: URL, generation: UInt64) {
         relay.send(path: path, method: "GET", body: nil,
                    timeout: 15) { [weak self] reply in
             guard let self else { return }
+            // The owner may have pinned this phone while the mailbox was
+            // thinking. An answer from the Mac that arrives after that is
+            // not an answer we are allowed to use.
+            guard self.generation() == generation else {
+                self.offlineHealth(task, requested: requested, pinned: true)
+                return
+            }
             if let reply, reply.status == 200 {
                 self.finish(task, url: requested,
                             data: self.stampRoad(reply.data, "internet"),
                             type: "application/json")
             } else {
-                self.finish(task, url: requested,
-                            data: Data("{\"offline\":true}".utf8),
-                            type: "application/json", status: 503)
+                self.offlineHealth(task, requested: requested, pinned: false)
             }
         }
     }
@@ -365,12 +409,23 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
 
     private func skipDirectNow() -> Bool {
         lock.lock(); defer { lock.unlock() }
-        return Date() < directOffUntil
+        return Date() < directOffUntil || roadPin != "auto"
+    }
+
+    private func pin() -> String {
+        lock.lock(); defer { lock.unlock() }
+        return roadPin
+    }
+
+    private func generation() -> UInt64 {
+        lock.lock(); defer { lock.unlock() }
+        return pinGeneration
     }
 
     private func refreshInBackground(_ path: String) {
         lock.lock()
-        let skip = Date() < directOffUntil || refreshed.contains(bare(path))
+        let skip = Date() < directOffUntil || roadPin != "auto"
+            || refreshed.contains(bare(path))
         if !skip { refreshed.insert(bare(path)) }
         lock.unlock()
         if skip { return }
@@ -424,12 +479,38 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     private func route(_ task: WKURLSchemeTask, path: String, method: String,
                        requested: URL, body: Data?) {
 
+        let chosen = pin()
+        let era = generation()
+
+        // Solo mode: these paths are the PHONE's, never the Mac's. The
+        // page asks for a call by NAME of a key; the proxy injects the
+        // value from the iOS Keychain, so no key ever enters the page.
+        // FIRST, because a pin is set through this door and must be
+        // reachable no matter what the pin currently says.
+        if bare(path).hasPrefix("/solo/") {
+            handleSolo(task, requested: requested, path: bare(path),
+                       method: method, body: body)
+            return
+        }
+
         // Health is a LIVENESS PROBE, and a probe must be allowed to
         // fail fast: routed through the relay's ten-minute reply window
         // it never failed at all, the page's poll hung on its very first
         // ask, and solo mode could not trigger (2026-08-03). Direct with
         // a short fuse, one brief relay try, then an honest 503.
         if bare(path) == "/health", method == "GET" {
+            // Pinned to this phone, the honest answer to "is the Mac
+            // there" is "not for us". Saying so through the SAME door a
+            // sleeping Mac uses is what makes the pin hold: the page's own
+            // solo machinery takes over, and its soloExit - which fires on
+            // any healthy reply and would otherwise undo the pin a second
+            // and a half later - can never run. "pinned" is there so the
+            // page blames the right thing, and never says the Mac is
+            // asleep when the owner is the one who stepped away.
+            if chosen == "solo" {
+                offlineHealth(task, requested: requested, pinned: true)
+                return
+            }
             // A probe that takes a road the real requests are NOT taking
             // would lie: the badge would read "lan" while every turn was
             // fused onto the relay for the next twenty seconds. Honour
@@ -438,7 +519,8 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             // It costs nothing either: a probe that skips a dead LAN also
             // stops burning four seconds of every poll on it.
             if skipDirectNow() {
-                healthViaRelay(task, path: path, requested: requested)
+                healthViaRelay(task, path: path, requested: requested,
+                               generation: era)
                 return
             }
             var probe = URLRequest(url: URL(string: address + path)!)
@@ -446,6 +528,10 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             probe.setValue(token, forHTTPHeaderField: "x-vivieen-token")
             session.dataTask(with: probe) { [weak self] data, response, error in
                 guard let self else { return }
+                guard self.generation() == era else {
+                    self.offlineHealth(task, requested: requested, pinned: true)
+                    return
+                }
                 if error == nil, let data,
                    (response as? HTTPURLResponse)?.statusCode == 200 {
                     self.finish(task, url: requested,
@@ -474,16 +560,9 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                 // timing out while the Mac was perfectly reachable and
                 // the phone declared itself offline (owner, 2026-08-03).
                 // Still a fuse: two misses in a row is what enters solo.
-                self.healthViaRelay(task, path: path, requested: requested)
+                self.healthViaRelay(task, path: path, requested: requested,
+                                    generation: era)
             }.resume()
-            return
-        }
-
-        // Solo mode: these paths are the PHONE's, never the Mac's. The
-        // page asks for a call by NAME of a key; the proxy injects the
-        // value from the iOS Keychain, so no key ever enters the page.
-        if bare(path).hasPrefix("/solo/") {
-            handleSolo(task, requested: requested, path: bare(path), body: body)
             return
         }
 
@@ -507,13 +586,25 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             return
         }
 
-        lock.lock()
-        let skipDirect = Date() < directOffUntil
-        lock.unlock()
+        // Pinned to this phone. The cache above already answered anything
+        // that lives here; a snapshot answers the rest of what she knows.
+        // Everything genuinely on the Mac is refused NOW - never handed to
+        // the relay, whose reply window is ten minutes. A pin that makes
+        // Settings spin for ten minutes and then blames the relay would be
+        // worse than no pin (owner, 2026-08-04).
+        if chosen == "solo" {
+            if method == "GET", let held = snapshot(path) {
+                finish(task, url: requested, data: held,
+                       type: "application/json")
+                return
+            }
+            refusePinned(task, requested: requested)
+            return
+        }
 
-        if skipDirect {
+        if skipDirectNow() {
             viaRelay(task, requested: requested, path: path,
-                     method: method, body: body)
+                     method: method, body: body, generation: era)
             return
         }
 
@@ -534,6 +625,11 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         }
         session.dataTask(with: direct) { [weak self] data, response, error in
             guard let self else { return }
+            // Pinned while this was in the air: do not land it.
+            guard self.generation() == era else {
+                self.refusePinned(task, requested: requested)
+                return
+            }
             guard error == nil, let data,
                   let http = response as? HTTPURLResponse else {
                 self.lock.lock()
@@ -546,7 +642,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                 // background, while this request takes the relay.
                 self.discoverMac()
                 self.viaRelay(task, requested: requested, path: path,
-                              method: method, body: body)
+                              method: method, body: body, generation: era)
                 return
             }
             if method == "GET", http.statusCode == 200 {
@@ -568,8 +664,22 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         }.resume()
     }
 
+    /// The one sentence a refusal-by-choice is allowed to be. It says
+    /// "pinned" because two pages print an error string verbatim, and
+    /// nobody should read the bare word "locked" and think something broke.
+    private func refusePinned(_ task: WKURLSchemeTask, requested: URL) {
+        json(task, requested,
+             ["error": "pinned to this phone", "pinned": true],
+             status: 503)
+    }
+
     private func viaRelay(_ task: WKURLSchemeTask, requested: URL, path: String,
-                          method: String, body: Data?) {
+                          method: String, body: Data?, generation era: UInt64) {
+        // Pinned since this request set out - it is not allowed to arrive.
+        guard generation() == era, pin() != "solo" else {
+            refusePinned(task, requested: requested)
+            return
+        }
         // The direct road already failed, so the Mac is asleep or far
         // away. Waiting out the relay's window before showing anything is
         // how Settings sat empty for minutes on cellular. If we hold a
@@ -634,6 +744,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     /// evidence. Runs at boot and whenever the direct road has just
     /// failed, which is exactly when a moved Mac would be the reason.
     func discoverMac() {
+        guard pin() != "solo" else { return }
         relay.presence { [weak self] mac in
             guard let self, let mac else { return }
             let candidates = (mac["lan"] as? [String]) ?? []
@@ -664,7 +775,20 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
 
     /// Pull the solo config + keys from the Mac now (fire-and-forget).
     func syncSolo() {
+        // Pinned to this phone means pinned: no key refresh, no page
+        // warming, not even the presence read. A pin that quietly kept
+        // talking to the Mac would not be a pin (owner, 2026-08-04). The
+        // cost is stated where the pin is chosen - keys stop refreshing
+        // until you let go of it.
+        let chosen = pin()
+        guard chosen != "solo" else { return }
+        // Under a relay pin discoverMac still earns its keep - it reads the
+        // relay and probes, so the moment that hostile wifi is behind you
+        // the LAN address is already known and letting go of the pin is
+        // instant. The other two are direct-only calls onto the very LAN
+        // the pin exists to avoid.
         discoverMac()
+        guard chosen == "auto" else { return }
         SoloStore.shared.sync(address: address, token: token)
         warmPages()
     }
@@ -702,7 +826,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     private func handleSolo(_ task: WKURLSchemeTask, requested: URL,
-                            path: String, body: Data?) {
+                            path: String, method: String, body: Data?) {
         switch path {
         case "/solo/config":
             var config = SoloStore.shared.config
@@ -716,8 +840,55 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             config["has"] = has
             json(task, requested, config)
         case "/solo/sync":
+            // This is a direct LAN call, so a RELAY pin forbids it just as
+            // firmly as a solo one - the relay pin exists precisely because
+            // this LAN will not carry a packet to the Mac.
+            if pin() != "auto" {
+                json(task, requested, ["started": false, "pinned": true])
+                return
+            }
             SoloStore.shared.sync(address: address, token: token)
             json(task, requested, ["started": true])
+        case "/solo/road":
+            // GET reads the pin, POST sets it. Nothing is written to disk:
+            // see roadPin. A pin is where you are standing today.
+            guard method == "POST" else {
+                json(task, requested, ["pin": pin()])
+                return
+            }
+            // A POST whose body lost the ticket race must NOT quietly
+            // degrade into a read: the sheet would report the old pin as
+            // if the tap had worked (workflow review, 2026-08-04).
+            guard let body,
+                  let spec = try? JSONSerialization.jsonObject(with: body)
+                    as? [String: Any],
+                  let want = spec["pin"] as? String,
+                  ["auto", "relay", "solo"].contains(want) else {
+                json(task, requested,
+                     ["pin": pin(), "error": "that did not arrive — try again"],
+                     status: 409)
+                return
+            }
+            guard want != pin() else { json(task, requested, ["pin": want]); return }
+            lock.lock()
+            roadPin = want
+            pinGeneration &+= 1
+            // Letting go of a pin has to let go of what the pinned road
+            // taught us, or the app stays frozen on the shape it had while
+            // pinned - a cache that already spent its one refresh for this
+            // launch and will not look again.
+            refreshed.removeAll()
+            // But NOT straight back onto the LAN. The pinned road threw the
+            // proven LAN address away, and the paired one is a night-old
+            // DHCP lease; a POST against it gets a ten-minute ceiling. Six
+            // seconds on the relay is long enough for discoverMac to prove
+            // an address, and short enough that nobody notices.
+            directOffUntil = Date().addingTimeInterval(want == "auto" ? 6 : 0)
+            if want != "auto" { lanAddress = nil }
+            lock.unlock()
+            NSLog("[viv-scheme] road pinned to %@", want)
+            if want == "auto" { syncSolo() }
+            json(task, requested, ["pin": want])
         case "/solo/call":
             soloCall(task, requested: requested, body: body)
         case "/solo/soniox":

@@ -2182,7 +2182,13 @@ class PocketBarAndToolsTests(unittest.TestCase):
         # so that refusal was describing a limitation that had been
         # removed, and it fired before startLiveTalk could even run.
         self.assertNotIn("Live talk needs your Mac", self.renderer)
-        self.assertIn("const ws=SOLO.active?nativeLiveSocket()", self.renderer)
+        # A pin to the relay is the one case that still cannot carry a call
+        # - a mailbox is not a socket - and it says which road, not "your
+        # Mac", because the Mac is right there on a wifi you told her to
+        # skip (owner, 2026-08-04).
+        self.assertIn("const ws=(SOLO.active||ROAD.pin==='solo')",
+                      self.renderer)
+        self.assertIn("A call cannot go through the relay", self.renderer)
         self.assertIn("function nativeLiveSocket()", self.renderer)
 
     def test_solo_answers_when_the_mac_does_not(self):
@@ -2204,7 +2210,11 @@ class PocketBarAndToolsTests(unittest.TestCase):
         self.assertIn("needs your Mac — answering on this phone", self.renderer)
         # A dead Mac answers {offline:true} as valid JSON, so the poll has
         # to inspect it rather than trust that .json() throwing means down.
-        self.assertIn("if(h.offline)throw new Error('offline')", self.renderer)
+        # ... and it keeps the pin off that reply, because a Mac the owner
+        # chose not to reach must never be described as one that is asleep.
+        self.assertIn(
+            "if(h.offline){SOLO.pinned=Boolean(h.pinned);throw new Error('offline');}",
+            self.renderer)
         # EnConvo cannot follow her off the Mac, and says so once.
         self.assertIn("EnConvo needs your Mac", self.renderer)
 
@@ -2230,7 +2240,7 @@ class PocketBarAndToolsTests(unittest.TestCase):
         # real failure arms, and the POST never takes that road.
         scheme = (ROOT / "ios" / "Vivieen" / "VivScheme.swift").read_text()
         health = scheme[scheme.index('bare(path) == "/health"'):
-                        scheme.index('hasPrefix("/solo/")')]
+                        scheme.index("The manifest is the ONLY thing")]
         self.assertIn("directOffUntil = Date().addingTimeInterval(20)", health)
         self.assertIn("self.discoverMac()", health)
         # And the probe must take the road the turns take, or it lies.
@@ -2254,6 +2264,46 @@ class PocketBarAndToolsTests(unittest.TestCase):
         self.assertIn("window.enconvoRemember=()=>", self.renderer)
         self.assertIn("if(window.enconvoRemember)enconvoRemember();",
                       self.renderer)
+
+    def test_the_road_can_be_pinned_by_hand(self):
+        # Auto is right almost always, and wrong in one shape no probe can
+        # diagnose: a network the phone and the Mac both sit on that will
+        # not carry a packet between them. Only the person standing in the
+        # hotel room knows that, so the ROAD is what gets an override.
+        scheme = (ROOT / "ios" / "Vivieen" / "VivScheme.swift").read_text()
+        self.assertIn('private var roadPin = "auto"', scheme)
+        # In memory only. A pin is where you are standing today.
+        self.assertNotIn('UserDefaults.standard.set(roadPin', scheme)
+        self.assertIn('case "/solo/road":', scheme)
+        # A POST whose body lost the ticket race must not degrade into a
+        # read that reports the OLD pin as if the tap had worked.
+        self.assertIn('guard method == "POST" else {', scheme)
+        self.assertIn("that did not arrive", scheme)
+        self.assertIn("ROAD_SET", self.renderer)
+        self.assertIn("Where she thinks", self.renderer)
+
+    def test_a_pin_refuses_instead_of_hanging(self):
+        # Handed to the relay, a refusal would take ten minutes and then
+        # blame the relay for the owner's own choice.
+        scheme = (ROOT / "ios" / "Vivieen" / "VivScheme.swift").read_text()
+        self.assertIn("refusePinned(task, requested: requested)", scheme)
+        self.assertIn('"error": "pinned to this phone", "pinned": true', scheme)
+        # A request already in the air when the pin lands must not arrive.
+        self.assertIn("private var pinGeneration: UInt64 = 0", scheme)
+        self.assertIn("guard self.generation() == era else {", scheme)
+        # Letting go must not put a POST straight onto an address no probe
+        # has confirmed since - that road has a ten-minute ceiling.
+        self.assertIn('addingTimeInterval(want == "auto" ? 6 : 0)', scheme)
+
+    def test_a_pin_closes_the_socket_door_too(self):
+        # A WebSocket never passes through the native router, so the pin
+        # cannot refuse it there. It is the one door the page opens itself,
+        # and it carries the pairing token onto the LAN.
+        self.assertIn("if(ROAD.pin!=='auto')return '';", self.renderer)
+        # And a relay pin whose relay went quiet must read OUTLINED solo:
+        # you did not choose that, and it is spending your keys.
+        self.assertIn("function roadIsPinned(name)", self.renderer)
+        self.assertIn("ROAD.pin==='relay'?name==='internet'", self.renderer)
 
     def test_solo_keys_never_enter_the_page(self):
         # The page learns key NAMES; the native proxy injects values. A
