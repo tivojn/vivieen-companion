@@ -641,9 +641,14 @@ html.ios #rail.dim{opacity:.26}
    want to read. Everything goes but the fold itself, which turns into the
    way back (owner, 2026-08-05). */
 html.ios.rail-folded #rail button{display:none}
-html.ios.rail-folded #rail #rail-fold{display:flex;opacity:.4}
-html.ios.rail-folded #rail{gap:0;background:none;border:none;box-shadow:none;
-  -webkit-backdrop-filter:none;backdrop-filter:none}
+/* The fold keeps its own place, below the rail and out of its flow: left
+   inside it, hiding the others shrank the box and slid the button up the
+   screen, so the one control you need to find had moved (owner,
+   2026-08-05). Same spot, folded or not - one toggle. */
+html.ios #rail #rail-fold{position:fixed;right:10px;
+  bottom:calc(var(--bar-h,88px) + 26px + var(--kb,0px));display:flex}
+html.ios.rail-folded #rail #rail-fold{display:flex;opacity:.55}
+/* Down to tuck them away, up to bring them back. */
 html.ios.rail-folded #rail #rail-fold svg{transform:rotate(180deg)}
 /* The rail's lowest button sat right on top of the plus once a panel
    raised the bar - every attempt to attach a photo opened the zoom
@@ -791,7 +796,11 @@ html.ios #log{display:none}
    roaming speech bubble (the thread IS her voice there). */
 html.ios #vz{display:none}
 html.ios #petBubble{display:none}
-html.ios #txt{font-size:16px}
+/* The words you type and the words you read are the same words. One
+   variable drives both, so the slider moves them together (owner,
+   2026-08-05). iOS zooms a field under 16px on focus, so that is the
+   floor whatever the slider says. */
+html.ios #txt{font-size:max(16px,var(--thread-font,14.5px))}
 #toast{display:none}
 html.ios #toast{display:block;position:static;width:100%;
   box-sizing:border-box;margin:0 0 8px;z-index:8;
@@ -863,7 +872,7 @@ html.ios #zoombox input{width:100%;flex:1}
   <button id="rail-faces" type="button" aria-label="Switch avatar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3v10H4V7zm4.5-2h7v14h-7V5zM17 7h3v10h-3V7z"/></svg></button>
   <button id="rail-hide" type="button" aria-label="Hide or show her"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-9 7s4 7 9 7 9-4.5 9-7-4-7-9-7zm0 2c3.6 0 6.5 3 7 5-.5 2-3.4 5-7 5s-6.5-3-7-5c.5-2 3.4-5 7-5zm0 1.8A3.2 3.2 0 1 0 12 15.2 3.2 3.2 0 0 0 12 8.8z"/></svg></button>
   <button id="rail-zoom" type="button" aria-label="Adjust how she looks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9v2H4V7zm13 0h3v2h-3V7zm-2-3h2v8h-2V4zM4 15h3v2H4v-2zm7 0h9v2h-9v-2zM8 12h2v8H8v-8z"/></svg></button>
-  <button id="rail-fold" type="button" aria-label="Fold the tools away"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.4 6.4 8 7.8 12.2 12 8 16.2l1.4 1.4L15 12 9.4 6.4z"/></svg></button>
+  <button id="rail-fold" type="button" aria-label="Fold the tools away"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.4 5.6 9l1.4-1.4 5 5 5-5L18.4 9 12 15.4z"/></svg></button>
 </div>
 <div id="thread"></div>
 <div id="agentsheet"><div id="agentlist"></div></div>
@@ -871,7 +880,7 @@ html.ios #zoombox input{width:100%;flex:1}
 <button id="threaddown" type="button" aria-label="Jump to newest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16.5 4.5 9l1.4-1.4L12 13.7l6.1-6.1L19.5 9 12 16.5z"/></svg></button>
 <div id="zoombox">
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12z"/></svg><input id="zoomrange" type="range" min="60" max="600" step="5" value="100" aria-label="Avatar zoom"></div>
-  <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h9v2H8.5v12h-2V7H3V5zm10 5h8v2h-3v7h-2v-7h-3v-2z"/></svg><input id="fontrange" type="range" min="12" max="22" step="0.5" value="14.5" aria-label="Thread text size"></div>
+  <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h9v2H8.5v12h-2V7H3V5zm10 5h8v2h-3v7h-2v-7h-3v-2z"/></svg><input id="fontrange" type="range" min="12" max="26" step="0.5" value="14.5" aria-label="Thread text size"></div>
   <div class="zrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2s6 7.1 6 12a6 6 0 0 1-12 0c0-4.9 6-12 6-12zm0 16a4 4 0 0 0 4-4c0-.6-.1-1.2-.4-1.9L8.4 15.3A4 4 0 0 0 12 18z"/></svg><input id="alpharange" type="range" min="10" max="100" step="5" value="100" aria-label="Avatar opacity"></div>
 </div>
 <!-- Avatar carousel: horizontal swipe across her opens the deck. Two
