@@ -136,6 +136,21 @@ def generate_head(reference, destination, provider=None, quality="high",
             before = set(os.listdir(stage))
             stdout = ""
             try:
+                # Same fault as the body plates: EnConvo's xAI route sends
+                # `n`, which xAI refuses on an edit. Ours goes direct when
+                # we hold a key; every other provider is untouched.
+                from studio import body as _body
+                key = (_body._xai_key()
+                       if provider["route"] == "x_ai/create" else "")
+                if key:
+                    rendered = _body._xai_edit(
+                        prompt or HEAD_PROMPT, [reference], stage, "head",
+                        key, aspect_ratio="1:1")
+                    shutil.move(rendered, destination)
+                    with open(signature_file, "w") as handle:
+                        handle.write(signature)
+                    log("canonical HD head ready")
+                    return destination
                 result = subprocess.run(
                     _head_command(provider, reference, stage, quality,
                                   prompt=prompt),

@@ -11,8 +11,13 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
+
+# The server package lives beside this one; the direct xAI path reads the
+# owner's own key from it.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 import cv2
 import numpy as np
@@ -253,6 +258,111 @@ def _provider_command(
     elif route in {"together/create", "straico/create"}:
         command += ["--mode", "edit"]
     return command
+
+
+def _xai_key():
+    """An xAI key we may use for a direct image edit. Ours, not EnConvo's
+    - EnConvo is never read from or written to here."""
+    try:
+        sys.path.insert(0, os.path.join(_ROOT, "server"))
+        import providers as _P
+        cfg = _P.load()
+    except Exception:
+        return ""
+    for block, field in (("image", "api_key"), ("live", "xai_api_key")):
+        value = ((cfg.get(block) or {}).get(field) or "").strip()
+        if value and (block == "live" or (cfg.get("image") or {}).get(
+                "provider") == "xai"):
+            return value
+    return ""
+
+
+def _xai_edit(prompt, references, output_dir, file_name, key,
+              aspect_ratio="3:4"):
+    """One image-to-image edit, straight to xAI.
+
+    EnConvo's x_ai route sends `n` on every call, and xAI answers edits
+    carrying it with "n is only supported for image generation" - so every
+    body and head plate failed the moment the owner chose Grok Imagine
+    (owner, 2026-08-04). Reproduced with EnConvo's own CLI at its bare
+    minimum, so it is not something we pass. EnConvo is left exactly as it
+    is; we simply make this one call ourselves, and xAI accepts it:
+    image must be an OBJECT with a url, and there is no n.
+
+    Returns the written path, or raises. Callers fall back to the CLI when
+    no key is available, so removing this function restores the old path.
+    """
+    import base64
+    import mimetypes
+    import urllib.request
+
+    first = references[0]
+    mime = mimetypes.guess_type(first)[0] or "image/png"
+    with open(first, "rb") as handle:
+        encoded = base64.b64encode(handle.read()).decode("ascii")
+    body = {
+        "model": "grok-imagine-image-quality",
+        "prompt": prompt,
+        "image": {"url": f"data:{mime};base64,{encoded}"},
+    }
+    # Measured: an edit DOES accept aspect_ratio, so the plates keep their
+    # shape instead of coming back square. (resolution does not belong
+    # here - the API takes it only for generation.)
+    if aspect_ratio:
+        body["aspect_ratio"] = aspect_ratio
+    payload_bytes = json.dumps(body).encode()
+    # A reference photo is megabytes once base64'd, and this uplink drops
+    # mid-POST often enough to lose a whole build ("SSL: UNEXPECTED_EOF").
+    # A dropped connection is not an answer - ask again before believing
+    # the provider refused (owner: might be network flaky, 2026-08-04).
+    answer = None
+    last = None
+    for attempt in range(3):
+        request = urllib.request.Request(
+            "https://api.x.ai/v1/images/edits",
+            data=payload_bytes,
+            headers={"Authorization": f"Bearer {key}",
+                     "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=600) as feed:
+                answer = json.loads(feed.read().decode())
+            break
+        except urllib.error.HTTPError:
+            raise                      # a real refusal; do not hammer it
+        except Exception as error:     # dropped socket, DNS, timeout
+            last = error
+            if attempt == 2:
+                raise RuntimeError(
+                    f"xAI never received the image ({error}) - the link "
+                    "dropped three times") from error
+            time.sleep(2 * (attempt + 1))
+    rows = answer.get("data") or []
+    url = (rows[0] or {}).get("url") if rows else ""
+    if not url:
+        raise RuntimeError("xAI returned no image for this edit")
+    destination = os.path.join(output_dir, file_name + ".jpg")
+    # The picture itself comes off a CDN, and that hop drops often enough
+    # to lose an otherwise good generation. Paying for the image twice is
+    # worse than asking for the bytes twice.
+    payload = b""
+    for attempt in range(3):
+        try:
+            # imgen.x.ai answers a bare urllib request with 403 - it wants
+            # a browser's User-Agent. Measured: bare 403, with one 114 KB.
+            fetch = urllib.request.Request(
+                url, headers={"User-Agent": "Mozilla/5.0 (Macintosh)"})
+            with urllib.request.urlopen(fetch, timeout=600) as feed:
+                payload = feed.read()
+            break
+        except Exception:
+            if attempt == 2:
+                raise
+            time.sleep(1.5 * (attempt + 1))
+    if len(payload) < 4096:
+        raise RuntimeError("xAI returned an unusably small image")
+    with open(destination, "wb") as handle:
+        handle.write(payload)
+    return destination
 
 
 def _generated_file(directory, started, stdout=""):
@@ -503,19 +613,29 @@ def build(avatar_dir, options, log=print, progress=None):
                 provider_dir = os.path.join(raw_dir, view)
                 os.makedirs(provider_dir, mode=0o700)
                 started = time.time()
-                result = subprocess.run(
-                    _provider_command(
-                        provider, references, provider_dir, prompts[view],
-                        file_name=f"body-source-{view}"),
-                    capture_output=True,
-                    text=True,
-                    timeout=900,
-                    stdin=subprocess.DEVNULL,
-                )
-                if result.returncode:
-                    detail = (result.stderr or result.stdout or "generation failed").strip()[-1200:]
-                    raise RuntimeError(f"{view} view: {detail}")
-                generated = _generated_file(provider_dir, started, result.stdout)
+                # xAI edits go straight to xAI: EnConvo's route sends `n`,
+                # which xAI refuses on an edit. Every other provider keeps
+                # the CLI exactly as before, and so does xAI when we have
+                # no key of our own to use.
+                key = _xai_key() if provider["route"] == "x_ai/create" else ""
+                if key:
+                    generated = _xai_edit(
+                        prompts[view], references, provider_dir,
+                        f"body-source-{view}", key)
+                else:
+                    result = subprocess.run(
+                        _provider_command(
+                            provider, references, provider_dir, prompts[view],
+                            file_name=f"body-source-{view}"),
+                        capture_output=True,
+                        text=True,
+                        timeout=900,
+                        stdin=subprocess.DEVNULL,
+                    )
+                    if result.returncode:
+                        detail = (result.stderr or result.stdout or "generation failed").strip()[-1200:]
+                        raise RuntimeError(f"{view} view: {detail}")
+                    generated = _generated_file(provider_dir, started, result.stdout)
                 extension = os.path.splitext(generated)[1].lower() or ".png"
                 cached_path = os.path.join(cache_dir, f"source-{view}{extension}")
                 shutil.copy2(generated, cached_path)

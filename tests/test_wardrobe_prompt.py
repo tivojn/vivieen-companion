@@ -517,3 +517,40 @@ class KeepFromThePortrait(unittest.TestCase):
         self.assertIn("Add extra comments, e.g. keep the character", page)
         # both long builds ask
         self.assertIn("if (what === 'build' || what === 'pipeline')", page)
+
+
+class GrokImagineEdits(unittest.TestCase):
+    """Image-to-image on xAI, without touching EnConvo."""
+
+    def test_xai_edits_go_direct_and_everything_else_does_not(self):
+        # EnConvo's x_ai route sends `n` on every call, and xAI answers an
+        # EDIT carrying it with "n is only supported for image generation"
+        # - reproduced with EnConvo's own CLI at its bare minimum, so it
+        # was never something we passed (owner, 2026-08-04). EnConvo is
+        # left exactly as it is; we make this one call ourselves.
+        source = (ROOT / "studio" / "body.py").read_text(encoding="utf-8")
+        self.assertIn("https://api.x.ai/v1/images/edits", source)
+        # the shape xAI actually accepts: image is an OBJECT with a url...
+        self.assertIn('"image": {"url": f"data:{mime};base64,{encoded}"}', source)
+        # ...and no n anywhere near it
+        self.assertNotIn('"n":', source)
+        # only xAI diverts; every other provider keeps the CLI
+        self.assertIn('provider["route"] == "x_ai/create" else ""', source)
+        # and with no key of our own, so does xAI - the old path stands
+        self.assertIn("key = _xai_key() if provider", source)
+
+    def test_the_cdn_needs_a_browser_user_agent(self):
+        # Measured: a bare urllib fetch of the returned image is 403;
+        # with a User-Agent it is 114 KB.
+        source = (ROOT / "studio" / "body.py").read_text(encoding="utf-8")
+        self.assertIn('"User-Agent": "Mozilla/5.0 (Macintosh)"', source)
+
+    def test_a_dropped_link_is_retried_but_a_refusal_is_not(self):
+        # A dropped socket is not an answer. An HTTP error IS one.
+        source = (ROOT / "studio" / "body.py").read_text(encoding="utf-8")
+        self.assertIn("except urllib.error.HTTPError:\n            raise", source)
+
+    def test_the_head_plate_takes_the_same_road(self):
+        source = (ROOT / "studio" / "generate.py").read_text(encoding="utf-8")
+        self.assertIn("_body._xai_edit(", source)
+        self.assertIn('aspect_ratio="1:1"', source)
