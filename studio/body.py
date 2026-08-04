@@ -296,6 +296,13 @@ def _xai_edit(prompt, references, output_dir, file_name, key,
     import mimetypes
     import urllib.request
 
+    # SAY SO. EnConvo reaches xAI over OAuth, which rides the owner's
+    # subscription; this path uses their xAI API KEY, which is metered
+    # per image. Same pictures, different bill - nobody should discover
+    # that from an invoice (owner asked, 2026-08-04).
+    print("  xai: direct edit via your xAI API key (metered) - EnConvo's "
+          "OAuth route cannot edit", flush=True)
+
     first = references[0]
     mime = mimetypes.guess_type(first)[0] or "image/png"
     with open(first, "rb") as handle:

@@ -550,6 +550,14 @@ class GrokImagineEdits(unittest.TestCase):
         source = (ROOT / "studio" / "body.py").read_text(encoding="utf-8")
         self.assertIn("except urllib.error.HTTPError:\n            raise", source)
 
+    def test_the_divert_says_it_is_metered(self):
+        # EnConvo reaches xAI over OAuth, on the owner's subscription;
+        # this path uses their API key, which bills per image. Same
+        # pictures, different bill - it must not be silent.
+        source = (ROOT / "studio" / "body.py").read_text(encoding="utf-8")
+        self.assertIn("metered", source)
+        self.assertIn("xAI API key", source)
+
     def test_the_head_plate_takes_the_same_road(self):
         source = (ROOT / "studio" / "generate.py").read_text(encoding="utf-8")
         self.assertIn("_body._xai_edit(", source)
