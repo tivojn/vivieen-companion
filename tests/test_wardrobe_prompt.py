@@ -585,6 +585,19 @@ class GrokImagineEdits(unittest.TestCase):
         # the CDN refuses a bare client here too
         self.assertIn('"User-Agent": "Mozilla/5.0 (Macintosh)"', source)
 
+    def test_the_xai_image_model_is_the_current_one(self):
+        # The owner's Settings Test read "Client error '404 Not Found' for
+        # url 'https://api.x.ai/v1/images/generations'", which looks like a
+        # wrong URL and is not: the path is right and grok-2-image is
+        # retired, so xAI answers a retired model with a bare 404 (owner
+        # screenshot, 2026-08-04). studio/body.py had already moved; the
+        # lane behind the Test button had not.
+        source = (ROOT / "server" / "media_gen.py").read_text(encoding="utf-8")
+        self.assertIn('"grok-imagine-image-quality"', source)
+        self.assertNotIn('"grok-2-image"', source)
+        page = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn("'grok-2-image'", page)
+
     def test_the_head_plate_takes_the_same_road(self):
         source = (ROOT / "studio" / "generate.py").read_text(encoding="utf-8")
         self.assertIn("_body._xai_edit(", source)

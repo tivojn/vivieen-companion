@@ -1876,7 +1876,8 @@ async function soloImage(prompt){
     ?(((SOLO.cfg||{}).image||{}).base_url||'https://api.openai.com/v1')
     :'https://api.x.ai/v1';
   const model=key==='image.api_key'
-    ?(((SOLO.cfg||{}).image||{}).model||'gpt-image-1'):'grok-2-image';
+    // grok-2-image is retired; xAI answers a retired model with a bare 404.
+    ?(((SOLO.cfg||{}).image||{}).model||'gpt-image-1'):'grok-imagine-image-quality';
   const r=await soloCall({url:base+'/images/generations',method:'POST',
     key,key_style:'bearer',headers:{'Content-Type':'application/json'},
     body_b64:btoa(unescape(encodeURIComponent(JSON.stringify(

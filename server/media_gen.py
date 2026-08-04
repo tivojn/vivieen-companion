@@ -95,7 +95,13 @@ async def generate_image(prompt, c):
 
     if p in ("openai", "xai", "together_image", "recraft"):
         defaults = {"openai": ("https://api.openai.com/v1", "gpt-image-1"),
-                    "xai": ("https://api.x.ai/v1", "grok-2-image"),
+                    # grok-2-image is retired: xAI answers a retired model on
+                    # this path with a bare 404, which reads as a wrong URL
+                    # rather than a wrong model - "Client error '404 Not
+                    # Found' for url .../v1/images/generations" on the
+                    # Settings Test button (owner, 2026-08-04). The URL was
+                    # right all along. studio/body.py already moved.
+                    "xai": ("https://api.x.ai/v1", "grok-imagine-image-quality"),
                     "together_image": ("https://api.together.xyz/v1",
                                        "black-forest-labs/FLUX.1-schnell"),
                     "recraft": ("https://external.api.recraft.ai/v1", "recraftv3")}
