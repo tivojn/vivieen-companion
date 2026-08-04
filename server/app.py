@@ -3285,6 +3285,11 @@ _HANDS_TOOLS = (
     "directive syntax; after a result arrives, answer in one or two "
     "short sentences.")
 _HANDS_CALL = re.compile(r"<<viv:hands\s+([a-z_]+)\s*(\{.*?\})?\s*>>", re.S)
+# Mail is the third hand family, and it executes HERE: iOS has no mailbox
+# API at all, but the Mac's Mail.app is fully scriptable and /reply always
+# runs on the Mac - so mail works from the desk and from a coupled phone
+# alike, and solo honestly has no mail to offer.
+_MAIL_CALL = re.compile(r"<<viv:mail\s+([a-z_]+)\s*(\{.*?\})?\s*>>", re.S)
 
 
 def effective_persona(cfg=None):
@@ -3310,17 +3315,43 @@ def effective_persona(cfg=None):
 @app.post("/reply")
 async def reply(t: Turn):
     import media_gen
+    import mail_hands
     cfg = P.load()
+    msgs = list(t.history[-12:])
+    system = (effective_persona(cfg) + _OWN_TOOLS + mail_hands.TOOLS_PROMPT
+              + (_HANDS_TOOLS if t.hands else ""))
     try:
-        text = await P.chat(t.history[-12:], cfg["llm"],
-                            system=effective_persona(cfg) + _OWN_TOOLS
-                            + (_HANDS_TOOLS if t.hands else ""))
+        text = await P.chat(msgs, cfg["llm"], system=system)
+        # Mail rounds run server-side - the Mac holds the mailbox. The
+        # interim sentence is not spoken; the final word carries it.
+        for _ in range(3):
+            grip = _MAIL_CALL.search(text or "")
+            if not grip:
+                break
+            tool = grip.group(1)
+            try:
+                spec = json.loads(grip.group(2) or "{}")
+            except Exception:
+                spec = {}
+            try:
+                result = await asyncio.to_thread(mail_hands.run, tool, spec)
+            except Exception as error:
+                result = {"error": P.safe_error(error, 220)}
+            msgs.append({"role": "assistant", "content": text})
+            msgs.append({"role": "user",
+                         "content": f"[tool {tool} returned] "
+                         + json.dumps(result)[:2000]
+                         + "\nAnswer the owner now, briefly."})
+            text = await P.chat(msgs, cfg["llm"], system=system)
     except Exception as e:
         print("[viv] llm failed:", P.safe_error(e), flush=True)
         hint = P.failure_hint(e)
         text = (f"My model is not answering — {hint}. Check the provider in Settings."
                 if hint else
                 "My model is not answering. Check the provider in Settings.")
+    # A fourth mail directive after three rounds has no runner left -
+    # never let her read the syntax aloud.
+    text = _MAIL_CALL.sub("", text or "").strip()
     # A hands directive belongs to the phone, never to the voice: strip it
     # BEFORE synthesis or she reads the syntax aloud, and hand it back for
     # the device to execute. The follow-up turn arrives as history.

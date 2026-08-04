@@ -2775,6 +2775,57 @@ class HandsOnAppleDataTests(unittest.TestCase):
             self.assertIn(key, plist)
 
 
+class MailHandsTests(unittest.TestCase):
+    """Apple Mail through the Mac: iOS has no mailbox API, the Mac's
+    Mail.app is fully scriptable, and /reply always runs on the Mac."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        global mail_hands
+        import mail_hands as _mh
+        mail_hands = importlib.reload(_mh)
+
+    def test_arguments_land_as_text_never_as_applescript(self):
+        # A subject like  " & (do shell script "rm -rf ~") & "  must reach
+        # Mail as characters, not as code.
+        hostile = '" & (do shell script "boom") & "'
+        self.assertEqual(
+            mail_hands._quote(hostile),
+            '"\\" & (do shell script \\"boom\\") & \\""')
+        scripts = []
+        with mock.patch.object(mail_hands, "_run",
+                               side_effect=lambda s: (scripts.append(s), "")[1]):
+            mail_hands.run("mail_search", {"query": hostile})
+        self.assertIn('\\" & (do shell script \\"boom\\") & \\"', scripts[0])
+        self.assertNotIn('& (do shell script "boom") &\n', scripts[0])
+
+    def test_ids_must_be_numeric_and_send_needs_a_real_address(self):
+        for tool in ("mail_read", "mail_delete"):
+            with self.assertRaises(ValueError):
+                mail_hands.run(tool, {"id": "1; delete every message"})
+        with self.assertRaises(ValueError):
+            mail_hands.run("mail_send", {"to": "not-an-address",
+                                         "subject": "x", "body": "y"})
+
+    def test_the_blocked_automation_names_the_switch(self):
+        source = (ROOT / "server" / "mail_hands.py").read_text()
+        self.assertIn("macOS blocked Mail automation", source)
+        self.assertIn("Automation > allow Vivieen", source)
+        # Sending and deleting demand an explicit ask, in the prompt.
+        self.assertIn("never SEND or DELETE unless the owner", source)
+        # Deleting is a move to Trash, said so - not an erasure.
+        self.assertIn("moved to Trash, not erased", source)
+
+    def test_reply_runs_the_mail_loop_and_never_speaks_syntax(self):
+        server = (ROOT / "server" / "app.py").read_text()
+        self.assertIn("mail_hands.TOOLS_PROMPT", server)
+        self.assertIn("asyncio.to_thread(mail_hands.run, tool, spec)", server)
+        self.assertIn('_MAIL_CALL.sub("", text or "").strip()', server)
+
+
 class SplitBrainLiveTalkTests(unittest.TestCase):
     """#24: live talk on her own models - Soniox hears, Think answers,
     Speak voices it. Same client contract as the bundled providers."""
