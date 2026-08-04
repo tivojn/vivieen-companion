@@ -4768,6 +4768,8 @@ function toggleMoveShow(){
     flashPrompt('No moves yet · generate Show Me Some Moves in Character Studio');
     return false;
   }
+  // All of her, or the dance runs off the top and bottom of the frame.
+  if(window.__vivStandBack)__vivStandBack();
   const clip=MOTION.move;
   const seconds=Math.max(2,(Number(clip.frames)||1)/Math.max(1,Number(clip.fps)||12));
   moveShowUntil=now+seconds*4000;
@@ -4784,6 +4786,7 @@ function toggleWalkShow(){
   const now=performance.now();
   if(walkShowActive(now)){walkShowUntil=0;return true;}
   if(!MOTION.walk)return false;
+  if(window.__vivStandBack)__vivStandBack();
   const clip=MOTION.walk;
   const seconds=Math.max(2,(Number(clip.frames)||1)/Math.max(1,Number(clip.fps)||24));
   walkShowUntil=now+seconds*3000;
@@ -4799,6 +4802,7 @@ function toggleIdleShow(){
   const now=performance.now();
   if(idleShowActive(now)){idleShowUntil=0;hideDomVideo();return true;}
   if(!MOTION.idle)return false;
+  if(window.__vivStandBack)__vivStandBack();
   idleShowUntil=now+120000;
   return true;
 }
@@ -6217,6 +6221,14 @@ if(IS_IOS){
     railClose.innerHTML=IOS_HEAD_ANCHOR?BODY_ICON:BUST_ICON;
     railClose.setAttribute('aria-label',
       IOS_HEAD_ANCHOR?'Show all of her':'Close up on her face');
+  };
+  /* A performance needs all of her on the glass. Close on her face, a
+     dance or a stretch runs off the top and bottom of the frame and you
+     watch a cropped torso (owner, 2026-08-05). Standing back is part of
+     starting the show, so the toggles ask for it - reachable from their
+     scope, which is not this one. */
+  window.__vivStandBack=()=>{
+    if(IOS_HEAD_ANCHOR||IOS_ZOOM>1.05){setZoom(1,false);paintFraming();}
   };
   railClose.addEventListener('click',()=>{
     if(IOS_HEAD_ANCHOR)setZoom(1,false);else setZoom(faceCloseupZoom(),true);

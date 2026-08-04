@@ -198,3 +198,19 @@ class PromptRoom(unittest.TestCase):
                 app).group(1))
             self.assertEqual(ui, server, f"{field} and {api} disagree")
             self.assertEqual(2400, ui)
+
+
+class PerformancesNeedTheWholeFrame(unittest.TestCase):
+    def test_a_show_stands_back_before_it_starts(self):
+        # Close on her face, a dance or a stretch runs off the top and
+        # bottom of the frame and you watch a cropped torso (owner,
+        # 2026-08-05). Standing back is part of starting the show.
+        page = (ROOT / "web" / "index.html").read_text()
+        self.assertIn("window.__vivStandBack=()=>{", page)
+        # only when actually zoomed in - it must not fight a deliberate
+        # full-body framing, or reset a zoom nobody asked it to touch
+        self.assertIn("if(IOS_HEAD_ANCHOR||IOS_ZOOM>1.05){setZoom(1,false)", page)
+        # all three performances, not just the two that were reported
+        self.assertEqual(3, page.count("if(window.__vivStandBack)__vivStandBack();"))
+        # and the rail icon follows, since the framing just changed
+        self.assertIn("setZoom(1,false);paintFraming();", page)
