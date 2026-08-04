@@ -155,6 +155,15 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
 .acts{display:flex;gap:8px;flex-wrap:wrap}
 .drop{border:1.5px dashed var(--line-strong);border-radius:10px;padding:34px;text-align:center;
   color:var(--dim);cursor:pointer;transition:.15s;background:var(--panel-sub)}
+/* New face: the dropzone shares the row with the name and buttons instead
+   of pushing them below the fold. flex-wrap stacks it again when the
+   window can't fit two columns. */
+.newface{display:flex;gap:18px;flex-wrap:wrap;align-items:stretch}
+.newface .drop{flex:1 1 280px;display:flex;flex-direction:column;
+  justify-content:center;padding:22px 18px}
+.newface-side{flex:1 1 260px;display:flex;flex-direction:column;gap:12px;
+  justify-content:center}
+.newface-acts{display:flex;gap:8px;flex-wrap:wrap}
 .drop:hover{border-color:var(--faint)}
 .drop.over{border-color:var(--accent);background:var(--accent-bg);color:var(--ink)}
 .jobbox{display:none;margin-top:12px;padding:10px 11px;border:1px solid var(--line);
@@ -790,15 +799,29 @@ document.documentElement.dataset.design='quiet';</script>
   <div class="grid" id="avatars-active"></div>
 
   <h2>New face</h2>
+  <!-- Half a screen for an empty dropzone was waste (owner, 2026-08-05):
+       the zone now sits beside the name and buttons instead of above them,
+       and the photo guidance rides along in the side column rather than
+       padding out the target. Narrow windows stack the two halves. -->
   <div class="card">
-    <div class="drop" id="drop">
-      <div style="font-size:15px;color:var(--ink);margin-bottom:6px">Drop a portrait here</div>
-      <div>or click to choose · PNG, JPEG, WEBP, HEIC</div>
-      <div class="note" style="margin-top:14px;max-width:520px;margin-inline:auto">
-        Everything downstream inherits the source photo. Face the camera straight on,
-        even light, neutral closed mouth, no hair across the cheeks, and as much
-        resolution as you have. The pose report below tells you if it will hold up
-        before you spend the build.
+    <div class="newface">
+      <div class="drop" id="drop">
+        <div style="font-size:15px;color:var(--ink);margin-bottom:4px">Drop a portrait here</div>
+        <div>or click to choose · PNG, JPEG, WEBP, HEIC</div>
+      </div>
+      <div class="newface-side">
+        <div class="f"><label>Name</label><input id="newname" placeholder="Vivieen"></div>
+        <div class="newface-acts">
+          <button class="btn pri hidden" id="createAvatar" type="button" title="Add the chosen portrait with this name">Add portrait</button>
+          <button class="btn hidden" id="takeSelfie" type="button" title="Open the front camera and shoot the source portrait right here">📷 Take a selfie</button>
+          <button class="btn" id="importAvtr" type="button" title="Import a complete avatar (.avtr) — face, body, walk, and edge idle arrive ready to use">Import .avtr…</button>
+        </div>
+        <div class="note" style="margin:0">
+          Everything downstream inherits the source photo: straight to camera,
+          even light, neutral closed mouth, no hair across the cheeks, and as
+          much resolution as you have. The pose report below tells you if it
+          will hold up before you spend the build.
+        </div>
       </div>
     </div>
     <input type="file" id="file" accept="image/*" class="hidden">
@@ -807,14 +830,6 @@ document.documentElement.dataset.design='quiet';</script>
          photo library through the same sheet. -->
     <input type="file" id="selfie" accept="image/*" capture="user" class="hidden">
     <input type="file" id="avtrFile" accept=".avtr" class="hidden">
-    <div class="row" style="margin-top:14px">
-      <div class="f"><label>Name</label><input id="newname" placeholder="Vivieen"></div>
-      <div class="f" style="flex:none;align-self:flex-end;display:flex;gap:8px">
-        <button class="btn pri hidden" id="createAvatar" type="button" title="Add the chosen portrait with this name">Add portrait</button>
-        <button class="btn hidden" id="takeSelfie" type="button" title="Open the front camera and shoot the source portrait right here">📷 Take a selfie</button>
-        <button class="btn" id="importAvtr" type="button" title="Import a complete avatar (.avtr) — face, body, walk, and edge idle arrive ready to use">Import .avtr…</button>
-      </div>
-    </div>
   </div>
 
   <h2>Candidates</h2>
