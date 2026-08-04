@@ -641,12 +641,13 @@ html.ios #rail.dim{opacity:.26}
    want to read. Everything goes but the fold itself, which turns into the
    way back (owner, 2026-08-05). */
 html.ios.rail-folded #rail button{display:none}
-/* The fold keeps its own place, below the rail and out of its flow: left
-   inside it, hiding the others shrank the box and slid the button up the
-   screen, so the one control you need to find had moved (owner,
-   2026-08-05). Same spot, folded or not - one toggle. */
-html.ios #rail #rail-fold{position:fixed;right:10px;
-  bottom:calc(var(--bar-h,88px) + 26px + var(--kb,0px));display:flex}
+/* Last in the rail, under the sliders - a fixed offset of its own put it
+   halfway up the column instead (owner, 2026-08-05). Folded, the rail
+   stops centring itself and hangs from the bottom, so the button it is
+   now holding alone stays down where it was rather than riding up with
+   the shrinking box. */
+html.ios.rail-folded #rail{top:auto;transform:none;
+  bottom:calc(var(--bar-h,88px) + 26px + var(--kb,0px))}
 html.ios.rail-folded #rail #rail-fold{display:flex;opacity:.55}
 /* Down to tuck them away, up to bring them back. */
 html.ios.rail-folded #rail #rail-fold svg{transform:rotate(180deg)}
