@@ -993,6 +993,21 @@ def _kokoro(c):
     return _cache["tts"]
 
 
+def _system_say(text, voice, speed):
+    with tempfile.TemporaryDirectory(prefix="vivieen-say-") as work_dir:
+        aiff = os.path.join(work_dir, "speech.aiff")
+        cmd = ["say", "-o", aiff]
+        if voice:
+            cmd += ["-v", voice]
+        cmd += ["-r", str(int(180 * speed)), text]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode or not os.path.isfile(aiff):
+            raise RuntimeError(safe_error(result.stderr or "macOS speech failed"))
+        with open(aiff, "rb") as handle:
+            raw = handle.read()
+    return _ff(raw, ".aiff")
+
+
 def _kokoro_audio(text, c, voice, speed):
     results = list(_kokoro(c)(text, voice=voice or "af_heart", speed=speed))
     output = []
@@ -1018,7 +1033,8 @@ async def _enconvo_speak(text, c):
         with open(path, "rb") as handle:
             raw = handle.read()
         _route_finish("tts", "success")
-        return _ff(raw, os.path.splitext(path)[1] or ".wav"), None
+        return await asyncio.to_thread(
+            _ff, raw, os.path.splitext(path)[1] or ".wav"), None
     except Exception:
         _route_finish("tts", "failed")
         raise
@@ -1048,22 +1064,17 @@ async def _speak_direct(text, c):
     model = c.get("model") or ""
     speed = float(c.get("speed", 1.0))
 
+    # The synthesis leaves BLOCK - Kokoro is a torch forward, say and _ff
+    # are subprocess.run - and speak() is awaited from the live-talk
+    # socket loop. Run on the event loop they froze the mic: nothing read
+    # audio during synthesis, so barge-in could not fire until she had
+    # already finished the sentence (#24 prerequisite). to_thread keeps
+    # the loop listening while the leaf grinds.
     if p == "kokoro":
-        return _kokoro_audio(text, c, voice, speed)
+        return await asyncio.to_thread(_kokoro_audio, text, c, voice, speed)
 
     if p == "system":
-        with tempfile.TemporaryDirectory(prefix="vivieen-say-") as work_dir:
-            aiff = os.path.join(work_dir, "speech.aiff")
-            cmd = ["say", "-o", aiff]
-            if voice:
-                cmd += ["-v", voice]
-            cmd += ["-r", str(int(180 * speed)), text]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode or not os.path.isfile(aiff):
-                raise RuntimeError(safe_error(result.stderr or "macOS speech failed"))
-            with open(aiff, "rb") as handle:
-                raw = handle.read()
-        return _ff(raw, ".aiff"), None
+        return await asyncio.to_thread(_system_say, text, voice, speed), None
 
     if p == "edge":
         import edge_tts
@@ -1078,7 +1089,7 @@ async def _speak_direct(text, c):
                 words.append((ch["offset"] / 1e7, ch["duration"] / 1e7, ch["text"]))
             elif t == "SentenceBoundary":
                 sents.append((ch["offset"] / 1e7, ch["duration"] / 1e7, ch["text"]))
-        y = _ff(bytes(buf), ".mp3")
+        y = await asyncio.to_thread(_ff, bytes(buf), ".mp3")
         # edge-tts 7.x streams SentenceBoundary and no WordBoundary at all, so
         # asking for the finer grain and assuming it arrived produced an EMPTY
         # track - a "timed" tier that was worse than the estimate it replaced.
@@ -1098,7 +1109,8 @@ async def _speak_direct(text, c):
                                    "model_id": model or "eleven_turbo_v2_5"})
             r.raise_for_status()
             j = r.json()
-        y = _ff(base64.b64decode(j["audio_base64"]), ".mp3")
+        y = await asyncio.to_thread(_ff, base64.b64decode(j["audio_base64"]),
+                                    ".mp3")
         al = j.get("alignment") or {}
         chars = list(zip(al.get("characters") or [],
                          al.get("character_start_times_seconds") or [],
@@ -1157,7 +1169,7 @@ async def _speak_direct(text, c):
                                "input": text, "voice": voice or "alloy",
                                "response_format": "wav", "speed": speed})
         r.raise_for_status()
-        return _ff(r.content, ".wav"), None
+        return await asyncio.to_thread(_ff, r.content, ".wav"), None
 
 
 # ---------------------------------------------------------------- hear
