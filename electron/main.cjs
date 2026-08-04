@@ -373,15 +373,30 @@ function monitorState() {
 
 // A window that is not destroyed can still have a disposed RENDER FRAME:
 // during quit, and in the gap between a reload tearing the old frame down
-// and the new one existing. send() throws there - "Render frame was
-// disposed before WebFrameMain could be accessed" - and the EnConvo audio
-// monitor fires often enough to fill the console with it on every restart
-// (owner, 2026-08-04). Checking the window was never enough; check what we
-// are actually about to talk to.
+// and the new one existing. send() then spams the console with "Render
+// frame was disposed before WebFrameMain could be accessed", and the
+// EnConvo audio monitor fires often enough to print it on every restart
+// (owner, 2026-08-04). The try/catch below never silenced it: Electron
+// LOGS that error from inside send() rather than throwing, and
+// isDestroyed() stays false because the webContents outlive the frame.
+// The only working move is to know the renderer is gone BEFORE calling
+// send - the quitting flag covers shutdown, and the two events below mark
+// a window whose frame died under it.
+const watchedRenderers = new WeakSet();
+const deadRenderers = new WeakSet();
 function post(window, channel, payload) {
+  if (quitting) return;
   if (!window || window.isDestroyed()) return;
   const contents = window.webContents;
-  if (!contents || contents.isDestroyed()) return;
+  if (!contents || contents.isDestroyed() || deadRenderers.has(contents)) return;
+  if (!watchedRenderers.has(contents)) {
+    watchedRenderers.add(contents);
+    contents.once('destroyed', () => deadRenderers.add(contents));
+    contents.on('render-process-gone', () => deadRenderers.add(contents));
+    // A reload brings a fresh renderer up on the same webContents; the
+    // window is speakable again the moment the new frame finishes.
+    contents.on('did-finish-load', () => deadRenderers.delete(contents));
+  }
   try {
     contents.send(channel, payload);
   } catch (error) {
