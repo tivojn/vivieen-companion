@@ -76,17 +76,32 @@ def _clean(value, maximum=800):
 
 
 def _direction(options):
+    """The generation direction, plus whatever the owner asked to keep.
+
+    Notes used to be DROPPED the moment an expanded prompt existed - which
+    is the normal path - so "keep his bandana" never reached the model. A
+    portrait of a character came back with the right face and none of what
+    made him recognisable (owner, 2026-08-04). The note is an ADD-ON: it
+    rides after the prompt, never instead of it, and it goes last so it
+    reads as the final word.
+    """
+    notes = _clean(options.get("notes"), 600)
     custom = _clean(options.get("prompt"), 2400)
     if custom:
-        return custom
+        return f"{custom} MUST KEEP: {notes}" if notes else custom
     legacy = []
     outfit = _clean(options.get("outfit"), 500)
-    notes = _clean(options.get("notes"), 600)
     if outfit:
         legacy.append(f"Wardrobe: {outfit}")
     if notes:
-        legacy.append(f"Additional direction: {notes}")
-    return " ".join(legacy) or DEFAULT_BODY_PROMPT
+        legacy.append(f"MUST KEEP: {notes}")
+    base = " ".join(legacy)
+    if not base:
+        return DEFAULT_BODY_PROMPT
+    if not _clean(options.get("outfit"), 500):
+        # A note alone still wants the house prompt behind it.
+        return f"{DEFAULT_BODY_PROMPT} {base}"
+    return base
 
 
 def _enconvo_config(preference_key, includes):

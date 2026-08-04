@@ -97,7 +97,8 @@ def _head_command(provider, reference, out_dir, quality, prompt=None):
 
 
 def generate_head(reference, destination, provider=None, quality="high",
-                  timeout=1800, log=print, overwrite=False, pose_note=""):
+                  timeout=1800, log=print, overwrite=False, pose_note="",
+                  keep=""):
     """Create and cache the canonical head-only identity asset used downstream.
 
     pose_note carries a measured correction ("previous attempt: yaw -9.1deg
@@ -105,7 +106,14 @@ def generate_head(reference, destination, provider=None, quality="high",
     source selfies (rachel, 2026-08-01: pitch 23, roll 18, foreshortening
     0.56) otherwise keep their tilt and degrade every mouth stage after."""
     provider = provider or default_head_provider()
+    # keep carries the owner's add-on ("keep his bandana"). A head plate
+    # normalises the face, and normalising quietly removed the very things
+    # that made a character recognisable (owner, 2026-08-04). It joins the
+    # signature below, so changing it correctly re-renders.
     prompt = HEAD_PROMPT + pose_note
+    if keep:
+        prompt += f"\nMUST KEEP from the source portrait: {keep}"
+
     signature = hashlib.sha256((
         f"v{HEAD_PROMPT_VERSION}\n{provider['name']}\n{provider.get('model')}\n"
         f"{quality}\n{prompt}\n" + _file_digest(reference)

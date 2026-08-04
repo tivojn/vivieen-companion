@@ -467,7 +467,7 @@ def recompose_avatar(slug, profile, log=print, progress=None):
         shutil.rmtree(stage, ignore_errors=True)
 
 
-def build_avatar(slug, shapes=None, log=None, quality="high"):
+def build_avatar(slug, shapes=None, log=None, quality="high", notes=""):
     d = adir(slug)
     m = read_manifest(slug)
     if not m:
@@ -520,7 +520,7 @@ def build_avatar(slug, shapes=None, log=None, quality="high"):
             generate.generate_head(
                 source_keyframe, head_path, provider=head_provider,
                 log=emit, quality=quality, pose_note=pose_note,
-                overwrite=bool(pose_attempt))
+                keep=notes, overwrite=bool(pose_attempt))
             head_metrics = prep.build_keyframe(
                 head_path, staged_keyframe, diag_dir=diag)
             issues = _frontality_issues(head_metrics)
@@ -638,6 +638,8 @@ if __name__ == "__main__":
     a.add_argument("--build", action="store_true", help="generate the full set right away")
     b = sub.add_parser("build", help="generate + compose + preview")
     b.add_argument("slug"); b.add_argument("--shapes", nargs="*")
+    b.add_argument("--keep", default="",
+                   help="what must survive the build, e.g. his bandana")
     sub.add_parser("list", help="list avatars")
     c = sub.add_parser("activate"); c.add_argument("slug")
     e = sub.add_parser("delete"); e.add_argument("slug")
@@ -651,7 +653,7 @@ if __name__ == "__main__":
         if args.build:
             build_avatar(m["slug"])
     elif args.cmd == "build":
-        build_avatar(args.slug, shapes=args.shapes)
+        build_avatar(args.slug, shapes=args.shapes, notes=args.keep)
     elif args.cmd == "list":
         for m in list_avatars():
             print(f"{'*' if m.get('active') else ' '} {m['slug']:24s} {m['status']:9s} "

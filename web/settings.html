@@ -154,6 +154,16 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
   display:flex;align-items:center;gap:12px;justify-content:flex-end}
 body{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 .savebar .msg{margin-right:auto;color:var(--dim);font-size:13px}
+.keep-scrim{position:fixed;inset:0;z-index:60;display:flex;align-items:center;
+  justify-content:center;padding:24px;background:var(--scrim)}
+.keep-card{width:min(460px,100%);background:var(--panel);border-radius:12px;
+  border:1px solid var(--line);padding:22px;box-shadow:0 24px 60px rgba(0,0,0,.28)}
+.keep-card h3{font-size:17px;margin-bottom:8px}
+.keep-card p{color:var(--dim);font-size:13px;line-height:1.5;margin-bottom:14px}
+.keep-card textarea{width:100%;padding:10px 12px;border-radius:8px;
+  border:1px solid var(--line);background:var(--panel-sub);color:var(--ink);
+  font:inherit;font-size:14px;resize:vertical}
+.keep-row{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
 .tier{font-size:12px;color:var(--dim);margin-top:8px}
 .tier b{color:var(--ink);font-weight:600}
 .inherit{margin-top:16px;padding:16px;border:1px solid var(--line);border-radius:8px;
@@ -1934,10 +1944,18 @@ async function act(what, slug, btn) {
     return;
   }
   if (what === 'delete' && !confirm('Delete ' + slug + ' and everything built from it?')) return;
+  // A build normalises the face and dresses the body from a house prompt,
+  // which is how a character's bandana and earrings quietly disappeared
+  // (owner, 2026-08-04). Ask what to KEEP before spending twenty minutes.
+  let keep = '';
+  if (what === 'build' || what === 'pipeline') {
+    keep = await askKeep(name || slug);
+    if (keep === null) return;          // cancelled
+  }
   btn.disabled = true;
   const r = await api('/api/avatar/' + what, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ slug })
+    body: JSON.stringify(keep ? { slug, notes: keep } : { slug })
   });
   if (r.detail) { alert(r.detail); btn.disabled = false; return; }
   if (what === 'build') { note('Building ' + slug + '. This takes a while — the log is live.'); }
@@ -1962,6 +1980,38 @@ async function act(what, slug, btn) {
     return;
   }
   loadAvatars();
+}
+
+/* One question before a long build: what must survive it. Empty is the
+   normal answer, so Enter alone gets on with the job. */
+function askKeep(who) {
+  return new Promise(resolve => {
+    const scrim = document.createElement('div');
+    scrim.className = 'keep-scrim';
+    scrim.innerHTML = `<div class="keep-card">
+      <h3>Anything to keep from the portrait?</h3>
+      <p>Her look is generated from a house prompt. Name anything the
+         source photo has that must survive it &mdash; this is added to
+         that prompt, never instead of it.</p>
+      <textarea id="keep-note" rows="3" placeholder="Add extra comments, e.g. keep the character's original clothing, keep his bandana, keep her earrings"></textarea>
+      <div class="keep-row">
+        <button class="btn" data-keep="cancel">Cancel</button>
+        <button class="btn primary" data-keep="go">Build</button>
+      </div></div>`;
+    document.body.append(scrim);
+    const field = scrim.querySelector('#keep-note');
+    const done = value => { scrim.remove(); resolve(value); };
+    field.focus();
+    field.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) done(field.value.trim());
+      if (event.key === 'Escape') done(null);
+    });
+    scrim.addEventListener('click', event => {
+      const act = event.target.dataset && event.target.dataset.keep;
+      if (act === 'go') done(field.value.trim());
+      else if (act === 'cancel' || event.target === scrim) done(null);
+    });
+  });
 }
 
 function closeBody() {

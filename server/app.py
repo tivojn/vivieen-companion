@@ -312,7 +312,7 @@ def _run_avatar_worker(args, log):
         raise RuntimeError(f"avatar worker exited with status {code}")
 
 
-def _build_thread(slug, shapes=None):
+def _build_thread(slug, shapes=None, notes=""):
     w = jlog(slug, "starting")
     with _jlock:
         _jobs[slug].update(done=False, error="", log=[])
@@ -320,6 +320,8 @@ def _build_thread(slug, shapes=None):
         build_args = ["-m", "studio.build", "build", slug]
         if shapes:
             build_args.extend(["--shapes", *shapes])
+        if notes:
+            build_args.extend(["--keep", notes])
         _run_avatar_worker(build_args, w)
         d = runtime_dir(slug)
         if os.path.isdir(d):
@@ -538,7 +540,7 @@ def _motion_thread(
         _finish_job(slug, job_id, failure)
 
 
-def _pipeline_thread(slug, job_id):
+def _pipeline_thread(slug, job_id, notes=""):
     """One click, everything: talking face (if not built) -> full body ->
     walk, edge idle, and moves - sequentially, in one background job."""
     writer = jlog(slug, "one-click pipeline: face, full body, walk, idle, moves")
@@ -566,7 +568,7 @@ def _pipeline_thread(slug, job_id):
             _job_progress(slug, "face", .02,
                           "One-click 1/3: building the talking face",
                           job_id=job_id)
-            manifest = reg().build_avatar(slug) or {}
+            manifest = reg().build_avatar(slug, notes=notes) or {}
             if manifest.get("status") != "ready":
                 raise RuntimeError(
                     manifest.get("error") or "the face build failed")
@@ -583,7 +585,7 @@ def _pipeline_thread(slug, job_id):
                           "One-click 2/3: full body already built",
                           job_id=job_id)
         else:
-            _body_stage(slug, BodyProfileInput().model_dump(), writer,
+            _body_stage(slug, BodyProfileInput(notes=notes).model_dump(), writer,
                         band(.30, .28, "One-click 2/3: "))
         # The takes run ONE AT A TIME with backoff retries: firing all
         # three at once burst past xAI's 2-requests-per-second team limit
@@ -706,6 +708,9 @@ def api_avatar_rename(r: RenameRequest):
 class Slug(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
     shapes: list[str] | None = None
+    # What the owner asked to keep from the source portrait. Optional
+    # everywhere; only the build paths read it.
+    notes: str = Field(default="", max_length=600)
 
 
 def _rig_control_field(name):
@@ -981,7 +986,8 @@ async def api_build(b: Slug):
         j = _jobs.get(b.slug)
         if j and not j["done"]:
             return {"started": False, "reason": "already building"}
-    threading.Thread(target=_build_thread, args=(b.slug, b.shapes), daemon=True).start()
+    threading.Thread(target=_build_thread,
+                     args=(b.slug, b.shapes, b.notes), daemon=True).start()
     return {"started": True, "slug": b.slug}
 
 
@@ -1251,6 +1257,9 @@ class MotionRepairRequest(BaseModel):
 
 class PipelineRequest(BaseModel):
     slug: str = Field(pattern=SLUG_PATTERN)
+    # What the owner wants kept from the source portrait - a bandana, an
+    # earring, a scar. Rides with the house prompt, never replaces it.
+    notes: str = Field(default="", max_length=600)
 
 
 @app.post("/api/avatar/pipeline")
@@ -1267,7 +1276,7 @@ async def api_pipeline(request: PipelineRequest):
     try:
         threading.Thread(
             target=_pipeline_thread,
-            args=(request.slug, job_id), daemon=True).start()
+            args=(request.slug, job_id, request.notes), daemon=True).start()
     except BaseException as error:
         _finish_job(request.slug, job_id, getattr(error, "detail", error))
         raise

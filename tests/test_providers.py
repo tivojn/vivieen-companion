@@ -577,7 +577,8 @@ class OneClickPipelineTests(unittest.TestCase):
             motion.IDLE_POSE_PRESETS["back-heel"]["label"], "High heel touch")
         self.assertEqual(
             motion.MOVE_STYLES["kpop"]["label"], "K-pop point dance")
-        self.assertIn("_body_stage(slug, BodyProfileInput().model_dump(), writer,",
+        # carries the owner's "what to keep" note into the body stage
+        self.assertIn("_body_stage(slug, BodyProfileInput(notes=notes).model_dump(), writer,",
                       source)
         # a still-running job refuses a second start instead of stacking
         self.assertIn('_reserve_job(request.slug, "pipeline"', source)

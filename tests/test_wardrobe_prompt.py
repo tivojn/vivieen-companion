@@ -7,6 +7,7 @@ path lands on the static preset instead of breaking Full Body Studio.
 """
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -469,3 +470,43 @@ class EyewearLockTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KeepFromThePortrait(unittest.TestCase):
+    """An add-on the owner types before a build: what must survive it."""
+
+    def test_a_note_rides_with_the_prompt_never_instead_of_it(self):
+        # It used to be DROPPED the moment an expanded prompt existed -
+        # which is the normal path - so "keep his bandana" never reached
+        # the model, and a character came back with the right face and
+        # none of what made him recognisable (owner, 2026-08-04).
+        sys.path.insert(0, str(ROOT))
+        from studio import body
+        house = body._direction({"prompt": "A tailored navy dress."})
+        self.assertEqual(house, "A tailored navy dress.")
+        both = body._direction({"prompt": "A tailored navy dress.",
+                                "notes": "keep his bandana"})
+        self.assertIn("A tailored navy dress.", both)
+        self.assertIn("keep his bandana", both)
+        # a note on its own still gets the house prompt behind it
+        alone = body._direction({"notes": "keep her earrings"})
+        self.assertIn(body.DEFAULT_BODY_PROMPT, alone)
+        self.assertIn("keep her earrings", alone)
+
+    def test_the_head_plate_is_told_what_to_keep(self):
+        # The bandana is a HEAD accessory, and normalising the face is
+        # exactly what removed it.
+        source = (ROOT / "studio" / "generate.py").read_text(encoding="utf-8")
+        self.assertIn("keep=\"\"", source)
+        self.assertIn("MUST KEEP from the source portrait:", source)
+        builder = (ROOT / "studio" / "build.py").read_text(encoding="utf-8")
+        self.assertIn("keep=notes", builder)
+        # and it reaches the worker from the UI
+        self.assertIn('b.add_argument("--keep"', builder)
+
+    def test_the_ui_asks_before_a_long_build(self):
+        page = (ROOT / "web" / "settings.html").read_text(encoding="utf-8")
+        self.assertIn("function askKeep(", page)
+        self.assertIn("Add extra comments, e.g. keep the character", page)
+        # both long builds ask
+        self.assertIn("if (what === 'build' || what === 'pipeline')", page)
