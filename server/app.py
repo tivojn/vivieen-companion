@@ -3208,6 +3208,12 @@ async def api_sync_solo():
         # so the provider only ever "worked" where it could never run
         # (#28). Send the Mac's LAN address instead; off that Wi-Fi the
         # page falls back to a key it holds - and names the swap.
+        # An EMPTY base_url hides the same trap one layer down: the
+        # engine's ollama default is localhost:11434, so spell it out
+        # before rewriting or the phone inherits the note-to-self.
+        if name == "llm" and block.get("provider") == "ollama" \
+                and not block.get("base_url"):
+            block["base_url"] = "http://127.0.0.1:11434"
         if block.get("base_url"):
             block["base_url"] = _lan_base_url(block["base_url"])
         config[name] = block

@@ -2695,6 +2695,24 @@ class SoloLanSyncTests(unittest.TestCase):
         finally:
             relay.lan_addresses = original
 
+    def test_an_empty_ollama_base_url_is_spelled_out_before_rewriting(self):
+        # The live config carries base_url '' - the loopback default hides
+        # in provider code, so the sync must surface it or the phone
+        # inherits the note-to-self one layer down.
+        import asyncio
+        import server.relay_agent as relay
+        original = relay.lan_addresses
+        relay.lan_addresses = lambda port: [f"http://192.0.2.7:{port}"]
+        try:
+            with mock.patch.object(server_app.P, "load", return_value={
+                    "llm": {"provider": "ollama", "model": "glm-5.2:cloud",
+                            "base_url": ""}}):
+                sync = asyncio.run(server_app.api_sync_solo())
+            self.assertEqual(sync["config"]["llm"]["base_url"],
+                             "http://192.0.2.7:11434")
+        finally:
+            relay.lan_addresses = original
+
     def test_the_page_runs_ollama_keyless_and_falls_back_with_a_word(self):
         page = (ROOT / "web" / "index.html").read_text()
         self.assertIn("c.provider==='ollama'&&c.base_url&&c.model", page)
