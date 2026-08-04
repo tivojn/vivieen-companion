@@ -217,6 +217,37 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         return cacheRoot.appendingPathComponent(name)
     }
 
+    /// Live state we keep a LAST-KNOWN copy of. Not cache-first - these
+    /// must be live whenever the Mac is there, or Settings would show
+    /// yesterday's configuration as if it were today's. But when the Mac
+    /// is gone, last-known beats an empty page: without this, Settings
+    /// opened instantly and then sat there bare, with no avatars, no
+    /// models, no persona (owner, 2026-08-04).
+    private func snapshotable(_ path: String) -> Bool {
+        let key = bare(path)
+        return key == "/api/config" || key == "/api/media/defaults"
+            || key == "/api/store" || key == "/api/avatars"
+    }
+
+    private func snapshotURL(_ path: String) -> URL {
+        var name = "snap_" + bare(path).replacingOccurrences(of: "/", with: "_")
+        if name.count > 180 { name = String(name.suffix(180)) }
+        return cacheRoot.appendingPathComponent(name)
+    }
+
+    /// The last good answer, if we ever had one.
+    private func snapshot(_ path: String) -> Data? {
+        guard snapshotable(path),
+              let held = try? Data(contentsOf: snapshotURL(path)),
+              !held.isEmpty else { return nil }
+        return held
+    }
+
+    private func keepSnapshot(_ data: Data, path: String) {
+        guard snapshotable(path), !data.isEmpty else { return }
+        try? data.write(to: snapshotURL(path))
+    }
+
     private func mime(for path: String) -> String {
         switch (path as NSString).pathExtension.lowercased() {
         case "html", "": return "text/html; charset=utf-8"
@@ -435,6 +466,13 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                               method: method, body: body)
                 return
             }
+            if method == "GET", http.statusCode == 200 {
+                // Keep a last-known copy of live state on the fast path
+                // too - a phone that never needs the relay would otherwise
+                // never build one, and Settings would still open bare the
+                // first time the Mac went away.
+                self.keepSnapshot(data, path: path)
+            }
             if method == "GET", self.cacheable(path), http.statusCode == 200 {
                 self.noteSlug(from: data, path: path)
                 self.warmDeck(from: data, path: path)
@@ -449,13 +487,49 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
 
     private func viaRelay(_ task: WKURLSchemeTask, requested: URL, path: String,
                           method: String, body: Data?) {
+        // The direct road already failed, so the Mac is asleep or far
+        // away. Waiting out the relay's window before showing anything is
+        // how Settings sat empty for minutes on cellular. If we hold a
+        // last-known copy, answer with it NOW and let the relay refresh it
+        // behind the page (owner, 2026-08-04).
+        if method == "GET", let held = snapshot(path) {
+            NSLog("[viv-scheme] %@ from last-known snapshot", path)
+            finish(task, url: requested, data: held, type: "application/json")
+            relay.send(path: path, method: "GET", body: nil,
+                       timeout: 60) { [weak self] reply in
+                guard let self, let reply, reply.status == 200 else { return }
+                self.keepSnapshot(reply.data, path: path)
+                if self.cacheable(path) {
+                    self.noteSlug(from: reply.data, path: path)
+                    try? reply.data.write(to: self.cacheURL(path))
+                }
+            }
+            return
+        }
         relay.send(path: path, method: method, body: body,
                    contentType: task.request.value(forHTTPHeaderField: "Content-Type")) { [weak self] reply in
             guard let self else { return }
             guard let reply else {
+                // Nothing answered. If we have ever seen this, show that
+                // rather than an empty page.
+                if method == "GET", let held = self.snapshot(path) {
+                    NSLog("[viv-scheme] %@ from last-known snapshot", path)
+                    self.finish(task, url: requested, data: held,
+                                type: "application/json")
+                    return
+                }
                 self.finish(task, url: requested,
                             data: Data("{\"error\":\"the relay did not answer\"}".utf8),
                             type: "application/json", status: 504)
+                return
+            }
+            if method == "GET", reply.status == 200 {
+                self.keepSnapshot(reply.data, path: path)
+            }
+            if method == "GET", reply.status != 200, let held = self.snapshot(path) {
+                NSLog("[viv-scheme] %@ from last-known snapshot", path)
+                self.finish(task, url: requested, data: held,
+                            type: "application/json")
                 return
             }
             if method == "GET", self.cacheable(path), reply.status == 200 {
@@ -483,7 +557,8 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     /// visit is always the slow one - and on cellular "slow" was a
     /// half-drawn Settings page and a long wait (owner, 2026-08-04).
     private func warmPages() {
-        for path in ["/settings", "/api/avatars"] {
+        for path in ["/settings", "/api/avatars", "/api/config",
+                     "/api/media/defaults"] {
             guard let url = URL(string: address + path) else { continue }
             var request = URLRequest(url: url)
             request.timeoutInterval = 20
@@ -493,6 +568,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                       (response as? HTTPURLResponse)?.statusCode == 200
                 else { return }
                 try? body.write(to: self.cacheURL(path))
+                self.keepSnapshot(body, path: path)
                 self.warmDeck(from: body, path: path)
                 NSLog("[viv-scheme] warmed %@ (%d bytes)", path, body.count)
             }.resume()

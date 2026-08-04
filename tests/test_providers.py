@@ -399,6 +399,25 @@ class ProviderDefaultsTests(unittest.TestCase):
         # solo on the FIRST miss - waiting for a second looks broken
         self.assertIn("if(IS_IOS){SOLO.misses++;soloEnter();}", page)
 
+    def test_live_state_keeps_a_last_known_copy(self):
+        # Settings opened instantly and then sat BARE: no avatars, no
+        # models, no persona - because its contents come from /api/config
+        # and friends, which are live state and rightly not cache-first.
+        # With the Mac gone they were waiting out the relay's window
+        # (owner, 2026-08-04). Live when the Mac is there; last-known when
+        # it is not; never a blank page.
+        with open(os.path.join(ROOT, "ios", "Vivieen", "VivScheme.swift"),
+                  encoding="utf-8") as handle:
+            swift = handle.read()
+        self.assertIn("private func snapshotable(", swift)
+        for path in ('"/api/config"', '"/api/media/defaults"'):
+            self.assertIn(path, swift)
+        # kept on BOTH roads, or a phone that never relays never has one
+        self.assertIn("self.keepSnapshot(data, path: path)", swift)
+        self.assertIn("self.keepSnapshot(reply.data, path: path)", swift)
+        # and served at once rather than after the relay gives up
+        self.assertIn('if method == "GET", let held = snapshot(path) {', swift)
+
     def test_the_picker_chooses_a_platform_before_a_model(self):
         # A brain is a PLATFORM and then a model; listing one provider's
         # models was half the switch (owner, 2026-08-04).
