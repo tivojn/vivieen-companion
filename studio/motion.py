@@ -1193,6 +1193,20 @@ def _generate_keyframes(
         if kind == "idle" and pose_reference:
             references.append(pose_reference)
         output_dir = os.path.join(keyframe_dir, f"{kind}-provider")
+        # The owner's explicit "xAI Grok Image" is OUR route, not EnConvo's.
+        # EnConvo's x_ai lane sends `n` on every call and xAI answers an
+        # edit carrying it with "n is only supported for image generation" -
+        # the body and head plates were moved off it this morning, and the
+        # motion keyframes were still on it, so choosing Grok Imagine broke
+        # them the same way (owner, 2026-08-04). EnConvo stays untouched;
+        # we simply make this one call ourselves.
+        if image_provider.get("direct"):
+            key = body._xai_key()
+            if key:
+                generated = body._xai_edit(
+                    prompts[kind], references, output_dir,
+                    f"{kind}-keyframe", key, aspect_ratio="2:3")
+                return _standard_image(generated, destination)
         generated = _run(
             _image_command(
                 image_provider, references, output_dir, f"{kind}-keyframe", prompts[kind]),

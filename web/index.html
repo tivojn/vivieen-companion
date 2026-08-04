@@ -417,6 +417,21 @@ html.ios.turning #stopBtn svg{width:16px;height:16px;fill:currentColor}
 /* Her colours can sit right on top of the words. One tap puts her away,
    another brings her back. */
 html.ios.avatar-hidden #stage,html.ios.avatar-hidden #vignette{opacity:0}
+/* ---- she is the front layer ---------------------------------------------
+   Two states, and only two: visible means she stands IN FRONT and the
+   thread reads underneath her; invisible means gone. The old third state -
+   she ducked behind the words the moment you touched the composer - is
+   cancelled (owner, 2026-08-04). She sits above the thread (3) and below
+   the rail (5) and the composer (6), because those are controls and she
+   is not.
+
+   The canvas is the whole screen, so with her in front it would swallow
+   every touch meant for the thread. While a turn owns the top, the thread
+   IS the surface you touch - and it already hands the taps that miss a
+   card back to her, so poking her still works through it. */
+html.ios #stage{z-index:4}
+html.ios.thread-anchored #stage,html.ios.thread-anchored #cv{pointer-events:none}
+html.ios.avatar-hidden #stage{pointer-events:none}
 /* ---- per-row actions ---------------------------------------------------
    Quiet until wanted: a thread should read as a conversation, not as a
    toolbar with text between the buttons. Touch a row and they appear. */
@@ -660,7 +675,7 @@ html.ios #thread{display:flex;flex-direction:column;justify-content:flex-start;
   gap:8px;position:fixed;left:12px;right:12px;
   max-height:calc(100vh - env(safe-area-inset-top,0px) - 100px
     - var(--bar-h,88px) - var(--kb,0px));
-  bottom:calc(var(--bar-h,88px) + 12px + var(--kb,0px));z-index:4;
+  bottom:calc(var(--bar-h,88px) + 12px + var(--kb,0px));z-index:3;
   overflow-y:auto;overflow-x:hidden;pointer-events:auto;
   -webkit-overflow-scrolling:touch;overscroll-behavior:contain;
   touch-action:pan-y;
@@ -753,8 +768,11 @@ html.ios #threaddown.on{display:flex;position:fixed;right:16px;
 #threaddown svg{width:18px;height:18px;fill:currentColor}
 /* Stage mode: a rail performance (dance, rest, closeup, zoom) brings HER
    to the front - the thread bows out and returns when the show ends. */
-html.ios.stage-mode #thread{opacity:0}
-html.ios.stage-mode #thread,html.ios.stage-mode #thread .msg{pointer-events:none}
+/* A performance no longer has to push the thread out of the way: she is
+   in front of it now, so it simply reads behind her. It keeps its touches
+   too - scrolling back through the conversation while she dances is not a
+   conflict. */
+html.ios.stage-mode #thread{opacity:1}
 html.ios #log{display:none}
 /* Desk chrome that has no business on the phone: the zoom badge and the
    roaming speech bubble (the thread IS her voice there). */
@@ -5013,10 +5031,14 @@ function threadPadNow(container){
   if(!TOP.card||!container.contains(TOP.card)){
     TOP.pad.remove();
     container.classList.remove('anchored');
+    document.documentElement.classList.remove('thread-anchored');
     return false;
   }
   if(container.lastElementChild!==TOP.pad)container.append(TOP.pad);
   container.classList.add('anchored');
+  // She is painted in front; while the thread owns the screen it owns the
+  // touches too, and hands back the ones that miss a card.
+  document.documentElement.classList.add('thread-anchored');
   TOP.pad.style.height='0px';
   // Measure where the CONTENT ends, not scrollHeight: on a box taller than
   // its content scrollHeight reports the box, so the pad came out exactly
@@ -5511,19 +5533,12 @@ if(IS_IOS){
     window.IOS_MUTED=!window.IOS_MUTED;
     if(masterGain)masterGain.gain.value=window.IOS_MUTED?0:1;
   });
-  // The bar is the way home: touching input, mic, emoji, or plus ends any
-  // performance and brings the thread back (owner, 2026-08-02).
-  const exitStage=()=>{
-    moveShowUntil=0;walkShowUntil=0;
-    if(idleShowUntil){idleShowUntil=0;hideDomVideo();}
-    if(IOS_HEAD_ANCHOR||IOS_ZOOM>1.05)setZoom(1,false);
-    document.documentElement.classList.remove('zoom-open');
-  };
-  [txt,micmode,emojiBtn,plusBtn,talkbar].forEach(control=>{
-    control.addEventListener('pointerdown',exitStage);
-  });
+  // Touching the composer used to end any performance and duck her behind
+  // the thread. Cancelled: she is the front layer now and the words read
+  // underneath her, so typing while she dances is not a contradiction and
+  // does not have to stop her (owner, 2026-08-04). The rail buttons that
+  // started a performance are still the way to end it.
   autoSizeTxt();
-  txt.addEventListener('focus',exitStage);
   // Jump-to-newest: the pill appears whenever you scroll away from the
   // freshest reply.
   const threadBox=document.getElementById('thread');

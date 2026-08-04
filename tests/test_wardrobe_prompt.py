@@ -639,3 +639,16 @@ class DirectProviderPlumbing(unittest.TestCase):
                     (body._own_config().get("image") or {}).get("provider"),
                     "xai")
                 self.assertEqual(body._xai_key(), "xai-abc")
+
+    def test_motion_keyframes_take_the_direct_road_too(self):
+        # The n-bug fix landed on the body and head plates this morning and
+        # stopped there. Motion keyframes still shelled out to EnConvo's
+        # x_ai lane, which sends `n`, so choosing Grok Imagine failed them
+        # with "n is only supported for image generation" (owner, 2026-08-04).
+        source = (ROOT / "studio" / "motion.py").read_text(encoding="utf-8")
+        self.assertIn('if image_provider.get("direct"):', source)
+        self.assertIn("body._xai_edit(", source)
+        # a plate is portrait, like every other body plate
+        self.assertIn('aspect_ratio="2:3"', source)
+        # and it still falls through to the CLI for every other provider
+        self.assertIn("generated = _run(\n            _image_command(", source)
