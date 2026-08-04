@@ -165,6 +165,12 @@ struct CompanionWebView: UIViewRepresentable {
             address: address, token: token,
             relayBase: UserDefaults.standard.string(forKey: "relayBase")
                 ?? RelayClient.defaultBase)
+        // A changed face reaches the page at once, not next launch.
+        scheme.onAvatarChanged = { [weak coordinator = context.coordinator] in
+            coordinator?.webView?.evaluateJavaScript(
+                "window.__vivAvatarChanged&&__vivAvatarChanged()",
+                completionHandler: nil)
+        }
         configuration.setURLSchemeHandler(scheme,
                                           forURLScheme: VivSchemeHandler.scheme)
         configuration.userContentController.add(context.coordinator, name: "body")
@@ -221,6 +227,7 @@ struct CompanionWebView: UIViewRepresentable {
         let mic = MicDriver.shared
         let speech = SpeechPlayer.shared
         weak var scheme: VivSchemeHandler?
+        weak var webView: WKWebView?
         var pageURL: URL?
         private let pageLive: (Bool) -> Void
 
@@ -229,6 +236,7 @@ struct CompanionWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            self.webView = webView
             pageLive(true)
             // Every successful load is a chance to refresh solo's keys
             // and config while the Mac is in reach.

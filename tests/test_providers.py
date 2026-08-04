@@ -346,30 +346,58 @@ class ProviderDefaultsTests(unittest.TestCase):
         # only her words are worth hearing again
         self.assertIn("if(role!=='user')button('Play aloud'", html)
 
-    def test_server_rendered_state_is_never_cached(self):
-        # I cached /settings and /api/avatars to make them open faster and
-        # it was wrong. /settings is SERVER-RENDERED: the avatar name and
-        # the ACTIVE badge are in its markup, not fetched, so a cached copy
-        # freezes whichever avatar was on stage when it was stored - switch
-        # in the carousel and Settings still swore the old one was active
-        # (owner, 2026-08-04). /api/avatars carries the same "active" flag.
-        # Only genuinely static things may be cached.
+    def test_state_may_be_cached_only_when_the_key_says_whose(self):
+        # First I cached /settings and /api/avatars on a SHARED key, which
+        # froze whichever avatar was on stage when they were stored -
+        # switch in the carousel and Settings still swore the old one was
+        # active. Then I stopped caching them, which made the phone wait on
+        # the Mac for its own Settings page over cellular. Both were wrong.
+        # They are server-rendered per AVATAR, so the key carries the slug
+        # and a switch misses by itself (owner, 2026-08-04).
         with open(os.path.join(ROOT, "ios", "Vivieen", "VivScheme.swift"),
                   encoding="utf-8") as handle:
             swift = handle.read()
-        # Scope the check to cacheable() itself - warmDeck legitimately
-        # names /api/avatars to recognise the roster it warms from.
         start = swift.index("private func cacheable(")
         rule = swift[start:swift.index("private func bare(", start)]
-        self.assertNotIn('"/settings"', rule)
-        self.assertNotIn('"/api/avatars"', rule)
+        self.assertIn('bare(path) == "/settings"', rule)
+        self.assertIn('bare(path) == "/api/avatars"', rule)
+        # ...and each of those is keyed by the face it was rendered for
+        self.assertIn('key.hasPrefix("/assets/") || key == "/settings"', swift)
+        self.assertIn('|| key == "/api/avatars"', swift)
+        # live state that is NOT per-avatar still must not be cached
         self.assertNotIn('"/api/config"', rule)
-        # what IS static: the chat page, her sprites, the thumbnails
+        # what is static: the chat page, her sprites, the thumbnails
         self.assertIn('bare(path) == "/"', rule)
         self.assertIn('path.hasPrefix("/assets/")', rule)
         self.assertIn('path.hasPrefix("/api/avatar/thumb")', rule)
-        # the deck's faces are still warmed off the live roster
         self.assertIn("private func warmDeck(", swift)
+
+    def test_the_phone_boots_from_its_own_cache(self):
+        # It is a standalone app first. The manifest used to be fetched
+        # from the Mac on EVERY launch, so on cellular nothing could be
+        # drawn until a direct attempt timed out and the relay answered:
+        # no avatar, just BOOTING (owner, 2026-08-04).
+        with open(os.path.join(ROOT, "ios", "Vivieen", "VivScheme.swift"),
+                  encoding="utf-8") as handle:
+            swift = handle.read()
+        # no manifest exception left in the cache-first branch
+        self.assertNotIn("!manifest || skipDirectNow()", swift)
+        self.assertIn("if method == \"GET\", cacheable(path),\n"
+                      "           let cached = try? Data(contentsOf: cacheURL(path))",
+                      swift)
+        # Settings is local again, but keyed per face so it cannot freeze
+        start = swift.index("private func cacheable(")
+        rule = swift[start:swift.index("private func bare(", start)]
+        self.assertIn('bare(path) == "/settings"', rule)
+        self.assertIn('key.hasPrefix("/assets/") || key == "/settings"', swift)
+        # and a face that changed under us reaches the page at once
+        self.assertIn("onAvatarChanged", swift)
+        with open(os.path.join(ROOT, "web", "index.html"),
+                  encoding="utf-8") as handle:
+            page = handle.read()
+        self.assertIn("window.__vivAvatarChanged", page)
+        # solo on the FIRST miss - waiting for a second looks broken
+        self.assertIn("if(IS_IOS){SOLO.misses++;soloEnter();}", page)
 
     def test_the_picker_chooses_a_platform_before_a_model(self):
         # A brain is a PLATFORM and then a model; listing one provider's

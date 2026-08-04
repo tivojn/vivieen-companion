@@ -1319,12 +1319,11 @@ function renderMediaDefault(kind) {
       })}</div>` : ''}
       <p class="note">Managed in EnConvo Settings at <b>Global Providers → ${kind === 'image' ? 'Image Generation' : 'Video Generation'}</b>. Credentials never enter this app.</p>
       ${kind === 'image' && mapped && /x_?ai/i.test(mapped.name || '') ? `<p class="note">
-        <b>Avatar plates take a different road.</b> Every plate is an image
-        EDIT, and EnConvo's xAI route sends a parameter xAI refuses on
-        edits — so those calls go straight to xAI using
-        <b>your own xAI API key</b>, which is metered per image rather
-        than covered by the subscription. Plain generation still goes
-        through EnConvo.</p>` : ''}
+        <b>Heads up:</b> EnConvo's xAI route sends a parameter xAI refuses
+        on image <i>edits</i>, and every avatar plate is an edit — so
+        avatar builds fail on this setting. Choose <b>xAI Grok Image</b>
+        above instead: that runs on this app's own key, metered per image,
+        and can edit.</p>` : ''}
       <div class="row"><button class="btn sm" data-refresh-media>Refresh EnConvo defaults</button></div>
     </div>`;
   } else {
@@ -1332,7 +1331,14 @@ function renderMediaDefault(kind) {
       ? `<div class="f" style="max-width:150px"><label>Size</label>
           <input data-media-field="size" value="${esc(config.size || '1024x1024')}"></div>`
       : `<div class="f" style="max-width:150px"><label>Seconds</label>
-          <input data-media-field="seconds" value="${esc(String(config.seconds || 5))}"></div>`;
+          <input data-media-field="seconds" value="${esc(String(config.seconds || 5))}"></div>
+         ${provider.id === 'xai' ? `<div class="f" style="max-width:170px">
+          <label>Resolution</label>
+          <select data-media-field="resolution">
+            ${['1080p','720p','480p'].map(r => `<option value="${r}" ${
+              (config.resolution || '1080p') === r ? 'selected' : ''}>${r}</option>`).join('')}
+          </select>
+          <p class="note">1080p needs <b>grok-imagine-video-1.5</b>.</p></div>` : ''}`;
     element.innerHTML = `${providerField}
       <div class="row" style="margin-top:14px">
         <div class="f"><label>API key ${config.has_key ? '<span class="pill ok">stored</span>' : ''}</label>

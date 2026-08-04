@@ -841,6 +841,12 @@ html.ios #zoombox input{width:100%;flex:1}
 const applyChromeDesign=value=>{
   document.documentElement.dataset.design=value==='atelier'?'atelier':'quiet';
 };
+/* The app drew her from cache, then learned the Mac had a different face
+   on stage. Take the new one now rather than next launch. */
+window.__vivAvatarChanged=()=>{
+  try{flashPrompt('New avatar on the desk — refreshing');}catch(e){}
+  setTimeout(()=>location.reload(),400);
+};
 applyChromeDesign(localStorage.getItem('vivieen-design'));
 /* The Mac decides, so the desk and the phone cannot disagree. */
 fetch('health').then(r=>r.json()).then(h=>{
@@ -1501,7 +1507,11 @@ async function poll(){
                            :'model unreachable \u2014 check settings','busy');
     }
   }catch(e){providerReady=false;
-    if(IS_IOS){SOLO.misses++;if(SOLO.misses>=2)soloEnter();}
+    // Solo on the FIRST miss, not the second. This is a standalone app
+    // that syncs when the Mac is there, not a terminal that waits for it
+    // - three seconds of "server offline" before she will answer is three
+    // seconds of looking broken (owner, 2026-08-04).
+    if(IS_IOS){SOLO.misses++;soloEnter();}
     if(SOLO.active){providerReady=true;}
     else if(monitorEnabled)renderMonitorStatus();
     else setStatus('server offline','');}

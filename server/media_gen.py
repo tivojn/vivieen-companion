@@ -207,6 +207,43 @@ async def generate_video(prompt, c):
             content.raise_for_status()
             return _write("video", ".mp4", content.content)
 
+    if p == "xai":
+        # Grok Imagine video, current API. Measured 2026-08-04 against the
+        # live service: submit returns a request_id, the job is polled at
+        # /v1/videos/{id}, and 1080p is available on grok-imagine-video-1.5
+        # only - the older grok-imagine-video answers "1080p video
+        # resolution is not available for this model". EnConvo's own video
+        # default is untouched; this runs only when the owner picks xAI.
+        root = base or "https://api.x.ai/v1"
+        headers = {"Authorization": f"Bearer {key}"}
+        name = model or "grok-imagine-video-1.5"
+        wanted = (c.get("resolution") or "1080p").lower()
+        async with httpx.AsyncClient(timeout=900) as x:
+            payload = {"model": name, "prompt": prompt, "resolution": wanted}
+            r = await x.post(f"{root}/videos/generations",
+                             headers=headers, json=payload)
+            if r.status_code == 400 and "1080p" in r.text and wanted == "1080p":
+                # Say which model can, rather than just refusing.
+                raise RuntimeError(
+                    f"{name} cannot do 1080p — use grok-imagine-video-1.5, "
+                    "or set the resolution to 720p")
+            r.raise_for_status()
+            job = r.json().get("request_id") or r.json().get("id")
+            if not job:
+                raise RuntimeError("xAI accepted the job but named no id")
+            body = await _poll(
+                x, "GET", f"{root}/videos/{job}", headers,
+                lambda b: b.get("status") not in ("pending", "processing"),
+                lambda b: b)
+            if body.get("status") != "done":
+                raise RuntimeError(f"xAI video: {body.get('status')}")
+            url = ((body.get("video") or {}).get("url") or "")
+            if not url:
+                raise RuntimeError("xAI reported done but returned no video")
+            # The CDN refuses a bare client, same as the image one.
+            return await _download(url, "video", ".mp4",
+                                   {"User-Agent": "Mozilla/5.0 (Macintosh)"})
+
     if p == "gemini":
         root = base or "https://generativelanguage.googleapis.com/v1beta"
         name = model or "veo-3.1-fast-generate-001"

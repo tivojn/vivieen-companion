@@ -535,9 +535,9 @@ class GrokImagineEdits(unittest.TestCase):
         # ...and no n anywhere near it
         self.assertNotIn('"n":', source)
         # only xAI diverts; every other provider keeps the CLI
-        self.assertIn('provider["route"] == "x_ai/create" else ""', source)
+        self.assertIn('provider.get("direct")', source)
         # and with no key of our own, so does xAI - the old path stands
-        self.assertIn("key = _xai_key() if provider", source)
+        self.assertIn('key = _xai_key() if provider.get("direct")', source)
 
     def test_the_cdn_needs_a_browser_user_agent(self):
         # Measured: a bare urllib fetch of the returned image is 403;
@@ -558,12 +558,32 @@ class GrokImagineEdits(unittest.TestCase):
         self.assertIn("metered", source)
         self.assertIn("xAI API key", source)
 
-    def test_the_settings_card_admits_which_credential_pays(self):
-        # The card said "Credentials never enter this app", which stopped
-        # being wholly true the moment plates started going direct.
+    def test_the_enconvo_lane_is_left_alone(self):
+        # Picking "EnConvo Global Default" must mean exactly that: its
+        # route, untouched, whatever it does. The direct path belongs to
+        # the explicit "xAI Grok Image" choice (owner, 2026-08-04).
+        source = (ROOT / "studio" / "body.py").read_text(encoding="utf-8")
+        self.assertIn('if (image.get("provider") or "") != "xai":\n        return ""',
+                      source)
+        self.assertIn('key = _xai_key() if provider.get("direct") else ""', source)
+        # and the card points the owner at the setting that works
         page = (ROOT / "web" / "settings.html").read_text(encoding="utf-8")
-        self.assertIn("your own xAI API key", page)
+        self.assertIn("Choose <b>xAI Grok Image</b>", page)
         self.assertIn("metered per image", page)
+
+    def test_xai_video_is_current_and_can_do_1080p(self):
+        # Measured against the live service 2026-08-04: submit returns a
+        # request_id, the job is polled at /v1/videos/{id}, and 1080p is
+        # available on grok-imagine-video-1.5 only. Verified end to end -
+        # 1920x1088, 8s.
+        source = (ROOT / "server" / "media_gen.py").read_text(encoding="utf-8")
+        self.assertIn('f"{root}/videos/generations"', source)
+        self.assertIn('f"{root}/videos/{job}"', source)
+        self.assertIn('name = model or "grok-imagine-video-1.5"', source)
+        # and it names the model that CAN, rather than just refusing
+        self.assertIn("use grok-imagine-video-1.5", source)
+        # the CDN refuses a bare client here too
+        self.assertIn('"User-Agent": "Mozilla/5.0 (Macintosh)"', source)
 
     def test_the_head_plate_takes_the_same_road(self):
         source = (ROOT / "studio" / "generate.py").read_text(encoding="utf-8")

@@ -54,7 +54,10 @@ DEFAULTS = {
     "image": {"provider": "enconvo", "model": "",
               "base_url": "", "api_key": "", "size": "1024x1024"},
     "video": {"provider": "enconvo", "model": "",
-              "base_url": "", "api_key": "", "seconds": 5},
+              "base_url": "", "api_key": "", "seconds": 5,
+              # xAI's Grok Imagine takes a resolution; 1080p needs
+              # grok-imagine-video-1.5 (measured 2026-08-04).
+              "resolution": "1080p"},
     "live": {"provider": "xai",
              "xai_api_key": "", "xai_voice": "eve",
              "xai_model": "grok-voice-think-fast-1.0",

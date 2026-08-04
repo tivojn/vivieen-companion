@@ -108,9 +108,16 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     /// itself on the next shared Wi-Fi.
     private func cacheable(_ path: String) -> Bool {
         bare(path) == "/"
+            || bare(path) == "/settings"
+            || bare(path) == "/api/avatars"
             || path.hasPrefix("/assets/")
             || path == "/live-worklet.js"
             || path.hasPrefix("/api/avatar/thumb")
+            // Settings IS cacheable, as long as the key remembers which
+            // avatar it was rendered for: the page bakes the active face
+            // and its ACTIVE badge into the markup, so a shared key froze
+            // whichever one was on stage when it was stored. Keyed per
+            // slug, switching avatar misses and refetches by itself.
         // NOT /settings, and NOT /api/avatars. I cached both to make them
         // open faster and it was wrong: /settings is SERVER-RENDERED with
         // the live avatar state baked into its markup - the name and the
@@ -164,14 +171,27 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         }
     }
 
+    /// Somewhere to tell the page the face changed under it.
+    var onAvatarChanged: (() -> Void)?
+
     private func noteSlug(from data: Data, path: String) {
         guard bare(path) == "/assets/manifest.json",
               let top = try? JSONSerialization.jsonObject(with: data)
                 as? [String: Any],
               let avatar = top["avatar"] as? [String: Any],
               let slug = avatar["slug"] as? String, !slug.isEmpty else { return }
-        lock.lock(); activeSlug = slug; lock.unlock()
+        lock.lock()
+        let changed = slug != activeSlug
+        activeSlug = slug
+        lock.unlock()
         UserDefaults.standard.set(slug, forKey: "cachedAvatarSlug")
+        // The page drew the OLD face from cache a moment ago. Now that we
+        // know better, say so - waiting for the next launch is how the
+        // deck and the stage disagreed for a whole session.
+        if changed {
+            NSLog("[viv-scheme] active avatar changed to %@", slug)
+            DispatchQueue.main.async { [weak self] in self?.onAvatarChanged?() }
+        }
     }
 
     private func cacheURL(_ path: String) -> URL {
@@ -184,7 +204,8 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         var name: String
         if key == "/" {
             name = "__page"
-        } else if key.hasPrefix("/assets/") {
+        } else if key.hasPrefix("/assets/") || key == "/settings"
+                    || key == "/api/avatars" {
             lock.lock(); let slug = activeSlug; lock.unlock()
             name = slug + "_" + key.replacingOccurrences(of: "/", with: "_")
         } else {
@@ -360,8 +381,14 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
 
         // The manifest is the ONLY thing that can teach us the active
         // avatar, so it must reach the Mac whenever the Mac is there.
-        let manifest = bare(path) == "/assets/manifest.json"
-        if method == "GET", cacheable(path), !manifest || skipDirectNow(),
+        // CACHE FIRST, ALWAYS - including the manifest. It used to be
+        // fetched from the Mac on every launch "so a changed avatar is
+        // learned", which meant that on cellular nothing could be drawn
+        // until a direct attempt timed out and the relay answered: no
+        // avatar, just BOOTING (owner, 2026-08-04). This app is a solo app
+        // first. The refresh below still learns a changed avatar, and now
+        // tells the page the moment it does.
+        if method == "GET", cacheable(path),
            let cached = try? Data(contentsOf: cacheURL(path)), !cached.isEmpty {
             finish(task, url: requested, data: cached, type: mime(for: bare(path)))
             // Stale-while-revalidate: the cached copy answers NOW; a quiet
@@ -448,6 +475,28 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     /// Pull the solo config + keys from the Mac now (fire-and-forget).
     func syncSolo() {
         SoloStore.shared.sync(address: address, token: token)
+        warmPages()
+    }
+
+    /// Pull the pages the owner has not opened yet, while the Mac is in
+    /// reach. Caching only what has already been visited means the FIRST
+    /// visit is always the slow one - and on cellular "slow" was a
+    /// half-drawn Settings page and a long wait (owner, 2026-08-04).
+    private func warmPages() {
+        for path in ["/settings", "/api/avatars"] {
+            guard let url = URL(string: address + path) else { continue }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 20
+            request.setValue(token, forHTTPHeaderField: "x-vivieen-token")
+            session.dataTask(with: request) { [weak self] body, response, _ in
+                guard let self, let body, !body.isEmpty,
+                      (response as? HTTPURLResponse)?.statusCode == 200
+                else { return }
+                try? body.write(to: self.cacheURL(path))
+                self.warmDeck(from: body, path: path)
+                NSLog("[viv-scheme] warmed %@ (%d bytes)", path, body.count)
+            }.resume()
+        }
     }
 
     // ------------------------------------------------------------ solo

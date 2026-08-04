@@ -140,8 +140,7 @@ def generate_head(reference, destination, provider=None, quality="high",
                 # `n`, which xAI refuses on an edit. Ours goes direct when
                 # we hold a key; every other provider is untouched.
                 from studio import body as _body
-                key = (_body._xai_key()
-                       if provider["route"] == "x_ai/create" else "")
+                key = _body._xai_key() if provider.get("direct") else ""
                 if key:
                     rendered = _body._xai_edit(
                         prompt or HEAD_PROMPT, [reference], stage, "head",

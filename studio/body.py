@@ -145,6 +145,15 @@ def selected_provider(category):
 
 
 def default_provider():
+    # Chosen xAI Grok Image in THIS app's settings? Then the plates are
+    # ours to make: our provider, our key, straight to xAI. Anything else
+    # - including "EnConvo Global Default" - resolves through EnConvo
+    # exactly as it always has.
+    own = _own_config().get("image") or {}
+    if (own.get("provider") or "") == "xai" and _xai_key():
+        return {"name": "x_ai", "title": "xAI Grok Image",
+                "model": own.get("model") or "grok-imagine-image-quality",
+                "route": "x_ai/create", "direct": True}
     provider = selected_provider("image_create")
     name = provider["name"]
     route = PROVIDER_ROUTES.get(name)
@@ -260,19 +269,52 @@ def _provider_command(
     return command
 
 
-def _xai_key():
-    """An xAI key we may use for a direct image edit. Ours, not EnConvo's
-    - EnConvo is never read from or written to here."""
+def _own_config():
+    """This app's own settings, read straight off disk.
+
+    Deliberately NOT through providers.load(): that unlocks the vault and
+    shells out for EnConvo's defaults, which is both slower than reading
+    a file and a side effect no caller here wants. EnConvo's own settings
+    are never read.
+    """
+    path = os.environ.get("VIVIEEN_CONFIG") or os.path.join(
+        os.path.expanduser("~/Library/Application Support/Vivieen"),
+        "config.json")
     try:
-        sys.path.insert(0, os.path.join(_ROOT, "server"))
-        import providers as _P
-        cfg = _P.load()
+        with open(path) as handle:
+            return json.load(handle) or {}
     except Exception:
+        return {}
+
+
+def _xai_key():
+    """An xAI key for a direct image edit - only when the OWNER chose xAI.
+
+    Picking "EnConvo Global Default" must mean exactly that: EnConvo's
+    route, untouched, whatever it does. The direct path belongs to the
+    explicit "xAI Grok Image" choice, which is this app's own provider
+    with this app's own key (owner, 2026-08-04).
+    """
+    cfg = _own_config()
+    image = cfg.get("image") or {}
+    if (image.get("provider") or "") != "xai":
         return ""
-    for block, field in (("image", "api_key"), ("live", "xai_api_key")):
-        value = ((cfg.get(block) or {}).get(field) or "").strip()
-        if value and (block == "live" or (cfg.get("image") or {}).get(
-                "provider") == "xai"):
+    for value in (image.get("api_key"),
+                  (cfg.get("live") or {}).get("xai_api_key")):
+        value = (value or "").strip()
+        # The file keeps markers, not secrets; a marker means "ask the
+        # vault", which is the one case worth the heavier import.
+        if value.startswith("keychain:") or value == "__vault__":
+            try:
+                sys.path.insert(0, os.path.join(_ROOT, "server"))
+                import providers as _P
+                real = _P.load()
+                value = ((real.get("image") or {}).get("api_key")
+                         or (real.get("live") or {}).get("xai_api_key")
+                         or "").strip()
+            except Exception:
+                value = ""
+        if value:
             return value
     return ""
 
@@ -624,7 +666,7 @@ def build(avatar_dir, options, log=print, progress=None):
                 # which xAI refuses on an edit. Every other provider keeps
                 # the CLI exactly as before, and so does xAI when we have
                 # no key of our own to use.
-                key = _xai_key() if provider["route"] == "x_ai/create" else ""
+                key = _xai_key() if provider.get("direct") else ""
                 if key:
                     generated = _xai_edit(
                         prompts[view], references, provider_dir,
