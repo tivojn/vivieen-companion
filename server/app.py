@@ -2404,6 +2404,88 @@ def _warm():
         print("[viv] warmup skipped:", P.safe_error(e), flush=True)
 
 
+def _ollama_listener():
+    """(pid, address) of whatever holds 11434, or (0, "")."""
+    try:
+        out = subprocess.run(
+            ["lsof", "-nP", "-iTCP:11434", "-sTCP:LISTEN"],
+            capture_output=True, text=True, timeout=8).stdout
+    except Exception:
+        return 0, ""
+    for line in out.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 9 and ":11434" in parts[-2]:
+            try:
+                return int(parts[1]), parts[-2]
+            except ValueError:
+                return 0, parts[-2]
+    return 0, ""
+
+
+def _open_ollama_to_the_lan():
+    """Ollama on loopback is invisible to the phone.
+
+    Ollama binds 127.0.0.1 unless OLLAMA_HOST says otherwise, so with Think
+    set to Ollama the phone syncs a base_url pointing at ITSELF and solo has
+    no brain at all (owner, 2026-08-04).
+
+    Ollama.app is what spawns the server here, and killing its child only
+    gets the child respawned on loopback again. So set the variable where
+    the app will inherit it - launchctl's user session - and restart the
+    app itself. The menu bar app keeps managing models and updates; it
+    simply listens on every interface now.
+
+    Never touched unless Ollama is BOTH the chosen brain and currently
+    loopback-only: a machine already open, or not using Ollama, is left
+    exactly alone.
+    """
+    try:
+        provider = ((P.load().get("llm") or {}).get("provider") or "").lower()
+        if provider != "ollama":
+            return
+        pid, address = _ollama_listener()
+        if not address:
+            return                      # not running; nothing to reopen
+        if not address.startswith("127.0.0.1") and not address.startswith("[::1]"):
+            return                      # already reachable from the network
+        print(f"[viv] ollama is on {address} - the phone cannot reach that; "
+              "reopening it on the LAN", flush=True)
+        subprocess.run(["launchctl", "setenv", "OLLAMA_HOST", "0.0.0.0"],
+                       capture_output=True, timeout=10)
+        app = "/Applications/Ollama.app"
+        if os.path.isdir(app):
+            subprocess.run(
+                ["osascript", "-e", 'quit app "Ollama"'],
+                capture_output=True, timeout=20)
+            time.sleep(2)
+            subprocess.run(["open", "-a", app], capture_output=True, timeout=20)
+        else:
+            # No menu bar app: stop the bare server and start our own.
+            if pid:
+                subprocess.run(["kill", str(pid)], capture_output=True, timeout=10)
+            time.sleep(1)
+            binary = shutil.which("ollama")
+            if not binary:
+                print("[viv] ollama binary not found; left as it was", flush=True)
+                return
+            subprocess.Popen(
+                [binary, "serve"],
+                env={**os.environ, "OLLAMA_HOST": "0.0.0.0"},
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True)
+        for _ in range(20):
+            time.sleep(1)
+            _, now = _ollama_listener()
+            if now and not now.startswith("127.0.0.1"):
+                print(f"[viv] ollama now listening on {now}", flush=True)
+                return
+        print("[viv] ollama did not come back on the LAN - it may need "
+              "OLLAMA_HOST=0.0.0.0 set by hand", flush=True)
+    except Exception as error:
+        # Never let this stop the engine starting.
+        print("[viv] could not reopen ollama:", P.safe_error(error), flush=True)
+
+
 def _start():
     s = active_slug()
     if s:
@@ -2411,6 +2493,7 @@ def _start():
             ensure_runtime(s)
         except Exception as e:
             print("[viv] runtime bundle missing:", e, flush=True)
+    threading.Thread(target=_open_ollama_to_the_lan, daemon=True).start()
     threading.Thread(target=_warm, daemon=True).start()
     threading.Thread(target=_warm_media_tools, daemon=True).start()
     # Internet reach, opt-in: the relay agent only exists while

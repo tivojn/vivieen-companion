@@ -1012,3 +1012,28 @@ class PublicReleaseSecurityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OllamaOnTheLan(unittest.TestCase):
+    def test_it_only_acts_when_ollama_is_the_brain_and_shut_in(self):
+        # Ollama binds 127.0.0.1 unless told otherwise, so with Think set to
+        # Ollama the phone syncs a base_url pointing at ITSELF and solo has
+        # no brain at all (owner, 2026-08-04). Reopening it is right; doing
+        # it to a machine that is not using Ollama, or is already open,
+        # would be meddling.
+        source = open(os.path.join(ROOT, "server", "app.py"), encoding="utf-8").read()
+        self.assertIn("def _open_ollama_to_the_lan():", source)
+        self.assertIn('if provider != "ollama":', source)
+        self.assertIn('if not address.startswith("127.0.0.1")', source)
+        self.assertIn("if not address:", source)          # not running: leave it
+        # Ollama.app spawns the server, so killing the CHILD just gets it
+        # respawned on loopback. Set the variable where the app inherits it
+        # and restart the app itself.
+        self.assertIn('["launchctl", "setenv", "OLLAMA_HOST", "0.0.0.0"]', source)
+        self.assertIn('quit app "Ollama"', source)
+        # and it can never stop the engine coming up
+        self.assertIn("could not reopen ollama:", source)
+
+    def test_it_confirms_the_move_instead_of_assuming_it(self):
+        source = open(os.path.join(ROOT, "server", "app.py"), encoding="utf-8").read()
+        self.assertIn("ollama now listening on", source)
