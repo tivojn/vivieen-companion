@@ -74,7 +74,9 @@ final class KeyboardViewController: UIInputViewController {
     private let status = UILabel()
     private let heard = UILabel()
     private let wave = WaveView()
-    private var utility: [UIButton] = []
+    private let clock = UILabel()
+    private var takeStart: Date?
+    private var clockTimer: Timer?
     private let engine = AVAudioEngine()
     private var stream: SonioxStream?
     private var recording = false
@@ -127,15 +129,9 @@ final class KeyboardViewController: UIInputViewController {
         super.viewDidLoad()
         paintSurfaces()
 
-        let globe = key("􀆪", #selector(handleInputModeList(from:with:)))
-        globe.setTitle("🌐", for: .normal)
-        let backspace = key("⌫", #selector(rubOut))
-        let space = key("space", #selector(spaceBar))
-        let ret = key("return", #selector(returnKey))
-
         talk.setTitle("Hold to speak", for: .normal)
         talk.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
-        talk.layer.cornerRadius = 14
+        talk.layer.cornerRadius = 22
         talk.layer.borderWidth = 1
         talk.addTarget(self, action: #selector(holdBegan),
                        for: .touchDown)
@@ -157,17 +153,24 @@ final class KeyboardViewController: UIInputViewController {
         heard.lineBreakMode = .byTruncatingHead
         heard.isHidden = true
 
+        // Fluid's lesson, minimalism as a feature: ONE pill. The voice is
+        // drawn in the middle of the key itself, the take's length sits on
+        // the left, and there is nothing else on the board (owner, "keep it
+        // very simple", 2026-08-05). Space, return, backspace, globe - all
+        // gone; the system draws its own switcher under the board on
+        // modern phones, and a conditional globe covers the rest.
+        clock.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+        clock.isHidden = true
         wave.isHidden = true
+        for widget in [wave, clock] as [UIView] {
+            widget.translatesAutoresizingMaskIntoConstraints = false
+            widget.isUserInteractionEnabled = false
+            talk.addSubview(widget)
+        }
 
-        let row = UIStackView(arrangedSubviews: [globe, backspace, space, ret])
-        row.axis = .horizontal
-        row.spacing = 8
-        row.distribution = .fillProportionally
-
-        let stack = UIStackView(arrangedSubviews: [status, heard, wave, talk, row])
+        let stack = UIStackView(arrangedSubviews: [status, heard, talk])
         stack.axis = .vertical
         stack.spacing = 8
-        stack.setCustomSpacing(10, after: wave)
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
         NSLayoutConstraint.activate([
@@ -178,10 +181,33 @@ final class KeyboardViewController: UIInputViewController {
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 10),
             stack.bottomAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
-            talk.heightAnchor.constraint(equalToConstant: 72),
-            wave.heightAnchor.constraint(equalToConstant: 22),
-            view.heightAnchor.constraint(greaterThanOrEqualToConstant: 208),
+            talk.heightAnchor.constraint(equalToConstant: 96),
+            wave.centerXAnchor.constraint(equalTo: talk.centerXAnchor),
+            wave.centerYAnchor.constraint(equalTo: talk.centerYAnchor),
+            wave.widthAnchor.constraint(equalToConstant: 190),
+            wave.heightAnchor.constraint(equalToConstant: 30),
+            clock.leadingAnchor.constraint(equalTo: talk.leadingAnchor,
+                                           constant: 18),
+            clock.centerYAnchor.constraint(equalTo: talk.centerYAnchor),
+            view.heightAnchor.constraint(greaterThanOrEqualToConstant: 170),
         ])
+        if needsInputModeSwitchKey {
+            let globe = UIButton(type: .system)
+            globe.setTitle("🌐", for: .normal)
+            globe.titleLabel?.font = .systemFont(ofSize: 15)
+            globe.addTarget(self, action:
+                #selector(handleInputModeList(from:with:)),
+                for: .allTouchEvents)
+            globe.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(globe)
+            NSLayoutConstraint.activate([
+                globe.leadingAnchor.constraint(equalTo: view.leadingAnchor,
+                                               constant: 12),
+                globe.bottomAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                    constant: -6),
+            ])
+        }
         sayReadiness()
     }
 
@@ -195,11 +221,8 @@ final class KeyboardViewController: UIInputViewController {
         talk.backgroundColor = recording ? hot : tint
         talk.layer.borderColor = (recording ? hot : tintLine).cgColor
         talk.setTitleColor(recording ? .white : ink, for: .normal)
-        for case let button as UIButton in utility {
-            button.backgroundColor = tint
-            button.setTitleColor(ink, for: .normal)
-            button.layer.borderColor = tintLine.cgColor
-        }
+        wave.bar = recording ? .white : ink
+        clock.textColor = recording ? .white : faint
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -207,19 +230,6 @@ final class KeyboardViewController: UIInputViewController {
         if previous?.userInterfaceStyle != traitCollection.userInterfaceStyle {
             paintSurfaces()
         }
-    }
-
-    private func key(_ title: String, _ action: Selector) -> UIButton {
-        let button = UIButton(type: .system)
-        button.setTitle(title, for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 14.5, weight: .medium)
-        button.layer.cornerRadius = 9
-        button.layer.borderWidth = 1
-        button.contentEdgeInsets = UIEdgeInsets(top: 9, left: 14,
-                                                bottom: 9, right: 14)
-        button.addTarget(self, action: action, for: .touchUpInside)
-        utility.append(button)
-        return button
     }
 
     private func sayReadiness() {
@@ -241,12 +251,6 @@ final class KeyboardViewController: UIInputViewController {
                 + "you say them"
         }
     }
-
-    // ------------------------------------------------------------- keys
-
-    @objc private func rubOut() { textDocumentProxy.deleteBackward() }
-    @objc private func spaceBar() { textDocumentProxy.insertText(" ") }
-    @objc private func returnKey() { textDocumentProxy.insertText("\n") }
 
     // ------------------------------------------------------------- take
 
@@ -343,9 +347,20 @@ final class KeyboardViewController: UIInputViewController {
             wave.isHidden = false
             heard.isHidden = false
             heard.text = ""
-            talk.setTitle("Listening — release to finish", for: .normal)
+            talk.setTitle("", for: .normal)
+            takeStart = Date()
+            clock.text = "0:00.0"
+            clock.isHidden = false
+            clockTimer = Timer.scheduledTimer(withTimeInterval: 0.1,
+                                              repeats: true) { [weak self] _ in
+                guard let self, let start = self.takeStart else { return }
+                let elapsed = Date().timeIntervalSince(start)
+                self.clock.text = String(format: "%d:%04.1f",
+                    Int(elapsed) / 60,
+                    elapsed.truncatingRemainder(dividingBy: 60))
+            }
             paintSurfaces()
-            status.text = "Speak — the words arrive as you say them"
+            status.text = ""
         } catch {
             input.removeTap(onBus: 0)
             stream?.cancel()
@@ -416,6 +431,10 @@ final class KeyboardViewController: UIInputViewController {
         engine.stop()
         try? AVAudioSession.sharedInstance().setActive(
             false, options: .notifyOthersOnDeactivation)
+        clockTimer?.invalidate()
+        clockTimer = nil
+        takeStart = nil
+        clock.isHidden = true
         wave.rest()
         wave.isHidden = true
         talk.setTitle("Hold to speak", for: .normal)
