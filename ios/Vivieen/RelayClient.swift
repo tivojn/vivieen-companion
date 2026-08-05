@@ -69,12 +69,24 @@ final class RelayClient {
         var request = URLRequest(url: url)
         request.setValue(proof, forHTTPHeaderField: "x-viv-proof")
         request.timeoutInterval = 12
-        URLSession.shared.dataTask(with: request) { data, _, _ in
+        URLSession.shared.dataTask(with: request) { data, response, failure in
+            // Pairing leans on this call now, so a silent nil is not good
+            // enough: say WHICH way it failed (owner, stranded on 5G).
+            if let failure {
+                NSLog("[viv-relay] presence failed: %@",
+                      failure.localizedDescription)
+                then(nil); return
+            }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard let data,
                   let top = try? JSONSerialization.jsonObject(with: data)
                     as? [String: Any],
                   (top["present"] as? Bool) == true,
-                  let mac = top["mac"] as? [String: Any] else { then(nil); return }
+                  let mac = top["mac"] as? [String: Any] else {
+                NSLog("[viv-relay] presence empty: status=%d body=%@", status,
+                      String(data: data ?? Data(), encoding: .utf8) ?? "-")
+                then(nil); return
+            }
             then(mac)
         }.resume()
     }
