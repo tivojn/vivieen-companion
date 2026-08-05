@@ -2077,6 +2077,16 @@ function openSettings() {
 }
 
 function trayImage() {
+  // HER, in the menu bar - the same face the iPhone icon wears (owner,
+  // 2026-08-05). Deliberately NOT a template image: a template uses only
+  // the alpha channel, so a photograph would arrive as a black blob. This
+  // is a colour icon, circular-cropped, and @2x/@3x ride alongside so it
+  // stays sharp on a Retina bar.
+  const face = path.join(__dirname, 'tray-icon.png');
+  if (fs.existsSync(face)) {
+    const image = nativeImage.createFromPath(face);
+    if (!image.isEmpty()) return image;
+  }
   const file = path.join(__dirname, 'trayTemplate.png');
   if (fs.existsSync(file)) {
     const image = nativeImage.createFromPath(file).resize({ width: 18, height: 18 });
@@ -2114,6 +2124,9 @@ function buildTrayMenu() {
     { label: 'Recover Companion', accelerator: 'CommandOrControl+Shift+0', click: recoverCompanion },
     { label: 'Restart Voice Engine', enabled: ownsBackend, click: restartBackend },
     { type: 'separator' },
+    // Which build am I actually running? A question the owner should
+    // never have to guess at (2026-08-05).
+    { label: `Vivieen ${app.getVersion()}`, enabled: false },
     { label: 'Check for Updates…', click: () => { void checkForUpdates(true); } },
     { label: 'Quit Vivieen', accelerator: 'CommandOrControl+Q', click: () => app.quit() },
   ]));
