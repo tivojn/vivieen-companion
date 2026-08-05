@@ -46,6 +46,21 @@ async def lifespan(_application):
 
 app = FastAPI(title="Vivieen", lifespan=lifespan)
 APP_ID = "com.vivieen.companion"
+
+
+def _app_version():
+    """The build the owner is actually running. package.json is the one
+    place the version is authored, so read it there rather than keeping a
+    second copy that can drift (owner, 2026-08-05)."""
+    try:
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(here, "package.json")) as handle:
+            return str(json.load(handle).get("version") or "")
+    except Exception:
+        return ""
+
+
+APP_VERSION = _app_version()
 AUTH_TOKEN = os.environ.get("VIVIEEN_AUTH_TOKEN", "")
 # Changes every engine start: the pocket page compares it and reloads
 # itself, so a long-lived phone session can never run yesterday's code.
@@ -2317,6 +2332,40 @@ async def api_config_set(body: dict):
         for name in list(keyring):
             if not keyring[name]:
                 keyring.pop(name)
+        # "Pasted once" has to MEAN once. A lane that already held a key of
+        # its own shadowed the platform key forever - the owner pasted a
+        # good Soniox key into the keyring and Hear went on failing with
+        # the stale one it was still holding (owner, 2026-08-05). Saving a
+        # platform key retires the lane keys it replaces; a lane key set in
+        # this same save is a deliberate override and survives.
+        # "__adopt__" means: keep the platform key you already hold, and
+        # make it authoritative. The browser is never given a stored key,
+        # so without this the owner would have to re-paste a key they had
+        # already pasted just to retire the lane keys shadowing it.
+        adopt = [n for n, v in keyring.items() if v == "__adopt__"]
+        for name in adopt:
+            keyring.pop(name)
+        for name, value in list(keyring.items()) + [(n, "") for n in adopt]:
+            if value == "__clear__":
+                continue
+            for kind in ("llm", "tts", "stt", "image", "video"):
+                lane = body.get(kind) if isinstance(body.get(kind), dict) \
+                    else (cur.get(kind) or {})
+                provider = lane.get("provider") or (cur.get(kind) or {}).get("provider")
+                if P.platform_of(provider) != name:
+                    continue
+                asked = body.get(kind)
+                if isinstance(asked, dict) and asked.get("api_key") \
+                        and asked["api_key"] != "__clear__":
+                    continue          # they typed one HERE; that one wins
+                block = body.setdefault(kind, {})
+                if isinstance(block, dict):
+                    block["api_key"] = "__clear__"
+            live_now = body.get("live") if isinstance(body.get("live"), dict) else {}
+            if name == "xai" and not live_now.get("xai_api_key"):
+                body.setdefault("live", {})["xai_api_key"] = "__clear__"
+            if name == "elevenlabs" and not live_now.get("eleven_api_key"):
+                body.setdefault("live", {})["eleven_api_key"] = "__clear__"
     live = body.get("live")
     if isinstance(live, dict):
         for field in ("xai_api_key", "eleven_api_key"):
@@ -2552,7 +2601,7 @@ async def health():
         detail = block.get("voice") if kind == "tts" else block.get("model")
         return f"{block.get('provider')} / {detail or 'default'}"
 
-    return {"app_id": APP_ID, "boot": BOOT_ID,
+    return {"app_id": APP_ID, "boot": BOOT_ID, "version": APP_VERSION,
             # Both pages read the look from HERE - it was on /api/meta,
             # which neither of them fetches, so the fix never fired.
             "design": ((cfg.get("ui") or {}).get("design") or "quiet"),
@@ -2618,7 +2667,7 @@ def _soniox_stream_config():
 
 
 @app.websocket("/stt/stream")
-async def stt_stream(client: WebSocket):
+async def stt_stream(client: WebSocket, pcm: int = Query(0)):
     # The http auth middleware does not run for websocket scopes, so the
     # token check happens here; Electron injects the header on the upgrade.
     if AUTH_TOKEN:
@@ -2636,6 +2685,15 @@ async def stt_stream(client: WebSocket):
                                 "finished": True})
         await client.close()
         return
+    # The phone's own microphone hands us RAW PCM16, not a container: its
+    # hold-to-talk is a native tap, not MediaRecorder, which is why the
+    # iPhone had no live words while the desk had them all along (owner,
+    # 2026-08-05). "auto" cannot sniff headerless audio, so the client
+    # declares the rate and we tell Soniox exactly what is coming.
+    if pcm:
+        config = dict(config, audio_format="pcm_s16le",
+                      sample_rate=max(8000, min(48000, int(pcm))),
+                      num_channels=1)
     import websockets
     finals = []
     try:

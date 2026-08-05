@@ -66,6 +66,12 @@ nav button.on{background:var(--press);color:var(--ink);font-weight:600}
 .keyrow input{flex:1;min-width:0}
 /* A pasted key is unreadable by design, which is fine until you need to
    check you pasted the right one (owner, 2026-08-05). */
+/* The answer a Check gets back: the provider's verdict, in its own words
+   when it refuses and a green tick when it does not. */
+.keystate{font-size:11.5px;margin-top:6px;color:var(--dim);min-height:1em;
+  line-height:1.4}
+.keystate.ok{color:var(--ok-text)}
+.keystate.bad{color:var(--bad-text)}
 .peek{flex:none;width:34px;height:34px;padding:0;display:flex;align-items:center;
   justify-content:center;border:1px solid var(--line);background:var(--panel);
   border-radius:8px;color:var(--faint);cursor:pointer}
@@ -190,6 +196,8 @@ button.btn.danger:hover{border-color:var(--bad-line);background:var(--bad-bg)}
   display:flex;align-items:center;gap:12px;justify-content:flex-end}
 body{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 .savebar .msg{margin-right:auto;color:var(--dim);font-size:13px}
+.savebar .vsn{color:var(--faint);font-size:11.5px;letter-spacing:.02em;
+  font-variant-numeric:tabular-nums;margin-right:14px}
 .keep-scrim{position:fixed;inset:0;z-index:60;display:flex;align-items:center;
   justify-content:center;padding:24px;background:var(--scrim)}
 .keep-card{width:min(460px,100%);background:var(--panel);border-radius:12px;
@@ -1029,6 +1037,9 @@ document.documentElement.dataset.design='quiet';</script>
 </div>
 
 <div class="savebar">
+  <!-- Which build is this? Both platforms open this page, so one line
+       here answers it for the desk and the phone (owner, 2026-08-05). -->
+  <span class="vsn" id="vsn"></span>
   <div class="msg" id="msg"></div>
   <button class="btn" id="revert">Revert</button>
   <button class="btn pri" id="save">Save settings</button>
@@ -1042,7 +1053,12 @@ const api = async (p, o) => (await fetch(p, o)).json();
 document.addEventListener('click', event => {
   const button = event.target.closest && event.target.closest('[data-peek]');
   if (!button) return;
-  const field = button.parentElement.querySelector('[data-api-key]');
+  // Any password field in the same row - the lane blocks mark theirs
+  // data-api-key, the platform keyring marks its own data-keyfor, and an
+  // eye that only knew about one of them left the other with no way to
+  // check a paste (owner, 2026-08-05).
+  const field = button.parentElement.querySelector(
+    '[data-api-key],[data-keyfor],input[type=password],input[type=text]');
   if (!field) return;
   const shown = field.type === 'text';
   field.type = shown ? 'password' : 'text';
@@ -3886,14 +3902,20 @@ function renderKeys() {
     pasted once. Every lane whose provider matches inherits it; a key pasted
     into a single lane below still wins for that lane.</p>`
     + `<div class="row" style="align-items:flex-end">`
-    + rows.map(id => `<div class="f" style="max-width:220px;flex:none">
+    + rows.map(id => `<div class="f" style="max-width:250px;flex:none">
         <label>${labels[id]}${has[id] ? ' · stored' : ''}</label>
-        <div style="display:flex;gap:6px">
+        <div style="display:flex;gap:6px;align-items:center">
           <input data-keyfor="${id}" type="password"
             placeholder="${has[id] ? 'leave blank to keep' : 'not stored'}">
+          <button class="peek" data-peek type="button" title="Show the key"
+            aria-label="Show the key">👁</button>
+          <button class="btn sm" data-keycheck="${id}" type="button"
+            title="Save this key and ask the provider whether it works"
+            >Check</button>
           ${has[id] ? `<button class="btn sm" data-keyclear="${id}" type="button"
             title="Forget this platform's key on save">Clear</button>` : ''}
-        </div></div>`).join('')
+        </div>
+        <div class="keystate" data-keystate="${id}"></div></div>`).join('')
     + `</div>`
     + (others.length ? `<div class="row" style="align-items:flex-end;margin-top:10px">
       <div class="f" style="max-width:220px;flex:none"><label>Another platform</label>
@@ -3903,6 +3925,58 @@ function renderKeys() {
         <input id="key-add-value" type="password" placeholder="paste once, use everywhere"></div>
     </div>` : '');
   box.querySelectorAll('[data-keyfor]').forEach(i => { i.oninput = dirty; });
+  // "Check" is the whole loop in one press: save this one key, then ask a
+  // lane that uses the platform whether the provider accepts it. A green
+  // tick is the provider's answer, not ours (owner, 2026-08-05).
+  box.querySelectorAll('[data-keycheck]').forEach(button => button.onclick = async () => {
+    const id = button.dataset.keycheck;
+    const field = box.querySelector(`[data-keyfor="${id}"]`);
+    const state = box.querySelector(`[data-keystate="${id}"]`);
+    const typed = (field.value || '').trim();
+    if (!typed && !(CFG.has_keys || {})[id]) {
+      state.className = 'keystate bad'; state.textContent = 'Nothing to check yet.';
+      return;
+    }
+    button.disabled = true;
+    state.className = 'keystate'; state.textContent = 'Saving, then asking the provider…';
+    // Typed: save it. Not typed: adopt the one already stored, which is
+    // what retires any lane key still shadowing it.
+    const saved = await api('/api/config', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({keys: {[id]: typed || '__adopt__'}})}).catch(() => null);
+    if (!saved || !saved.config) {
+      button.disabled = false;
+      state.className = 'keystate bad';
+      state.textContent = 'Could not save that key.';
+      return;
+    }
+    CFG = saved.config; field.value = '';
+    // Which lane can speak for this platform? The one already pointed at it.
+    const lane = ['llm', 'tts', 'stt', 'image', 'video']
+      .find(k => (KEY_ALIAS[(CFG[k] || {}).provider] || (CFG[k] || {}).provider) === id);
+    if (!lane) {
+      button.disabled = false;
+      state.className = 'keystate ok';
+      state.textContent = '✓ Saved. No lane uses this platform yet, so there '
+        + 'is nobody to ask whether it works.';
+      renderKeys();
+      return;
+    }
+    const answer = await api('/api/models', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({kind: lane, cfg: CFG[lane]})}).catch(() => null);
+    button.disabled = false;
+    if (answer && !answer.error) {
+      state.className = 'keystate ok';
+      state.textContent = '✓ ' + (labels[id] || id) + ' accepted it';
+    } else {
+      state.className = 'keystate bad';
+      state.textContent = String((answer && answer.error) || 'the provider did not answer')
+        .slice(0, 120);
+    }
+    renderKeys();
+    ['llm', 'tts', 'stt'].forEach(k => { resetModelState(k); renderBlock(k); });
+  });
   box.querySelectorAll('[data-keyclear]').forEach(b => b.onclick = () => {
     KEYS_CLEARED.add(b.dataset.keyclear);
     const input = box.querySelector(`[data-keyfor="${b.dataset.keyclear}"]`);
@@ -4037,6 +4111,12 @@ async function boot() {
   ACTIVE = r.active;
   // The Mac decides, so this page and the rail cannot disagree (#30).
   if ((CFG.ui || {}).theme) setTheme(CFG.ui.theme);
+  // The version rides on /health, so the phone reads the same number the
+  // desk does - one engine, one answer.
+  fetch('health').then(r => r.json()).then(h => {
+    const line = $('#vsn');
+    if (line && h && h.version) line.textContent = 'v' + h.version;
+  }).catch(() => {});
   ['llm', 'tts', 'stt'].forEach(resetModelState);
   DIRTY = false;
   ['llm', 'tts', 'stt'].forEach(renderBlock);
