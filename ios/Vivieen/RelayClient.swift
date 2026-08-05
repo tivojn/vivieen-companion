@@ -64,11 +64,16 @@ final class RelayClient {
     /// republishes every 45s on a 120s TTL, so a sleeping one stops
     /// claiming to be reachable rather than leaving the phone to time out
     /// against an address nobody is listening on.
-    func presence(_ then: @escaping ([String: Any]?) -> Void) {
+    /// `timeout` is generous at PAIRING time: the relay is a serverless
+    /// function, and a cold start over cellular can outlast the 12s a
+    /// warm poll wants - which read as "no Mac is answering" to an owner
+    /// standing outside whose Mac was answering perfectly (2026-08-05).
+    func presence(timeout: TimeInterval = 12,
+                  _ then: @escaping ([String: Any]?) -> Void) {
         guard let url = url("dir=presence") else { then(nil); return }
         var request = URLRequest(url: url)
         request.setValue(proof, forHTTPHeaderField: "x-viv-proof")
-        request.timeoutInterval = 12
+        request.timeoutInterval = timeout
         URLSession.shared.dataTask(with: request) { data, response, failure in
             // Pairing leans on this call now, so a silent nil is not good
             // enough: say WHICH way it failed (owner, stranded on 5G).

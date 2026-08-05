@@ -19,6 +19,9 @@ struct PairingView: View {
     @State private var code = ""
     @State private var checking = false
     @State private var error = ""
+    /// Held only while a relay knock is in flight, so the client cannot be
+    /// collected out from under its own callback.
+    @State private var relay: RelayClient?
 
     var body: some View {
         NavigationStack {
@@ -68,7 +71,12 @@ struct PairingView: View {
             error = "The pairing code is the one thing she needs."
             return
         }
-        let typed = address.trimmingCharacters(in: .whitespaces)
+        var typed = address.trimmingCharacters(in: .whitespaces)
+        // The placeholder is an EXAMPLE address, and it is the easiest
+        // thing in the world to type it in believing it is yours. It is
+        // nobody's Mac: treat it as blank rather than spending the direct
+        // probe on it (owner, 2026-08-05).
+        if typed == "http://192.168.1.20:8777" { typed = "" }
         // No address, or one that cannot be parsed: go straight to the
         // relay, which knows where the Mac is.
         guard !typed.isEmpty, var components = URLComponents(string: typed)
@@ -121,24 +129,39 @@ struct PairingView: View {
     /// presence record carries the Mac's own LAN address, so pairing this
     /// way still stores the fast road for when the owner gets home - and
     /// the app falls back to the relay whenever that road is shut.
-    private func pairViaRelay(_ token: String) {
-        RelayClient(base: RelayClient.defaultBase, token: token)
-            .presence { mac in
-                DispatchQueue.main.async {
-                    checking = false
-                    guard let mac else {
-                        error = "No Mac is answering for that code. Check "
-                            + "the code, and that Vivieen is awake on the "
-                            + "Mac with iPhone access switched on."
+    ///
+    /// Twice, patiently. The relay sleeps between conversations, and the
+    /// first knock pays its cold start: one 30s try, then another, before
+    /// anyone is told nobody is home.
+    private func pairViaRelay(_ token: String, attempt: Int = 1) {
+        let client = RelayClient(base: RelayClient.defaultBase, token: token)
+        relay = client                  // held, so nothing dies mid-flight
+        client.presence(timeout: 30) { mac in
+            DispatchQueue.main.async {
+                guard let mac else {
+                    if attempt < 2 {
+                        error = "Knocking again — the relay was asleep…"
+                        pairViaRelay(token, attempt: attempt + 1)
                         return
                     }
-                    // Her own LAN address if she published one; otherwise
-                    // a placeholder the router will never answer, which is
-                    // honest - every turn then rides the relay.
-                    let lan = (mac["lan"] as? [String])?.first
-                    serverAddress = lan ?? "http://vivieen.invalid"
-                    pairingToken = token
+                    checking = false
+                    relay = nil
+                    error = "No Mac answered for that code, twice. Check "
+                        + "the code, that Vivieen is awake on the Mac with "
+                        + "iPhone access switched on, and that this phone "
+                        + "has a working connection."
+                    return
                 }
+                checking = false
+                relay = nil
+                error = ""
+                // Her own LAN address if she published one; otherwise
+                // a placeholder the router will never answer, which is
+                // honest - every turn then rides the relay.
+                let lan = (mac["lan"] as? [String])?.first
+                serverAddress = lan ?? "http://vivieen.invalid"
+                pairingToken = token
             }
+        }
     }
 }
