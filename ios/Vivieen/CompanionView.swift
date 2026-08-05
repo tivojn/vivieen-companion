@@ -32,9 +32,14 @@ struct CompanionView: View {
                         .foregroundStyle(.secondary)
                     Text("Can't reach your Mac")
                         .font(.headline)
-                    Text("Vivieen lives on your MacBook and needs the same "
-                         + "Wi-Fi. Rejoin the network, or check the "
-                         + "companion is running.")
+                    // NOT "needs the same Wi-Fi" any more: the relay
+                    // carries her anywhere, and this card told the owner
+                    // to go home while she was reachable the whole time
+                    // (2026-08-05). What is actually true is that she is
+                    // awake somewhere and this phone found neither road.
+                    Text("She could not be found on this Wi-Fi or through "
+                         + "the relay. Check that Vivieen is awake on your "
+                         + "Mac — away from home she needs it not asleep.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

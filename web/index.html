@@ -488,6 +488,45 @@ html.ios #petBubble{
 html.ios.talk-mode #micmode{background:var(--tint);border-color:var(--tint-line)}
 #talkbar{display:none}
 html.ios.talk-mode #txt{display:none}
+/* ---- the first open ----------------------------------------------------
+   She is drawn from sprite sheets - 70-odd megabytes of them - and over
+   the relay that is minutes, during which the old boot said only
+   "BOOTING" and looked hung (owner, standing outside on 5G, 2026-08-05).
+
+   Deliberately NOT the #emptyState card below: that one predates the
+   redesign - hardcoded near-black, a pink gradient badge, 28px corners -
+   and would be wrong in light. This is built from the same tokens as
+   every other surface, so both skins come out right with no second rule.
+
+   And deliberately not a dialog. No scrim, no icon, no spinner: it sits
+   where her face is about to be, the bar is the only moving thing, and
+   the bar is a neutral because this house keeps colour for things that
+   MEAN something (red = recording, green = ready). It also earns its
+   place before it takes it - hidden for the first second, so a boot off
+   the cache or the LAN never flashes a card at anyone. */
+html.ios #bootcard{position:fixed;z-index:80;
+  left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(310px,calc(100vw - 64px));padding:17px 19px 18px;
+  background:var(--card);border:1px solid var(--card-line);
+  color:var(--card-ink);border-radius:16px;
+  backdrop-filter:blur(16px);box-shadow:0 12px 34px rgba(0,0,0,.20);
+  opacity:0;visibility:hidden;transition:opacity .5s ease}
+html.ios.booting-slow #bootcard{opacity:1;visibility:visible}
+#bootcard .bt{font-size:15px;font-weight:600;letter-spacing:-.012em}
+#bootcard .bw{font-size:12.5px;color:var(--faint);margin:5px 0 14px;
+  line-height:1.5}
+#bootcard .bbar{height:3px;border-radius:2px;background:var(--tint);
+  overflow:hidden}
+/* A SHORT, linear transition, and that is not a taste call. A long
+   easing curve restarts from wherever it had crept to every time another
+   piece lands - and pieces land in a burst - so the fill chases a target
+   it never reaches: measured at ten pixels wide while the label beside
+   it read 77%. A bar that lies is worse than no bar. */
+#bootcard .bbar i{display:block;height:100%;width:0;border-radius:2px;
+  background:var(--tint-bar);transition:width .12s linear}
+#bootcard .bn{display:flex;justify-content:space-between;gap:10px;
+  font-size:11px;color:var(--faint);margin-top:9px;
+  font-variant-numeric:tabular-nums;letter-spacing:.01em}
 /* ---- listening ---------------------------------------------------------
    A fixed pill guessed its own offset and landed ON the composer,
    straddling the talk bar and the buttons (owner screenshot, 2026-08-03).
@@ -892,6 +931,12 @@ html.ios #zoombox input{width:100%;flex:1}
   <button id="avfanStyle" type="button" aria-label="Switch carousel style">sorbet</button>
   <div id="avfanDeck"></div>
   <div id="avfanDetail"></div>
+</div>
+<div id="bootcard" role="status" aria-live="polite">
+  <div class="bt" id="boot-title">Waking her up</div>
+  <div class="bw" id="boot-why">Reading her face.</div>
+  <div class="bbar"><i id="boot-fill"></i></div>
+  <div class="bn"><span id="boot-count"></span><span id="boot-pct">0%</span></div>
 </div>
 <div id="petBubble" role="status" aria-live="polite"></div>
 <div id="listenWave" aria-hidden="true"><span id="listenWaveDot"></span><span id="listenWaveBars"><span></span><span></span><span></span><span></span><span></span></span><span id="listenWaveText">Listening…</span></div>
@@ -1592,11 +1637,62 @@ function setRoad(name){
     return;
   }
   Object.assign(BT,M.blink||{});
-  const load=src=>new Promise(res=>{const i=new Image();
+  /* The first-open card. The COUNT is exact; the BAR is weighted,
+     because a motion sheet is ten megabytes and an eyebag is a hundred
+     kilobytes - counting files alone would race to 90% and then sit
+     there for minutes, which is a prettier lie than "BOOTING" but still
+     a lie. No byte sizes in the manifest, so the weights are by class:
+     a sheet counts for twelve plates, a body plate for six. */
+  const BOOT={done:0,total:0,weight:0,got:0,files:0,slow:0};
+  const bootPaint=()=>{
+    const pct=BOOT.weight?Math.min(99,Math.round(BOOT.got*100/BOOT.weight)):0;
+    const fill=document.getElementById('boot-fill');
+    if(fill)fill.style.width=pct+'%';
+    const shown=document.getElementById('boot-pct');
+    if(shown)shown.textContent=pct+'%';
+    const count=document.getElementById('boot-count');
+    if(count)count.textContent=BOOT.total
+      ? `${BOOT.done} of ${BOOT.total} pieces` : '';
+    if(document.documentElement.classList.contains('booting-slow'))bootSay();
+  };
+  /* Naming the road is the whole point - the relay IS why this is slow,
+     and a phone that says so is not a phone that looks hung. The road is
+     often still unknown a second in, so the line is rewritten on every
+     repaint and corrects itself the moment /health answers. */
+  const bootSay=()=>{
+    const road=ROAD.shown||ROAD.seen||'';
+    const t=document.getElementById('boot-title');
+    const w=document.getElementById('boot-why');
+    if(t)t.textContent='Bringing her over';
+    if(!w)return;
+    w.textContent=road==='lan'
+      ? 'Reading her face from your Mac. She is kept on this phone '
+        + 'afterwards, so this happens once.'
+      : road
+        ? 'Her face travels as sprite sheets, and this is the long way '
+          + 'round — away from home, through the relay. She is kept on '
+          + 'this phone afterwards, so this happens once.'
+        : 'Reading her face. She is kept on this phone afterwards, so '
+          + 'this happens once.';
+  };
+  if(IS_IOS){
+    // It earns its place before it takes it: a boot off the cache never
+    // sees this at all.
+    BOOT.slow=setTimeout(()=>{
+      document.documentElement.classList.add('booting-slow');
+      bootSay();bootPaint();
+    },1000);
+  }
+  const load=(src,weight=1)=>new Promise(res=>{
+    BOOT.total++;BOOT.weight+=weight;bootPaint();
+    const settle=value=>{
+      BOOT.done++;BOOT.got+=weight;bootPaint();res(value);
+    };
+    const i=new Image();
     // ImageBitmap keeps the decoded texture GPU-resident; a plain <img>
     // can re-raster under cache pressure (power audit 2026-08-01).
-    i.onload=()=>{createImageBitmap(i).then(res).catch(()=>res(i));};
-    i.onerror=()=>res(null);
+    i.onload=()=>{createImageBitmap(i).then(settle).catch(()=>settle(i));};
+    i.onerror=()=>settle(null);
     i.src=`${src}${src.includes('?')?'&':'?'}v=${assetRev}`;});
   const loadMotion=async kind=>{
     const clip=M.motion&&M.motion[kind];if(!clip)return;
@@ -1640,7 +1736,7 @@ function setRoad(name){
     }
     const sheets=[];
     for(const sheet of clip.sheets||[]){
-      const image=await load(sheet.image);if(!image)return;
+      const image=await load(sheet.image,12);if(!image)return;
       sheets.push({...sheet,image});
     }
     if(sheets.length)MOTION[kind]={...clip,sheets};
@@ -1654,17 +1750,21 @@ function setRoad(name){
     ...(M.brow?['l','r'].map(async s=>{BW[s]=await load(M.brow[s].src);}):[]),
     ...(M.cheek?['l','r'].map(async s=>{CK[s]=await load(M.cheek[s].src);}):[]),
     ...(M.eyebag?['l','r'].map(async s=>{EB[s]=await load(M.eyebag[s].src);}):[]),
-    ...(M.cutout?[load(M.cutout.src).then(image=>{CUTOUT=image;})]:[]),
-    ...(M.body?[load(M.body.image).then(image=>{BODY=image;}),
-                load(M.body.head_mask).then(image=>{HEADMASK=image;})]:[]),
+    ...(M.cutout?[load(M.cutout.src,6).then(image=>{CUTOUT=image;})]:[]),
+    ...(M.body?[load(M.body.image,6).then(image=>{BODY=image;}),
+                load(M.body.head_mask,6).then(image=>{HEADMASK=image;})]:[]),
     ...(M.body&&M.body.reactions?Object.entries(M.body.reactions).map(
-      async([name,meta])=>{RB[name]=await load(meta.src);}):[]),
+      async([name,meta])=>{RB[name]=await load(meta.src,6);}):[]),
     // Walk is a DESK verb - it strides while the window travels, and the
     // phone has nowhere to travel to (owner, 2026-08-03). Skipping it on
     // iOS spares the download and the decoded frames outright.
     ...(M.motion?(IS_IOS?[loadMotion('idle'),loadMotion('move')]
       :[loadMotion('walk'),loadMotion('idle'),loadMotion('move')]):[])
   ]);
+  // Everything she needs is in hand: let the card go before the first
+  // frame lands, so it fades out from under her rather than over her.
+  clearTimeout(BOOT.slow);
+  document.documentElement.classList.remove('booting-slow');
   const motionReady=Boolean(MOTION.walk);
   if(SHELL&&SHELL.isElectron&&typeof SHELL.setPetMotionReady==='function'){
     if(motionReady)motionProfileZoom=roamZoomValue();

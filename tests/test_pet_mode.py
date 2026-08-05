@@ -1586,7 +1586,9 @@ class PetMatteTests(unittest.TestCase):
         self.assertIn("faceScaleHint*1.15", renderer)
         self.assertIn("faceOutScale=surfaceW/ref.width;", renderer)
         self.assertIn("0,0,FACE_KEY.w,FACE_KEY.h)", renderer)
-        self.assertIn("createImageBitmap(i).then(res).catch(()=>res(i));", renderer)
+        # The guard is that decoded textures stay GPU-resident, not what
+        # the callback is called - the boot-progress card renames it.
+        self.assertIn("createImageBitmap(i).then(settle).catch(", renderer)
 
     def test_chat_placeholder_fits_the_field_it_sits_in(self):
         # The roam-sized chat bar is far narrower than the docked one, and
