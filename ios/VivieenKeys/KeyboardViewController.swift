@@ -70,6 +70,18 @@ final class WaveView: UIView {
 }
 
 final class KeyboardViewController: UIInputViewController {
+    /// Apple's own requirements for a keyboard that RECORDS (an Apple
+    /// engineer, developer forums thread 775077, 2025): open access in the
+    /// Info.plist, the keyboard enabled by the owner - and this override,
+    /// declaring a dictation key. Without it the device refuses the audio
+    /// session at the audio-unit level with 'what' (2003329396) no matter
+    /// how many times we retry; the simulator never enforced it, which is
+    /// why every take worked there and none worked on the phone.
+    override var hasDictationKey: Bool {
+        get { true }
+        set {}
+    }
+
     private let talk = UIButton(type: .system)
     private let status = UILabel()
     private let heard = UILabel()
