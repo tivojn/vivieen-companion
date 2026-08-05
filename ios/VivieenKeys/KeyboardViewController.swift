@@ -78,6 +78,10 @@ final class KeyboardViewController: UIInputViewController {
     private let engine = AVAudioEngine()
     private var stream: SonioxStream?
     private var recording = false
+    // True from touch-down to release: an activation retry must die the
+    // moment the finger lifts, or a slow retry would start a take with
+    // nobody holding the key.
+    private var holdActive = false
     private var wireRate: Double = 16000
     // What insertText has already committed this take, so each provider
     // message only appends the newly-settled delta.
@@ -252,6 +256,7 @@ final class KeyboardViewController: UIInputViewController {
             sayReadiness()
             return
         }
+        holdActive = true
         AVAudioApplication.requestRecordPermission { [weak self] granted in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -265,14 +270,23 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    private func beginRecording() {
-        guard !recording else { return }
+    private func beginRecording(attempt: Int = 0) {
+        guard !recording, holdActive else { return }
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playAndRecord, mode: .measurement,
-                                 options: [.duckOthers])
-        try? session.setActive(true)
+        do {
+            try session.setCategory(.playAndRecord, mode: .measurement,
+                                    options: [.duckOthers])
+            try session.setActive(true)
+        } catch {
+            return retryMicrophone(after: error, attempt: attempt)
+        }
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
+        // A dead line answers 0 Hz: the session LOOKED active but the
+        // input never came up. Same lost race, same retry.
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            return retryMicrophone(after: nil, attempt: attempt)
+        }
         wireRate = format.sampleRate
 
         // Space-join like dictation does: no leading space at a fresh
@@ -333,10 +347,32 @@ final class KeyboardViewController: UIInputViewController {
             paintSurfaces()
             status.text = "Speak — the words arrive as you say them"
         } catch {
+            input.removeTap(onBus: 0)
             stream?.cancel()
             stream = nil
+            retryMicrophone(after: error, attempt: attempt)
+        }
+    }
+
+    /// The host app owns the audio session at the moment the keyboard
+    /// rises, and the first activation can lose that race - CoreAudio
+    /// answers 'what' (2003329396) and nothing more (owner's phone,
+    /// 2026-08-05). The session is usually free a beat later, so try
+    /// again while the finger is still down instead of surfacing the
+    /// cryptic error on the first miss.
+    private func retryMicrophone(after error: Error?, attempt: Int) {
+        try? AVAudioSession.sharedInstance().setActive(
+            false, options: .notifyOthersOnDeactivation)
+        guard attempt < 3 else {
             status.text = "The microphone would not open: "
-                + error.localizedDescription
+                + (error?.localizedDescription
+                   ?? "the audio line never came up — release and try again")
+            return
+        }
+        status.text = "Opening the microphone…"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, self.holdActive, !self.recording else { return }
+            self.beginRecording(attempt: attempt + 1)
         }
     }
 
@@ -373,6 +409,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     @objc private func holdEnded() {
+        holdActive = false
         guard recording else { return }
         recording = false
         engine.inputNode.removeTap(onBus: 0)
