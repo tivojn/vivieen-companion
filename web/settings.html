@@ -1354,15 +1354,24 @@ function renderBlock(kind) {
       <div class="res" id="res-${kind}"></div>
     </div>`;
   } else {
+    // The lane may hold no key of its own yet still be covered: the platform
+    // keyring (#25) is inherited server-side, so the browser must say so
+    // instead of demanding a paste that would only shadow the platform key.
+    const platformId = KEY_ALIAS[provider.id] || provider.id;
+    const inheritsKey = Boolean(provider.key && !config.has_key && !config.api_key
+      && (CFG.has_keys || {})[platformId]);
+    const platformLabel = inheritsKey
+      ? (keyPlatformLabels()[platformId] || provider.label) : '';
     const keyBadge = state.validated ? '<span class="pill ok">validated</span>' :
-      config.has_key ? '<span class="pill ok">stored</span>' : '';
+      config.has_key ? '<span class="pill ok">stored</span>' :
+      inheritsKey ? `<span class="pill ok">inheriting the ${esc(platformLabel)} key</span>` : '';
     const needsModel = kind !== 'tts' || !['kokoro', 'edge', 'system'].includes(provider.id);
     const modelReady = !needsModel || (state.models.length > 0 && state.models.includes(config.model));
     const canTest = (!provider.key || state.validated) && modelReady;
     element.innerHTML = `${providerField}
       <div class="row" style="margin-top:14px">
         ${provider.key ? `<div class="f"><label>API key ${keyBadge}</label>
-          <div class="keyrow"><input type="password" data-api-key="${kind}" placeholder="${config.has_key ? '•••••••• leave blank to keep' : 'paste key'}"><button class="peek" type="button" data-peek="${kind}" title="Show the key" aria-label="Show the key"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-9 7s4 7 9 7 9-4.5 9-7-4-7-9-7zm0 2c3.6 0 6.5 3 7 5-.5 2-3.4 5-7 5s-6.5-3-7-5c.5-2 3.4-5 7-5zm0 1.8A3.2 3.2 0 1 0 12 15.2 3.2 3.2 0 0 0 12 8.8z"/></svg></button></div></div>` : ''}
+          <div class="keyrow"><input type="password" data-api-key="${kind}" placeholder="${config.has_key ? '•••••••• leave blank to keep' : inheritsKey ? 'inherited from the keyring · paste to override' : 'paste key'}"><button class="peek" type="button" data-peek="${kind}" title="Show the key" aria-label="Show the key"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-9 7s4 7 9 7 9-4.5 9-7-4-7-9-7zm0 2c3.6 0 6.5 3 7 5-.5 2-3.4 5-7 5s-6.5-3-7-5c.5-2 3.4-5 7-5zm0 1.8A3.2 3.2 0 1 0 12 15.2 3.2 3.2 0 0 0 12 8.8z"/></svg></button></div></div>` : ''}
         <div class="f"><label>Endpoint</label>
           <input data-endpoint="${kind}" value="${esc(config.base_url || '')}" placeholder="${esc(provider.base || 'default')}"></div>
       </div>
@@ -1423,7 +1432,8 @@ function renderBlock(kind) {
   if (refreshButton) refreshButton.onclick = event => refreshGlobals(kind, event.target);
 
   if (!provider.managed && !state.attempted && !state.loading &&
-      ((!provider.key) || config.has_key)) {
+      ((!provider.key) || config.has_key ||
+       (CFG.has_keys || {})[KEY_ALIAS[provider.id] || provider.id])) {
     setTimeout(() => {
       if (CFG[kind].provider === provider.id && !MODEL_STATE[kind].attempted) fetchModels(kind, true);
     }, 0);
@@ -3915,7 +3925,7 @@ function renderKeys() {
           ${has[id] ? `<button class="btn sm" data-keyclear="${id}" type="button"
             title="Forget this platform's key on save">Clear</button>` : ''}
         </div>
-        <div class="keystate" data-keystate="${id}"></div></div>`).join('')
+        <div class="keystate${keyVerdictClass(id)}" data-keystate="${id}">${keyVerdictHtml(id)}</div></div>`).join('')
     + `</div>`
     + (others.length ? `<div class="row" style="align-items:flex-end;margin-top:10px">
       <div class="f" style="max-width:220px;flex:none"><label>Another platform</label>
@@ -3923,60 +3933,34 @@ function renderKeys() {
           `<option value="${id}">${labels[id]}</option>`).join('')}</select></div>
       <div class="f" style="max-width:280px"><label>Key</label>
         <input id="key-add-value" type="password" placeholder="paste once, use everywhere"></div>
+      <div class="f" style="flex:none"><button class="btn sm" id="key-add-check" type="button"
+        title="Save this key and ask the provider whether it works">Check</button>
+        <div class="keystate" id="key-add-state"></div></div>
     </div>` : '');
-  box.querySelectorAll('[data-keyfor]').forEach(i => { i.oninput = dirty; });
-  // "Check" is the whole loop in one press: save this one key, then ask a
-  // lane that uses the platform whether the provider accepts it. A green
-  // tick is the provider's answer, not ours (owner, 2026-08-05).
-  box.querySelectorAll('[data-keycheck]').forEach(button => button.onclick = async () => {
+  box.querySelectorAll('[data-keyfor]').forEach(i => { i.oninput = () => {
+    // A typed key retires the row's old verdict on sight - the green tick
+    // answered for the key that is about to be replaced.
+    const state = box.querySelector(`[data-keystate="${i.dataset.keyfor}"]`);
+    if (state) { state.className = 'keystate'; state.textContent = ''; }
+    dirty();
+  }; });
+  box.querySelectorAll('[data-keycheck]').forEach(button => button.onclick = () => {
     const id = button.dataset.keycheck;
-    const field = box.querySelector(`[data-keyfor="${id}"]`);
-    const state = box.querySelector(`[data-keystate="${id}"]`);
-    const typed = (field.value || '').trim();
-    if (!typed && !(CFG.has_keys || {})[id]) {
-      state.className = 'keystate bad'; state.textContent = 'Nothing to check yet.';
-      return;
-    }
-    button.disabled = true;
-    state.className = 'keystate'; state.textContent = 'Saving, then asking the provider…';
-    // Typed: save it. Not typed: adopt the one already stored, which is
-    // what retires any lane key still shadowing it.
-    const saved = await api('/api/config', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({keys: {[id]: typed || '__adopt__'}})}).catch(() => null);
-    if (!saved || !saved.config) {
-      button.disabled = false;
-      state.className = 'keystate bad';
-      state.textContent = 'Could not save that key.';
-      return;
-    }
-    CFG = saved.config; field.value = '';
-    // Which lane can speak for this platform? The one already pointed at it.
-    const lane = ['llm', 'tts', 'stt', 'image', 'video']
-      .find(k => (KEY_ALIAS[(CFG[k] || {}).provider] || (CFG[k] || {}).provider) === id);
-    if (!lane) {
-      button.disabled = false;
-      state.className = 'keystate ok';
-      state.textContent = '✓ Saved. No lane uses this platform yet, so there '
-        + 'is nobody to ask whether it works.';
-      renderKeys();
-      return;
-    }
-    const answer = await api('/api/models', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({kind: lane, cfg: CFG[lane]})}).catch(() => null);
-    button.disabled = false;
-    if (answer && !answer.error) {
-      state.className = 'keystate ok';
-      state.textContent = '✓ ' + (labels[id] || id) + ' accepted it';
-    } else {
-      state.className = 'keystate bad';
-      state.textContent = String((answer && answer.error) || 'the provider did not answer')
-        .slice(0, 120);
-    }
-    renderKeys();
-    ['llm', 'tts', 'stt'].forEach(k => { resetModelState(k); renderBlock(k); });
+    checkPlatform(id, box.querySelector(`[data-keyfor="${id}"]`),
+      box.querySelector(`[data-keystate="${id}"]`), button);
   });
+  const addCheck = box.querySelector('#key-add-check');
+  if (addCheck) addCheck.onclick = () => {
+    const select = box.querySelector('#key-add');
+    const state = box.querySelector('#key-add-state');
+    if (!select.value) {
+      state.className = 'keystate bad';
+      state.textContent = 'Pick a platform first.';
+      return;
+    }
+    checkPlatform(select.value, box.querySelector('#key-add-value'),
+      state, addCheck);
+  };
   box.querySelectorAll('[data-keyclear]').forEach(b => b.onclick = () => {
     KEYS_CLEARED.add(b.dataset.keyclear);
     const input = box.querySelector(`[data-keyfor="${b.dataset.keyclear}"]`);
@@ -3985,6 +3969,88 @@ function renderKeys() {
   });
   const extra = box.querySelector('#key-add-value');
   if (extra) extra.oninput = dirty;
+}
+function keyVerdictClass(id) {
+  const verdict = (CFG.key_checks || {})[id];
+  return verdict ? (verdict.ok ? ' ok' : ' bad') : '';
+}
+function keyVerdictHtml(id) {
+  const verdict = (CFG.key_checks || {})[id];
+  if (!verdict) return '';
+  if (verdict.ok) {
+    let when = '';
+    const at = new Date(verdict.at || '');
+    if (!isNaN(at)) when = ' · ' + at.toLocaleDateString(undefined,
+      {month: 'short', day: 'numeric'});
+    return `✓ the provider accepted it${when}`;
+  }
+  return esc(String(verdict.error || 'the provider refused it').slice(0, 120));
+}
+// "Check" is the whole loop in one press: save this one key, then ask the
+// provider whether it works. A green tick is the provider's answer, not
+// ours (owner, 2026-08-05) - and it persists in config.key_checks until
+// the key itself changes.
+async function checkPlatform(id, field, state, button) {
+  const typed = ((field && field.value) || '').trim();
+  if (!typed && !(CFG.has_keys || {})[id]) {
+    state.className = 'keystate bad'; state.textContent = 'Nothing to check yet.';
+    return;
+  }
+  button.disabled = true;
+  state.className = 'keystate'; state.textContent = 'Saving, then asking the provider…';
+  // Typed: save it. Not typed: adopt the one already stored, which is
+  // what retires any lane key still shadowing it.
+  const saved = await api('/api/config', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({keys: {[id]: typed || '__adopt__'}})}).catch(() => null);
+  if (!saved || !saved.config) {
+    button.disabled = false;
+    state.className = 'keystate bad';
+    state.textContent = 'Could not save that key.';
+    return;
+  }
+  CFG = saved.config;
+  if (field) field.value = '';
+  // Which lane can speak for this platform? The one already pointed at it -
+  // or, failing that, any catalogue provider on this platform, asked with a
+  // bare cfg (the server inherits the platform key it just stored).
+  let lane = ['llm', 'tts', 'stt', 'image', 'video']
+    .find(k => (KEY_ALIAS[(CFG[k] || {}).provider] || (CFG[k] || {}).provider) === id);
+  let laneCfg = lane ? CFG[lane] : null;
+  if (!lane) {
+    for (const k of ['llm', 'tts', 'stt']) {
+      const provider = (CAT[k] || []).find(p => p.key && (KEY_ALIAS[p.id] || p.id) === id);
+      if (provider) { lane = k; laneCfg = {provider: provider.id}; break; }
+    }
+  }
+  let verdict;
+  if (!lane) {
+    verdict = null;   // nobody in the catalogue can speak for this platform
+  } else {
+    const answer = await api('/api/models', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({kind: lane, cfg: laneCfg})}).catch(() => null);
+    verdict = {ok: Boolean(answer && !answer.error && answer.validated),
+      at: new Date().toISOString(),
+      error: String((answer && answer.error) || (answer ? '' : 'the provider did not answer')).slice(0, 160)};
+  }
+  if (verdict) {
+    const persisted = await api('/api/config', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({key_checks: {[id]: verdict}})}).catch(() => null);
+    if (persisted && persisted.config) CFG = persisted.config;
+  }
+  button.disabled = false;
+  renderKeys();
+  if (!verdict) {
+    const after = document.querySelector(`#blk-keys [data-keystate="${id}"]`);
+    if (after) {
+      after.className = 'keystate ok';
+      after.textContent = '✓ Saved. No provider in the catalogue can be asked '
+        + 'to confirm this platform.';
+    }
+  }
+  ['llm', 'tts', 'stt'].forEach(k => { resetModelState(k); renderBlock(k); });
 }
 function collectKeys() {
   const staged = {};

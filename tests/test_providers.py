@@ -667,6 +667,91 @@ class ProviderDefaultsTests(unittest.TestCase):
         self.assertIn("[redacted]", text)
 
 
+class PlatformKeyInheritanceTests(unittest.TestCase):
+    # The Think card said "Enter an API key" while the gemini platform key
+    # sat right there in the keyring (owner, 2026-08-05). A lane switched
+    # to a keyed provider must inherit the platform key BEFORE the lane is
+    # ever saved, and the browser must say it is inheriting.
+
+    def _stored(self):
+        return {"llm": {"provider": "openai", "api_key": "lane-key"},
+                "keys": {"gemini": "platform-gem"}}
+
+    def test_lane_switch_inherits_the_platform_key(self):
+        import app as A
+        with patch.object(A.P, "load", return_value=self._stored()):
+            out = A._with_key("llm", {"provider": "gemini"})
+        self.assertEqual(out["api_key"], "platform-gem")
+
+    def test_a_typed_lane_key_still_wins(self):
+        import app as A
+        with patch.object(A.P, "load", return_value=self._stored()):
+            out = A._with_key("llm", {"provider": "gemini", "api_key": "typed"})
+        self.assertEqual(out["api_key"], "typed")
+
+    def test_same_provider_without_lane_key_inherits_too(self):
+        import app as A
+        stored = {"llm": {"provider": "gemini"}, "keys": {"gemini": "platform-gem"}}
+        with patch.object(A.P, "load", return_value=stored):
+            out = A._with_key("llm", {"provider": "gemini"})
+        self.assertEqual(out["api_key"], "platform-gem")
+
+    def test_settings_page_announces_the_inherited_key(self):
+        with open(os.path.join(ROOT, "web", "settings.html"), encoding="utf-8") as handle:
+            html = handle.read()
+        self.assertIn("inheriting the ", html)
+        self.assertIn("inherited from the keyring · paste to override", html)
+        # the "Another platform" row can validate without a round-trip
+        # through the upper section
+        self.assertIn("key-add-check", html)
+
+    # The Check verdict is durable (#5.2): it lives in config.key_checks
+    # until the key it answered for changes.
+
+    def _post(self, cur, body):
+        import app as A
+        captured = {}
+
+        def fake_save(new):
+            captured.update(new)
+            return new
+
+        with patch.object(A.P, "load", return_value=cur), \
+             patch.object(A.P, "save", side_effect=fake_save), \
+             patch.object(A.P, "redacted", side_effect=lambda c: c), \
+             patch.object(A.P, "global_defaults_async",
+                          new=AsyncMock(return_value={})):
+            asyncio.run(A.api_config_set(body))
+        return captured
+
+    def test_a_pasted_key_retires_the_rows_verdict(self):
+        cur = {"key_checks": {"gemini": {"ok": True, "at": "x", "error": ""},
+                              "openai": {"ok": True, "at": "x", "error": ""}}}
+        saved = self._post(cur, {"keys": {"gemini": "fresh-paste"}})
+        self.assertNotIn("gemini", saved["key_checks"])
+        self.assertIn("openai", saved["key_checks"])
+
+    def test_a_cleared_key_retires_the_rows_verdict(self):
+        cur = {"key_checks": {"gemini": {"ok": True, "at": "x", "error": ""}}}
+        saved = self._post(cur, {"keys": {"gemini": "__clear__"}})
+        self.assertNotIn("gemini", saved["key_checks"])
+
+    def test_adopt_keeps_the_rows_verdict(self):
+        cur = {"key_checks": {"gemini": {"ok": True, "at": "x", "error": ""}}}
+        saved = self._post(cur, {"keys": {"gemini": "__adopt__"}})
+        self.assertIn("gemini", saved["key_checks"])
+
+    def test_a_fresh_verdict_persists(self):
+        saved = self._post({}, {"key_checks": {"gemini": {
+            "ok": True, "at": "2026-08-05T00:00:00Z", "error": ""}}})
+        self.assertTrue(saved["key_checks"]["gemini"]["ok"])
+
+    def test_verdicts_replace_wholesale_in_merge(self):
+        merged = P._merge({"key_checks": {"a": {"ok": True}, "b": {"ok": True}}},
+                          {"key_checks": {"a": {"ok": False}}})
+        self.assertEqual(merged["key_checks"], {"a": {"ok": False}})
+
+
 class OneClickPipelineTests(unittest.TestCase):
     def test_pipeline_chains_face_body_and_motion_in_one_job(self):
         # Owner request 2026-08-01: one button on the avatar card runs

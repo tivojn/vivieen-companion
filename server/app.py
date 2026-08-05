@@ -2366,6 +2366,26 @@ async def api_config_set(body: dict):
                 body.setdefault("live", {})["xai_api_key"] = "__clear__"
             if name == "elevenlabs" and not live_now.get("eleven_api_key"):
                 body.setdefault("live", {})["eleven_api_key"] = "__clear__"
+    # The durable Check state: a green tick answers for one specific stored
+    # key, so a pasted or cleared platform key retires that row's verdict.
+    # The handler always writes the FULL dict (and _merge replaces it
+    # wholesale) so a retired verdict really leaves the file.
+    checks = {n: v for n, v in (cur.get("key_checks") or {}).items()
+              if isinstance(v, dict)}
+    incoming_checks = body.pop("key_checks", None)
+    if isinstance(keyring, dict):
+        for name, value in keyring.items():
+            if value:                  # a paste or "__clear__"; adopt was
+                checks.pop(name, None)  # popped above and keeps its verdict
+    if isinstance(incoming_checks, dict):
+        for name, verdict in incoming_checks.items():
+            if isinstance(verdict, dict):
+                checks[name] = {"ok": bool(verdict.get("ok")),
+                                "at": str(verdict.get("at") or "")[:32],
+                                "error": str(verdict.get("error") or "")[:160]}
+            elif verdict is None:
+                checks.pop(name, None)
+    body["key_checks"] = checks
     live = body.get("live")
     if isinstance(live, dict):
         for field in ("xai_api_key", "eleven_api_key"):
@@ -2395,8 +2415,11 @@ async def api_config_set(body: dict):
 
 
 def _with_key(kind, blk):
-    """Reuse a stored key only for the same provider."""
-    cur = P.load().get(kind) or {}
+    """Reuse a stored key only for the same provider; a provider with no
+    key of its own still inherits the platform keyring, so switching a
+    lane to a keyed provider validates before the lane is ever saved."""
+    cfg_all = P.load()
+    cur = cfg_all.get(kind) or {}
     incoming = blk or {}
     incoming_provider = incoming.get("provider") or cur.get("provider")
     same_provider = incoming_provider == cur.get("provider")
@@ -2405,6 +2428,11 @@ def _with_key(kind, blk):
                 if k != "has_key" and v not in (None, "")})
     if same_provider and not out.get("api_key"):
         out["api_key"] = cur.get("api_key", "")
+    if not out.get("api_key"):
+        keys = cfg_all.get("keys") if isinstance(cfg_all.get("keys"), dict) else {}
+        inherited = keys.get(P.platform_of(out.get("provider"))) or ""
+        if inherited:
+            out["api_key"] = inherited
     return out
 
 

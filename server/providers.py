@@ -78,6 +78,9 @@ DEFAULTS = {
 def _merge(base, over):
     out = dict(base)
     for k, v in (over or {}).items():
+        if k == "key_checks":
+            out[k] = v      # verdicts replace wholesale: a retired row's
+            continue        # green tick must actually disappear from disk
         out[k] = _merge(base[k], v) if isinstance(v, dict) and isinstance(base.get(k), dict) else v
     return out
 
