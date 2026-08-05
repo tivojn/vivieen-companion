@@ -20,9 +20,61 @@
 import UIKit
 import AVFoundation
 
+/// The listening line: bars that rise and fall with the voice actually
+/// arriving. Not a decorative animation on a timer - it is fed the same
+/// RMS the microphone tap computes, so a silent room reads flat and the
+/// owner can SEE that she is being heard (owner: "it should respond with
+/// a dynamic wave hint while speaking", 2026-08-05).
+final class WaveView: UIView {
+    var bar: UIColor = .label { didSet { setNeedsDisplay() } }
+    private var levels = [CGFloat](repeating: 0, count: 27)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isUserInteractionEnabled = false
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    /// One new sample at the right, everything else slides left.
+    func push(_ level: CGFloat) {
+        levels.removeFirst()
+        levels.append(max(0, min(1, level)))
+        setNeedsDisplay()
+    }
+
+    func rest() {
+        levels = [CGFloat](repeating: 0, count: levels.count)
+        setNeedsDisplay()
+    }
+
+    override func draw(_ rect: CGRect) {
+        guard let context = UIGraphicsGetCurrentContext() else { return }
+        let count = CGFloat(levels.count)
+        let width: CGFloat = 3
+        let gap = (rect.width - count * width) / max(1, count - 1)
+        context.setFillColor(bar.cgColor)
+        for (i, level) in levels.enumerated() {
+            // A floor, so the line reads as a line even in silence.
+            let scaled = 3 + pow(level, 0.6) * (rect.height - 3)
+            let x = CGFloat(i) * (width + gap)
+            let y = (rect.height - scaled) / 2
+            let bubble = UIBezierPath(
+                roundedRect: CGRect(x: x, y: y, width: width, height: scaled),
+                cornerRadius: width / 2)
+            context.setAlpha(0.25 + 0.75 * level)
+            context.addPath(bubble.cgPath)
+            context.fillPath()
+        }
+    }
+}
+
 final class KeyboardViewController: UIInputViewController {
     private let talk = UIButton(type: .system)
     private let status = UILabel()
+    private let heard = UILabel()
+    private let wave = WaveView()
+    private var utility: [UIButton] = []
     private let engine = AVAudioEngine()
     private var stream: SonioxStream?
     private var recording = false
@@ -36,45 +88,82 @@ final class KeyboardViewController: UIInputViewController {
         UserDefaults(suiteName: "group.com.vivieen.pocket")
     }
 
+    // ---------------------------------------------------------- the palette
+    //
+    // The same house Vivieen lives in: neutral surfaces, one restrained
+    // accent, and colour kept for things that MEAN something - red while
+    // recording, and nothing else. The first draft was a slab of black
+    // with a bright blue button in it, which belonged to no app at all
+    // (owner: "ugly aesthetic ui", 2026-08-05). These are the page's own
+    // tokens, hand-carried into UIKit, and they follow light and dark.
+    private var dark: Bool { traitCollection.userInterfaceStyle == .dark }
+    private var skin: UIColor {                     // the keyboard bed
+        dark ? UIColor(red: 0.043, green: 0.051, blue: 0.063, alpha: 1)
+             : UIColor(red: 0.969, green: 0.969, blue: 0.961, alpha: 1)
+    }
+    private var ink: UIColor {                      // primary text
+        dark ? UIColor(red: 0.945, green: 0.941, blue: 0.933, alpha: 1)
+             : UIColor(red: 0.216, green: 0.208, blue: 0.184, alpha: 1)
+    }
+    private var faint: UIColor {                    // secondary text
+        dark ? UIColor(red: 0.667, green: 0.690, blue: 0.733, alpha: 1)
+             : UIColor(red: 0.471, green: 0.467, blue: 0.455, alpha: 1)
+    }
+    private var tint: UIColor {                     // key fill
+        dark ? UIColor(white: 1, alpha: 0.08) : UIColor(white: 0.216, alpha: 0.055)
+    }
+    private var tintLine: UIColor {                 // key edge
+        dark ? UIColor(white: 1, alpha: 0.18) : UIColor(white: 0.216, alpha: 0.14)
+    }
+    private let hot = UIColor(red: 0.886, green: 0.282, blue: 0.227, alpha: 1)
+
     // ------------------------------------------------------------- layout
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(white: 0.09, alpha: 1)
+        paintSurfaces()
 
-        let globe = UIButton(type: .system)
+        let globe = key("􀆪", #selector(handleInputModeList(from:with:)))
         globe.setTitle("🌐", for: .normal)
-        globe.addTarget(self, action: #selector(handleInputModeList(from:with:)),
-                        for: .allTouchEvents)
-
         let backspace = key("⌫", #selector(rubOut))
         let space = key("space", #selector(spaceBar))
         let ret = key("return", #selector(returnKey))
 
-        talk.setTitle("Hold — Vivieen is listening", for: .normal)
-        talk.setTitleColor(.white, for: .normal)
-        talk.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-        talk.backgroundColor = UIColor(red: 0.16, green: 0.32, blue: 0.65,
-                                       alpha: 1)
-        talk.layer.cornerRadius = 12
+        talk.setTitle("Hold to speak", for: .normal)
+        talk.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        talk.layer.cornerRadius = 14
+        talk.layer.borderWidth = 1
         talk.addTarget(self, action: #selector(holdBegan),
                        for: .touchDown)
         talk.addTarget(self, action: #selector(holdEnded),
                        for: [.touchUpInside, .touchUpOutside, .touchCancel])
 
         status.font = .systemFont(ofSize: 12)
-        status.textColor = UIColor(white: 0.65, alpha: 1)
         status.textAlignment = .center
         status.adjustsFontSizeToFitWidth = true
+        status.minimumScaleFactor = 0.85
+        status.numberOfLines = 2
+
+        // The live transcript, in her own voice-of-text: what has settled
+        // reads solid, what is still being decided reads faint, and it
+        // scrolls with the words rather than growing the keyboard.
+        heard.font = .systemFont(ofSize: 14)
+        heard.textAlignment = .center
+        heard.numberOfLines = 1
+        heard.lineBreakMode = .byTruncatingHead
+        heard.isHidden = true
+
+        wave.isHidden = true
 
         let row = UIStackView(arrangedSubviews: [globe, backspace, space, ret])
         row.axis = .horizontal
         row.spacing = 8
         row.distribution = .fillProportionally
 
-        let stack = UIStackView(arrangedSubviews: [status, talk, row])
+        let stack = UIStackView(arrangedSubviews: [status, heard, wave, talk, row])
         stack.axis = .vertical
         stack.spacing = 8
+        stack.setCustomSpacing(10, after: wave)
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
         NSLayoutConstraint.activate([
@@ -82,37 +171,70 @@ final class KeyboardViewController: UIInputViewController {
                                            constant: 10),
             stack.trailingAnchor.constraint(equalTo: view.trailingAnchor,
                                             constant: -10),
-            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 10),
             stack.bottomAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
-            talk.heightAnchor.constraint(equalToConstant: 74),
-            view.heightAnchor.constraint(greaterThanOrEqualToConstant: 170),
+            talk.heightAnchor.constraint(equalToConstant: 72),
+            wave.heightAnchor.constraint(equalToConstant: 22),
+            view.heightAnchor.constraint(greaterThanOrEqualToConstant: 208),
         ])
         sayReadiness()
+    }
+
+    /// Repaint everything the palette touches. Called on load and again
+    /// whenever iOS flips light/dark under us.
+    private func paintSurfaces() {
+        view.backgroundColor = skin
+        status.textColor = faint
+        heard.textColor = ink
+        wave.bar = ink
+        talk.backgroundColor = recording ? hot : tint
+        talk.layer.borderColor = (recording ? hot : tintLine).cgColor
+        talk.setTitleColor(recording ? .white : ink, for: .normal)
+        for case let button as UIButton in utility {
+            button.backgroundColor = tint
+            button.setTitleColor(ink, for: .normal)
+            button.layer.borderColor = tintLine.cgColor
+        }
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        if previous?.userInterfaceStyle != traitCollection.userInterfaceStyle {
+            paintSurfaces()
+        }
     }
 
     private func key(_ title: String, _ action: Selector) -> UIButton {
         let button = UIButton(type: .system)
         button.setTitle(title, for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = UIColor(white: 0.2, alpha: 1)
-        button.layer.cornerRadius = 8
-        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14,
-                                                bottom: 8, right: 14)
+        button.titleLabel?.font = .systemFont(ofSize: 14.5, weight: .medium)
+        button.layer.cornerRadius = 9
+        button.layer.borderWidth = 1
+        button.contentEdgeInsets = UIEdgeInsets(top: 9, left: 14,
+                                                bottom: 9, right: 14)
         button.addTarget(self, action: action, for: .touchUpInside)
+        utility.append(button)
         return button
     }
 
     private func sayReadiness() {
+        heard.isHidden = true
         if !hasFullAccess {
-            status.text = "Turn on Allow Full Access for Vivieen Keys "
-                + "(Settings > General > Keyboard) so the ears can reach "
-                + "the network"
+            status.text = "Switch on Allow Full Access for Vivieen Keys "
+                + "(Settings › General › Keyboard › Keyboards) — without it "
+                + "an extension cannot reach the network."
         } else if (shared?.string(forKey: "keys.soniox") ?? "").isEmpty {
-            status.text = "No hearing key yet — open Vivieen once so it "
-                + "can hand its ears to the keyboard"
+            // Do NOT say "open Vivieen once" - the owner did, repeatedly,
+            // and it changed nothing (2026-08-05). The shared container is
+            // the thing that is missing, and only the App Group entitlement
+            // can open it.
+            status.text = "The app cannot hand its ears over yet — this "
+                + "build has no shared container. Vivieen Keys needs the "
+                + "App Group enabled on the developer account."
         } else {
-            status.text = "Soniox realtime · straight from this phone"
+            status.text = "Hold the key and speak · the words arrive as "
+                + "you say them"
         }
     }
 
@@ -187,23 +309,33 @@ final class KeyboardViewController: UIInputViewController {
             }
             let count = Int(buffer.frameLength)
             var pcm = Data(capacity: count * 2)
+            var sum: Float = 0
             for i in 0..<count {
                 let clamped = max(-1, min(1, channel[i]))
+                sum += clamped * clamped
                 var sample = Int16(clamped * 32767)
                 withUnsafeBytes(of: &sample) { pcm.append(contentsOf: $0) }
             }
             self.stream?.feed(pcm)
+            // The wave is fed the REAL level, so silence looks like
+            // silence. Gained up because speech RMS sits low.
+            let rms = count > 0 ? sqrt(sum / Float(count)) : 0
+            DispatchQueue.main.async { self.wave.push(CGFloat(rms) * 6) }
         }
         do {
             try engine.start()
             recording = true
-            talk.backgroundColor = UIColor(red: 0.72, green: 0.2,
-                                           blue: 0.24, alpha: 1)
-            status.text = "Listening — the words land as you speak"
+            wave.rest()
+            wave.isHidden = false
+            heard.isHidden = false
+            heard.text = ""
+            talk.setTitle("Listening — release to finish", for: .normal)
+            paintSurfaces()
+            status.text = "Speak — the words arrive as you say them"
         } catch {
             stream?.cancel()
             stream = nil
-            status.text = "Microphone would not open: "
+            status.text = "The microphone would not open: "
                 + error.localizedDescription
         }
     }
@@ -227,6 +359,17 @@ final class KeyboardViewController: UIInputViewController {
             proxy.setMarkedText(refining, selectedRange:
                 NSRange(location: refining.count, length: 0))
         }
+        // The keyboard shows it too. The host field is the real
+        // destination, but a glance down at the keys should also prove
+        // she is hearing - settled solid, the tail still being decided
+        // in grey, the way the desk shows dictation.
+        let line = NSMutableAttributedString(
+            string: settled, attributes: [.foregroundColor: ink])
+        if !refining.isEmpty {
+            line.append(NSAttributedString(
+                string: refining, attributes: [.foregroundColor: faint]))
+        }
+        heard.attributedText = line
     }
 
     @objc private func holdEnded() {
@@ -236,9 +379,11 @@ final class KeyboardViewController: UIInputViewController {
         engine.stop()
         try? AVAudioSession.sharedInstance().setActive(
             false, options: .notifyOthersOnDeactivation)
-        talk.backgroundColor = UIColor(red: 0.16, green: 0.32, blue: 0.65,
-                                       alpha: 1)
-        status.text = "Settling the tail…"
+        wave.rest()
+        wave.isHidden = true
+        talk.setTitle("Hold to speak", for: .normal)
+        paintSurfaces()
+        status.text = "Catching the last of it…"
         // The socket stays open for the tail: Soniox finalises what it
         // heard and onDone commits it.
         stream?.stop()
