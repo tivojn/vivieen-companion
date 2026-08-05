@@ -4178,10 +4178,23 @@ async function boot() {
   // The Mac decides, so this page and the rail cannot disagree (#30).
   if ((CFG.ui || {}).theme) setTheme(CFG.ui.theme);
   // The version rides on /health, so the phone reads the same number the
-  // desk does - one engine, one answer.
+  // desk does - one engine, one answer. The APP carries its own pair too:
+  // the desk passes ?app=<version>, the phone injects VIV_APP_VERSION and
+  // VIV_APP_BUILD - and the build number is what tells two TestFlight
+  // installs of the same version apart (owner, 2026-08-05).
   fetch('health').then(r => r.json()).then(h => {
     const line = $('#vsn');
-    if (line && h && h.version) line.textContent = 'v' + h.version;
+    if (!line) return;
+    const parts = [];
+    if (h && h.version) parts.push('engine v' + h.version);
+    const deskApp = new URLSearchParams(location.search).get('app');
+    if (window.VIV_APP_VERSION) {
+      parts.push('app ' + window.VIV_APP_VERSION
+        + (window.VIV_APP_BUILD ? ' (' + window.VIV_APP_BUILD + ')' : ''));
+    } else if (deskApp) {
+      parts.push('app ' + deskApp);
+    }
+    line.textContent = parts.join(' · ');
   }).catch(() => {});
   ['llm', 'tts', 'stt'].forEach(resetModelState);
   DIRTY = false;

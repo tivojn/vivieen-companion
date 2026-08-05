@@ -146,9 +146,17 @@ struct CompanionWebView: UIViewRepresentable {
         // page the Mac's real address and the token; sockets use them
         // directly, which also makes it plain that live talk is a
         // same-network feature.
+        // The build number is the only thing that tells two TestFlight
+        // installs of the same version apart, so the page gets both.
+        let appVersion = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        let appBuild = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
         let lan = WKUserScript(source: """
             window.VIV_LAN = \(jsString(address));
             window.VIV_TOKEN = \(jsString(token));
+            window.VIV_APP_VERSION = \(jsString(appVersion));
+            window.VIV_APP_BUILD = \(jsString(appBuild));
             """, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         configuration.userContentController.addUserScript(lan)
         configuration.userContentController.addUserScript(probe)
