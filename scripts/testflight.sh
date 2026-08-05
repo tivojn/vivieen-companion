@@ -31,6 +31,10 @@ ASC_KEY_ID="$ASC_KEY_ID" ASC_ISSUER_ID="$ASC_ISSUER_ID" \
 BUILD_NUMBER=$(date +%y%m%d%H%M)
 ARCHIVE=build/vivieen-tf.xcarchive
 
+# CODE_SIGN_IDENTITY must be forced here: project.yml pins it to "" for the
+# simulator, and an UNSIGNED archive carries no entitlements - the export
+# re-sign then applies only the profile's minimal set, so the App Group
+# never reaches the device (verified against build 2608051328).
 echo "▸ archiving (cloud signing via the API key, team $TEAM, build $BUILD_NUMBER)…"
 xcodebuild -project ios/Vivieen.xcodeproj -scheme Vivieen \
   -destination "generic/platform=iOS" -configuration Release \
@@ -40,6 +44,7 @@ xcodebuild -project ios/Vivieen.xcodeproj -scheme Vivieen \
   -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
   DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic \
   CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=YES \
+  CODE_SIGN_IDENTITY="Apple Development" \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" -quiet
 
 cat > build/ExportOptions-testflight.plist <<PLIST
