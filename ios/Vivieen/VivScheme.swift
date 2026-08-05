@@ -425,13 +425,16 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     private func finish(_ task: WKURLSchemeTask, url: URL,
-                        data: Data, type: String, status: Int = 200) {
+                        data: Data, type: String, status: Int = 200,
+                        extra: [String: String] = [:]) {
         guard retire(task) else { return }
+        var fields = ["Content-Type": type,
+                      "Access-Control-Allow-Origin": "*",
+                      "Cache-Control": "no-store"]
+        for (key, value) in extra { fields[key] = value }
         let response = HTTPURLResponse(
             url: url, statusCode: status, httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": type,
-                           "Access-Control-Allow-Origin": "*",
-                           "Cache-Control": "no-store"])!
+            headerFields: fields)!
         // Even so, WebKit can stop a task between the check and the call.
         // An ObjC exception here would abort the process, so catch it.
         VivObjC.catching {
@@ -668,8 +671,16 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             // one hop away - a fresh install took ten minutes on the
             // owner's own wifi (2026-08-05). So sprites get one grace
             // beat: ask the relay where the Mac is, give the probe a
-            // moment, and only then commit to the slow road.
-            if method == "GET", cacheable(path) {
+            // moment, and only then commit to the slow road. TURNS get the
+            // same beat: one flaky probe used to arm the fuse and the next
+            // spoken prompt crawled to EnConvo through the relay while the
+            // Mac sat on the same wifi (owner, 2026-08-05) - 2.5 seconds
+            // to re-prove the LAN is cheap against a relay round trip.
+            let bareNow = bare(path)
+            let turnPost = method == "POST" &&
+                ["/reply", "/api/enconvo/chat", "/stt", "/say"]
+                    .contains(bareNow)
+            if (method == "GET" && cacheable(path)) || turnPost {
                 discoverMac()
                 DispatchQueue.global().asyncAfter(deadline: .now() + 2.5) {
                     [weak self] in
@@ -716,6 +727,14 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         // anything that thinks for a living gets room to think.
         direct.timeoutInterval = cacheable(path) || method == "GET" ? 8 : 600
         direct.setValue(token, forHTTPHeaderField: "x-vivieen-token")
+        // A <video> asks in RANGES - a probe for bytes 0-1 first, then the
+        // pieces as it plays - and answering a range probe with the whole
+        // file as a 200 makes iOS refuse to play at all: a black card with
+        // a slashed play button (owner's generated clip, 2026-08-05). The
+        // Mac serves proper 206es; carry the question through.
+        if let range = task.request.value(forHTTPHeaderField: "Range") {
+            direct.setValue(range, forHTTPHeaderField: "Range")
+        }
         // Keep the page's own content type - a multipart upload carries a
         // boundary, and calling it JSON makes the Mac unable to parse it.
         if body != nil {
@@ -788,8 +807,18 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             }
             let type = http.value(forHTTPHeaderField: "Content-Type")
                 ?? self.mime(for: path)
+            // The range answer must keep its shape: the 206, the
+            // Content-Range, and a Content-Length that matches the bytes
+            // actually handed over (upstream's may describe a compressed
+            // body URLSession already unpacked).
+            var extra = ["Content-Length": String(data.count)]
+            for key in ["Content-Range", "Accept-Ranges"] {
+                if let value = http.value(forHTTPHeaderField: key) {
+                    extra[key] = value
+                }
+            }
             self.finish(task, url: requested, data: data, type: type,
-                        status: http.statusCode)
+                        status: http.statusCode, extra: extra)
         }.resume()
     }
 
