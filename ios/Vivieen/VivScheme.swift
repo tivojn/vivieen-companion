@@ -662,12 +662,54 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         }
 
         if skipDirectNow() {
+            // The boot burst is two dozen cacheable GETs fired in one
+            // breath. Landing inside the fuse window sent every one of
+            // them down the relay's ten-minute road even when the Mac was
+            // one hop away - a fresh install took ten minutes on the
+            // owner's own wifi (2026-08-05). So sprites get one grace
+            // beat: ask the relay where the Mac is, give the probe a
+            // moment, and only then commit to the slow road.
+            if method == "GET", cacheable(path) {
+                discoverMac()
+                DispatchQueue.global().asyncAfter(deadline: .now() + 2.5) {
+                    [weak self] in
+                    guard let self else { return }
+                    guard self.generation() == era else {
+                        self.refusePinned(task, requested: requested)
+                        return
+                    }
+                    if self.skipDirectNow() {
+                        self.viaRelay(task, requested: requested, path: path,
+                                      method: method, body: body,
+                                      generation: era)
+                    } else {
+                        self.attemptDirect(task, requested: requested,
+                                           path: path, method: method,
+                                           body: body, generation: era,
+                                           retried: true)
+                    }
+                }
+                return
+            }
             viaRelay(task, requested: requested, path: path,
                      method: method, body: body, generation: era)
             return
         }
 
-        var direct = URLRequest(url: URL(string: address + path)!)
+        attemptDirect(task, requested: requested, path: path, method: method,
+                      body: body, generation: era, retried: false)
+    }
+
+    /// One direct try against the address we currently believe in. On
+    /// failure the Mac may simply have MOVED: ask the relay, give the
+    /// probe a beat, and if a different address stands proven take a
+    /// second direct try instead of the relay's reply window. `retried`
+    /// keeps it to one extra attempt.
+    private func attemptDirect(_ task: WKURLSchemeTask, requested: URL,
+                               path: String, method: String, body: Data?,
+                               generation era: UInt64, retried: Bool) {
+        let used = address
+        var direct = URLRequest(url: URL(string: used + path)!)
         direct.httpMethod = method
         direct.httpBody = body
         // Static things fail fast so we can fall through to the relay;
@@ -693,15 +735,40 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                   let http = response as? HTTPURLResponse else {
                 self.lock.lock()
                 self.directOffUntil = Date().addingTimeInterval(20)
-                let stale = self.lanAddress
-                self.lanAddress = nil       // whatever we had is not answering
+                // Only drop the proven address if IT is what just failed -
+                // a fresher one adopted while this request was in the air
+                // must not be destroyed by an old failure.
+                if self.lanAddress == used {
+                    self.lanAddress = nil
+                    NSLog("[viv-scheme] LAN address stopped answering")
+                }
                 self.lock.unlock()
-                if stale != nil { NSLog("[viv-scheme] LAN address stopped answering") }
-                // It may simply have moved. Ask, prove, adopt - in the
-                // background, while this request takes the relay.
+                // It may simply have moved. Ask, prove, adopt.
                 self.discoverMac()
-                self.viaRelay(task, requested: requested, path: path,
-                              method: method, body: body, generation: era)
+                if retried {
+                    self.viaRelay(task, requested: requested, path: path,
+                                  method: method, body: body, generation: era)
+                    return
+                }
+                DispatchQueue.global().asyncAfter(deadline: .now() + 2.5) {
+                    [weak self] in
+                    guard let self else { return }
+                    guard self.generation() == era else {
+                        self.refusePinned(task, requested: requested)
+                        return
+                    }
+                    let proven = self.address
+                    if proven != used, !self.skipDirectNow() {
+                        self.attemptDirect(task, requested: requested,
+                                           path: path, method: method,
+                                           body: body, generation: era,
+                                           retried: true)
+                    } else {
+                        self.viaRelay(task, requested: requested, path: path,
+                                      method: method, body: body,
+                                      generation: era)
+                    }
+                }
                 return
             }
             if http.statusCode == 200, self.bare(path) == "/api/avatar/activate" {
@@ -808,8 +875,18 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     /// trusting it. A published address is a claim; only a reply is
     /// evidence. Runs at boot and whenever the direct road has just
     /// failed, which is exactly when a moved Mac would be the reason.
+    private var lastDiscoverAt = Date.distantPast
     func discoverMac() {
         guard pin() != "solo" else { return }
+        // Every request that finds the road closed calls this, so it
+        // throttles itself - and that is the point: a relay stretch keeps
+        // ASKING every few seconds, instead of only at the moment of the
+        // first failure, so a Mac that reappears mid-download is noticed.
+        lock.lock()
+        let tooSoon = Date().timeIntervalSince(lastDiscoverAt) < 4
+        if !tooSoon { lastDiscoverAt = Date() }
+        lock.unlock()
+        if tooSoon { return }
         relay.presence { [weak self] mac in
             guard let self, let mac else { return }
             let candidates = (mac["lan"] as? [String]) ?? []
@@ -817,7 +894,13 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             for candidate in candidates {
                 let trimmed = candidate.hasSuffix("/")
                     ? String(candidate.dropLast()) : candidate
-                if trimmed == self.pairedAddress { continue }
+                // The paired address is probed like any other claim: it
+                // may have STARTED answering - a Mac that just woke, or a
+                // pairing that rode the relay before the LAN settled - and
+                // proving it clears the fuse exactly as a new address
+                // would. Skipping it left a fresh install crawling the
+                // relay for ten minutes with the Mac one hop away
+                // (owner, 2026-08-05).
                 guard let probe = URL(string: trimmed + "/health") else { continue }
                 var request = URLRequest(url: probe)
                 request.timeoutInterval = 3

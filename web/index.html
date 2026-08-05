@@ -1771,7 +1771,7 @@ function setRoad(name){
     }
     if(sheets.length)MOTION[kind]={...clip,sheets};
   };
-  await Promise.all([
+  const essentials=[
     ...M.visemes.map(async v=>{IMG[v]={};
       for(const e of ['open','shut'])
         if(M.frames[v][e])IMG[v][e]=await load(M.frames[v][e]);}),
@@ -1785,12 +1785,27 @@ function setRoad(name){
                 load(M.body.head_mask,6).then(image=>{HEADMASK=image;})]:[]),
     ...(M.body&&M.body.reactions?Object.entries(M.body.reactions).map(
       async([name,meta])=>{RB[name]=await load(meta.src,6);}):[]),
-    // Walk is a DESK verb - it strides while the window travels, and the
-    // phone has nowhere to travel to (owner, 2026-08-03). Skipping it on
-    // iOS spares the download and the decoded frames outright.
-    ...(M.motion?(IS_IOS?[loadMotion('idle'),loadMotion('move')]
-      :[loadMotion('walk'),loadMotion('idle'),loadMotion('move')]):[])
-  ]);
+  ];
+  // Walk is a DESK verb - it strides while the window travels, and the
+  // phone has nowhere to travel to (owner, 2026-08-03). Skipping it on
+  // iOS spares the download and the decoded frames outright.
+  const motionLoads=()=>M.motion
+    ?(IS_IOS?[loadMotion('idle'),loadMotion('move')]
+      :[loadMotion('walk'),loadMotion('idle'),loadMotion('move')])
+    :[];
+  if(IS_IOS){
+    // She can stand, blink and speak on the ~6 MB of face and body
+    // plates; the thirty megabytes of motion sheets are most of the
+    // first-open wait and none of the first impression. Land the
+    // essentials, drop the card, and let the sheets arrive behind her -
+    // the render loop simply starts using MOTION when it fills in
+    // (owner's ten-minute fresh install, 2026-08-05).
+    await Promise.all(essentials);
+    bootDone();
+    Promise.all(motionLoads()).catch(()=>{});
+  }else{
+    await Promise.all([...essentials,...motionLoads()]);
+  }
   // Everything she needs is in hand: let the card go before the first
   // frame lands, so it fades out from under her rather than over her.
   bootDone();
