@@ -141,13 +141,14 @@ html.listening #listenWave{display:flex}
 #listenWaveDot{width:6px;height:6px;border-radius:50%;background:#e2483a;
   animation:listenDot 1.6s ease-in-out infinite}
 @keyframes listenDot{50%{opacity:.35}}
-#listenWaveBars{display:flex;align-items:center;gap:2.5px;height:16px}
+#listenWaveBars{display:flex;align-items:center;gap:2.5px;height:22px}
 /* The bars are driven by the REAL microphone level (owner: a static loop
    is a hint, not a meter) - heights come from script, not keyframes. */
 #listenWaveBars span{width:2px;height:3px;border-radius:1px;
   background:rgba(255,255,255,.82);transition:height 80ms ease}
 #listenWaveText{color:rgba(255,255,255,.6);font-family:inherit;font-size:11px;
-  font-weight:500;line-height:1;letter-spacing:.02em}
+  font-weight:500;line-height:1;letter-spacing:.02em;
+  font-variant-numeric:tabular-nums;min-width:38px}
 /* Above the empty-avatar card. A phone pinned to solo with a cold cache
    draws that card and nothing else, and the chip painted underneath it was
    an app with no way out (workflow review, 2026-08-04). */
@@ -408,12 +409,18 @@ html.ios.avatar-hidden #stage,html.ios.avatar-hidden #vignette{opacity:0}
    the rail (5) and the composer (6), because those are controls and she
    is not.
 
-   The canvas is the whole screen, so with her in front it would swallow
-   every touch meant for the thread. While a turn owns the top, the thread
-   IS the surface you touch - and it already hands the taps that miss a
-   card back to her, so poking her still works through it. */
+   Touches follow the same two states (owner, 2026-08-05): with her
+   standing, SHE owns the screen - poke her face, pinch to zoom - and the
+   thread's cards alone stay tappable, floating above her. The thread
+   CONTAINER never swallows a touch, so nothing here needs to forward
+   anything. Put her away and the thread becomes the surface: full
+   pointer-events, free scrolling through history. The old rule that cut
+   her canvas off whenever a turn anchored the thread is what killed her
+   reactions after the first message - and it never came back, because
+   only threadPadNow could remove the class and nothing called it. */
 html.ios #stage{z-index:4;opacity:var(--avatar-alpha,1)}
-html.ios.thread-anchored #stage,html.ios.thread-anchored #cv{pointer-events:none}
+html.ios #thread{pointer-events:none}
+html.ios.avatar-hidden #thread{pointer-events:auto}
 html.ios.avatar-hidden #stage{pointer-events:none}
 /* ---- per-row actions ---------------------------------------------------
    Quiet until wanted: a thread should read as a conversation, not as a
@@ -552,8 +559,8 @@ html.ios #listenWaveDot{display:none}
 html.ios #listenWaveBars{gap:4px;height:22px}
 html.ios #listenWaveBars span{width:3px;border-radius:2px;
   background:var(--tint-bar)}
-html.ios #listenWaveText{font-size:11px;font-weight:600;letter-spacing:.22em;
-  text-transform:uppercase;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+html.ios #listenWaveText{font-size:12px;font-weight:600;letter-spacing:.04em;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
   color:var(--tint-ink)}
 /* Slide up while holding and the channel turns to an abort. */
 html.ios #listenWave.abort{border-color:var(--hot);
@@ -954,7 +961,7 @@ html.ios #zoombox input{width:100%;flex:1}
   <div class="bn"><span id="boot-count"></span><span id="boot-pct">0%</span></div>
 </div>
 <div id="petBubble" role="status" aria-live="polite"></div>
-<div id="listenWave" aria-hidden="true"><span id="listenWaveDot"></span><span id="listenWaveBars"><span></span><span></span><span></span><span></span><span></span></span><span id="listenWaveText">Listening…</span></div>
+<div id="listenWave" aria-hidden="true"><span id="listenWaveDot"></span><span id="listenWaveText">0:00.0</span><span id="listenWaveBars"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span></div>
 <div id="emptyState" hidden><div id="emptyCard">
   <div id="emptyMark">◉</div><h1>Create your first avatar</h1>
   <p>Your portrait stays out of the app bundle and Git repository. Add one in Settings, review the crop, then build the local animation assets.</p>
@@ -3814,13 +3821,24 @@ async function startLiveTalk(){
 window.MIC_LEVEL=0;
 (function waveMeter(){
   const bars=document.querySelectorAll('#listenWaveBars span');
-  const profile=[0.55,0.85,1,0.8,0.6];
-  let shown=0;
+  const clock=document.getElementById('listenWaveText');
+  // Fluid's shape: a wide symmetric envelope, tall in the middle,
+  // and the word replaced by the take's own length - a meter and a
+  // clock say "recording" better than a label ever did.
+  const profile=[...bars].map((_,i)=>
+    0.45+0.55*Math.sin(Math.PI*(i+0.5)/bars.length));
+  let shown=0,started=0;
   (function tick(){
     requestAnimationFrame(tick);
     if(!document.documentElement.classList.contains('listening')){
       if(shown){shown=0;bars.forEach(b=>b.style.height='3px');}
+      if(started){started=0;if(clock)clock.textContent='0:00.0';}
       return;
+    }
+    if(!started)started=performance.now();
+    if(clock){
+      const t=(performance.now()-started)/1000;
+      clock.textContent=(t/60|0)+':'+(t%60).toFixed(1).padStart(4,'0');
     }
     // Fast attack, slow release - speech flickers, the eye needs a beat.
     const target=Math.min(1,window.MIC_LEVEL*7);
@@ -3828,7 +3846,7 @@ window.MIC_LEVEL=0;
     bars.forEach((bar,i)=>{
       const wobble=1+0.22*Math.sin(performance.now()/90+i*1.7)*shown;
       bar.style.height=Math.max(3,Math.round(
-        3+shown*13*profile[i]*wobble))+'px';
+        3+shown*15*profile[i]*wobble))+'px';
     });
   })();
 })();
@@ -5458,6 +5476,7 @@ function threadRelease(){
   if(TOP.pad)TOP.pad.remove();
   const container=document.getElementById('thread');
   if(container)container.classList.remove('anchored');
+  document.documentElement.classList.remove('thread-anchored');
 }
 /* Forty rows is the ceiling. The pinned turn is never thrown away from
    under the reader - but a single turn that runs to forty cards on its own
