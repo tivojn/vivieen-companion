@@ -69,7 +69,8 @@ final class WaveView: UIView {
     }
 }
 
-final class KeyboardViewController: UIInputViewController {
+final class KeyboardViewController: UIInputViewController,
+                                    AVCaptureAudioDataOutputSampleBufferDelegate {
     /// Apple's own requirements for a keyboard that RECORDS (an Apple
     /// engineer, developer forums thread 775077, 2025): open access in the
     /// Info.plist, the keyboard enabled by the owner - and this override,
@@ -89,7 +90,9 @@ final class KeyboardViewController: UIInputViewController {
     private let clock = UILabel()
     private var takeStart: Date?
     private var clockTimer: Timer?
-    private let engine = AVAudioEngine()
+    // The take's capture session and the queue its buffers arrive on.
+    private var capture: AVCaptureSession?
+    private let captureQueue = DispatchQueue(label: "com.vivieen.keys.mic")
     private var stream: SonioxStream?
     private var recording = false
     // True from touch-down to release: an activation retry must die the
@@ -286,24 +289,8 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    private func beginRecording(attempt: Int = 0) {
-        guard !recording, holdActive else { return }
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(.playAndRecord, mode: .measurement,
-                                    options: [.duckOthers])
-            try session.setActive(true)
-        } catch {
-            return retryMicrophone(after: error, attempt: attempt)
-        }
-        let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
-        // A dead line answers 0 Hz: the session LOOKED active but the
-        // input never came up. Same lost race, same retry.
-        guard format.sampleRate > 0, format.channelCount > 0 else {
-            return retryMicrophone(after: nil, attempt: attempt)
-        }
-        wireRate = format.sampleRate
+    private func beginRecording() {
+        guard !recording, holdActive, capture == nil else { return }
 
         // Space-join like dictation does: no leading space at a fresh
         // field or after whitespace. Decided once, when the take begins.
@@ -312,94 +299,154 @@ final class KeyboardViewController: UIInputViewController {
             || before.hasSuffix("\n") ? "" : " "
         committed = ""
 
-        guard let live = SonioxStream(
-            apiKey: shared?.string(forKey: "keys.soniox") ?? "",
-            model: shared?.string(forKey: "keys.model") ?? "",
-            language: shared?.string(forKey: "keys.language") ?? "",
-            rate: Int(wireRate)) else {
-            status.text = "Could not open the hearing line"
+        // AVCaptureSession, not AVAudioEngine. The engine needs the shared
+        // AVAudioSession activated, and on a real phone a keyboard
+        // extension's activation is refused at the audio-unit level with
+        // 'what' (2003329396) - retried, dictation-key declared, refused
+        // all the same (owner's phone, 2026-08-05). A capture session
+        // manages its own audio session and is the one road reported to
+        // open inside an extension. The simulator allowed the engine,
+        // which is why every take worked there and none on the device.
+        guard let mic = AVCaptureDevice.default(for: .audio) else {
+            status.text = "This device offered no microphone"
             return
         }
-        stream = live
-        live.onText = { [weak self] settled, refining in
-            self?.paint(settled: settled, refining: refining, done: false)
-        }
-        live.onDone = { [weak self] settled, error in
-            guard let self else { return }
-            self.paint(settled: settled, refining: "", done: true)
-            if let error { self.status.text = "Soniox: \(error)" }
-            else { self.sayReadiness() }
-        }
-        live.start()
-
-        input.installTap(onBus: 0, bufferSize: 2048, format: format) {
-            [weak self] buffer, _ in
-            guard let self, let channel = buffer.floatChannelData?[0] else {
+        let take = AVCaptureSession()
+        do {
+            let feed = try AVCaptureDeviceInput(device: mic)
+            guard take.canAddInput(feed) else {
+                status.text = "The microphone would not open: input refused"
                 return
             }
-            let count = Int(buffer.frameLength)
-            var pcm = Data(capacity: count * 2)
-            var sum: Float = 0
-            for i in 0..<count {
-                let clamped = max(-1, min(1, channel[i]))
-                sum += clamped * clamped
-                var sample = Int16(clamped * 32767)
-                withUnsafeBytes(of: &sample) { pcm.append(contentsOf: $0) }
-            }
-            self.stream?.feed(pcm)
-            // The wave is fed the REAL level, so silence looks like
-            // silence. Gained up because speech RMS sits low.
-            let rms = count > 0 ? sqrt(sum / Float(count)) : 0
-            DispatchQueue.main.async { self.wave.push(CGFloat(rms) * 6) }
-        }
-        do {
-            try engine.start()
-            recording = true
-            wave.rest()
-            wave.isHidden = false
-            heard.isHidden = false
-            heard.text = ""
-            talk.setTitle("", for: .normal)
-            takeStart = Date()
-            clock.text = "0:00.0"
-            clock.isHidden = false
-            clockTimer = Timer.scheduledTimer(withTimeInterval: 0.1,
-                                              repeats: true) { [weak self] _ in
-                guard let self, let start = self.takeStart else { return }
-                let elapsed = Date().timeIntervalSince(start)
-                self.clock.text = String(format: "%d:%04.1f",
-                    Int(elapsed) / 60,
-                    elapsed.truncatingRemainder(dividingBy: 60))
-            }
-            paintSurfaces()
-            status.text = ""
+            take.addInput(feed)
         } catch {
-            input.removeTap(onBus: 0)
-            stream?.cancel()
-            stream = nil
-            retryMicrophone(after: error, attempt: attempt)
+            status.text = "The microphone would not open: "
+                + error.localizedDescription
+            return
+        }
+        let out = AVCaptureAudioDataOutput()
+        guard take.canAddOutput(out) else {
+            status.text = "The microphone would not open: output refused"
+            return
+        }
+        out.setSampleBufferDelegate(self, queue: captureQueue)
+        take.addOutput(out)
+        capture = take
+        status.text = "Opening the microphone…"
+        captureQueue.async { [weak self] in
+            take.startRunning()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard self.capture === take else { return }
+                guard self.holdActive else {      // released while opening
+                    self.captureQueue.async { take.stopRunning() }
+                    self.capture = nil
+                    return
+                }
+                guard take.isRunning else {
+                    self.capture = nil
+                    self.status.text = "The microphone would not open"
+                    return
+                }
+                self.recording = true
+                self.wave.rest()
+                self.wave.isHidden = false
+                self.heard.isHidden = false
+                self.heard.text = ""
+                self.talk.setTitle("", for: .normal)
+                self.takeStart = Date()
+                self.clock.text = "0:00.0"
+                self.clock.isHidden = false
+                self.clockTimer = Timer.scheduledTimer(
+                    withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+                    guard let self, let start = self.takeStart else { return }
+                    let elapsed = Date().timeIntervalSince(start)
+                    self.clock.text = String(format: "%d:%04.1f",
+                        Int(elapsed) / 60,
+                        elapsed.truncatingRemainder(dividingBy: 60))
+                }
+                self.paintSurfaces()
+                self.status.text = ""
+            }
         }
     }
 
-    /// The host app owns the audio session at the moment the keyboard
-    /// rises, and the first activation can lose that race - CoreAudio
-    /// answers 'what' (2003329396) and nothing more (owner's phone,
-    /// 2026-08-05). The session is usually free a beat later, so try
-    /// again while the finger is still down instead of surfacing the
-    /// cryptic error on the first miss.
-    private func retryMicrophone(after error: Error?, attempt: Int) {
-        try? AVAudioSession.sharedInstance().setActive(
-            false, options: .notifyOthersOnDeactivation)
-        guard attempt < 3 else {
-            status.text = "The microphone would not open: "
-                + (error?.localizedDescription
-                   ?? "the audio line never came up — release and try again")
-            return
+    /// Buffers arrive here on captureQueue. The FIRST one carries the only
+    /// trustworthy statement of the device's format, so the Soniox line
+    /// opens from it - asking the session up front was the old road's
+    /// habit, and the session is exactly what an extension cannot have.
+    func captureOutput(_ output: AVCaptureOutput,
+                       didOutput sampleBuffer: CMSampleBuffer,
+                       from connection: AVCaptureConnection) {
+        guard capture != nil,
+              let description = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(
+                description)?.pointee else { return }
+        if stream == nil {
+            wireRate = asbd.mSampleRate
+            guard let live = SonioxStream(
+                apiKey: shared?.string(forKey: "keys.soniox") ?? "",
+                model: shared?.string(forKey: "keys.model") ?? "",
+                language: shared?.string(forKey: "keys.language") ?? "",
+                rate: Int(asbd.mSampleRate)) else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.status.text = "Could not open the hearing line"
+                }
+                return
+            }
+            live.onText = { [weak self] settled, refining in
+                self?.paint(settled: settled, refining: refining, done: false)
+            }
+            live.onDone = { [weak self] settled, error in
+                guard let self else { return }
+                self.paint(settled: settled, refining: "", done: true)
+                if let error { self.status.text = "Soniox: \(error)" }
+                else { self.sayReadiness() }
+                // The line is spent; the next take must open its own, or
+                // the delegate would feed a closed socket forever.
+                self.stream = nil
+            }
+            live.start()
+            stream = live
         }
-        status.text = "Opening the microphone…"
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            guard let self, self.holdActive, !self.recording else { return }
-            self.beginRecording(attempt: attempt + 1)
+        var lengthAtOffset = 0
+        var totalLength = 0
+        var pointer: UnsafeMutablePointer<CChar>?
+        guard let block = CMSampleBufferGetDataBuffer(sampleBuffer),
+              CMBlockBufferGetDataPointer(
+                block, atOffset: 0, lengthAtOffsetOut: &lengthAtOffset,
+                totalLengthOut: &totalLength, dataPointerOut: &pointer)
+                == kCMBlockBufferNoErr,
+              let bytes = pointer, totalLength > 0 else { return }
+        let raw = UnsafeRawPointer(bytes)
+        let channels = max(1, Int(asbd.mChannelsPerFrame))
+        let isFloat = (asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0
+        let bytesPerSample = isFloat ? 4 : 2
+        let frames = totalLength / (bytesPerSample * channels)
+        guard frames > 0 else { return }
+        // One channel, Int16 little-endian - the shape Soniox is promised.
+        var pcm = Data(capacity: frames * 2)
+        var sum: Float = 0
+        for i in 0..<frames {
+            let offset = i * channels * bytesPerSample
+            let value: Float
+            if isFloat {
+                value = max(-1, min(1,
+                    raw.loadUnaligned(fromByteOffset: offset, as: Float32.self)))
+            } else {
+                value = Float(raw.loadUnaligned(
+                    fromByteOffset: offset, as: Int16.self)) / 32768
+            }
+            sum += value * value
+            var sample = Int16(max(-32768, min(32767, value * 32767)))
+            withUnsafeBytes(of: &sample) { pcm.append(contentsOf: $0) }
+        }
+        stream?.feed(pcm)
+        // The wave is fed the REAL level, so silence looks like silence.
+        // Gained up because speech RMS sits low.
+        let rms = sqrt(sum / Float(frames))
+        DispatchQueue.main.async { [weak self] in
+            self?.wave.push(CGFloat(rms) * 6)
         }
     }
 
@@ -437,12 +484,18 @@ final class KeyboardViewController: UIInputViewController {
 
     @objc private func holdEnded() {
         holdActive = false
-        guard recording else { return }
+        if let take = capture {
+            capture = nil
+            captureQueue.async { take.stopRunning() }
+        }
+        guard recording else {
+            // Released while the line was still opening: nothing was
+            // committed, so the socket is cancelled, not finalised.
+            stream?.cancel()
+            stream = nil
+            return
+        }
         recording = false
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        try? AVAudioSession.sharedInstance().setActive(
-            false, options: .notifyOthersOnDeactivation)
         clockTimer?.invalidate()
         clockTimer = nil
         takeStart = nil
