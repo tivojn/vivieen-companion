@@ -144,7 +144,7 @@ final class KeyboardViewController: UIInputViewController,
         super.viewDidLoad()
         paintSurfaces()
 
-        talk.setTitle("Hold to speak", for: .normal)
+        talk.setTitle("Tap or hold to speak", for: .normal)
         talk.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
         talk.layer.cornerRadius = 22
         talk.layer.borderWidth = 1
@@ -262,20 +262,36 @@ final class KeyboardViewController: UIInputViewController,
                 + "build has no shared container. Vivieen Keys needs the "
                 + "App Group enabled on the developer account."
         } else {
-            status.text = "Hold the key and speak · the words arrive as "
-                + "you say them"
+            status.text = "Tap to talk · or hold, release to finish"
         }
     }
 
     // ------------------------------------------------------------- take
 
+    /// One key, two grips. A quick TAP starts a take that keeps rolling -
+    /// the next tap ends it. A HOLD is push-to-talk: release to finish.
+    /// Nobody reads a manual on a keyboard, so the key itself says only
+    /// what the CURRENT state needs: "Tap to talk · or hold", then
+    /// "tap to end" while a tapped take rolls (owner, 2026-08-05).
+    private var pressStart: Date?
+    private var swallowRelease = false
+    private static let tapWindow: TimeInterval = 0.3
+
     @objc private func holdBegan() {
+        // Pressing a rolling take is the tap that ENDS it; the release
+        // that follows belongs to this press and must not re-finish.
+        if recording || capture != nil {
+            swallowRelease = true
+            finishTake()
+            return
+        }
         guard hasFullAccess,
               !(shared?.string(forKey: "keys.soniox") ?? "").isEmpty else {
             sayReadiness()
             return
         }
         holdActive = true
+        pressStart = Date()
         AVAudioApplication.requestRecordPermission { [weak self] granted in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -483,13 +499,28 @@ final class KeyboardViewController: UIInputViewController,
     }
 
     @objc private func holdEnded() {
+        if swallowRelease { swallowRelease = false; return }
+        let quick = pressStart.map {
+            Date().timeIntervalSince($0) < Self.tapWindow } ?? false
+        pressStart = nil
+        // A quick press was a TAP: the take keeps rolling, and the key
+        // says how to end it. holdActive stays up so a take still opening
+        // is not torn down by its own tap.
+        if quick, recording || capture != nil {
+            status.text = "tap to end"
+            return
+        }
+        finishTake()
+    }
+
+    private func finishTake() {
         holdActive = false
         if let take = capture {
             capture = nil
             captureQueue.async { take.stopRunning() }
         }
         guard recording else {
-            // Released while the line was still opening: nothing was
+            // Ended while the line was still opening: nothing was
             // committed, so the socket is cancelled, not finalised.
             stream?.cancel()
             stream = nil
@@ -502,7 +533,7 @@ final class KeyboardViewController: UIInputViewController,
         clock.isHidden = true
         wave.rest()
         wave.isHidden = true
-        talk.setTitle("Hold to speak", for: .normal)
+        talk.setTitle("Tap or hold to speak", for: .normal)
         paintSurfaces()
         status.text = "Catching the last of it…"
         // The socket stays open for the tail: Soniox finalises what it

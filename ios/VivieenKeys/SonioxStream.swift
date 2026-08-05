@@ -21,6 +21,7 @@ final class SonioxStream {
     private let opening: String
     private var finals = ""
     private var settled = false
+    private var heard = false
     private let gate = NSLock()
 
     init?(apiKey: String, model: String, language: String, rate: Int) {
@@ -54,8 +55,23 @@ final class SonioxStream {
     }
 
     /// The owner released the key: end the take, let the tail finalise.
+    /// With a deadline - a socket that never answers used to leave the
+    /// keyboard saying "Catching the last of it…" forever (owner's phone,
+    /// 2026-08-05). Four seconds is tail-room, not a conversation: land
+    /// what was heard, and if NOTHING ever came down the line, say so.
     func stop() {
         task.send(.string("")) { _ in }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 4) { [weak self] in
+            guard let self else { return }
+            self.gate.lock()
+            let done = self.settled
+            let quiet = !self.heard
+            self.gate.unlock()
+            guard !done else { return }
+            self.finish(quiet
+                ? "the hearing line never answered — check Allow Full Access"
+                : nil)
+        }
     }
 
     func cancel() {
@@ -82,6 +98,7 @@ final class SonioxStream {
         guard let data = raw.data(using: .utf8),
               let payload = try? JSONSerialization.jsonObject(with: data)
                 as? [String: Any] else { return }
+        gate.lock(); heard = true; gate.unlock()
         if let trouble = payload["error_message"] as? String {
             finish(trouble)
             return

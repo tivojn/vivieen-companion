@@ -554,6 +554,8 @@ html.ios #listenWave{order:1;flex:1 0 100%;position:static;transform:none;
   justify-content:center;border-radius:12px;
   border:1px solid var(--tint-line);background:var(--tint);
   -webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none}
+/* A tapped take ends by tapping the chip, so the chip must be a target. */
+html.ios #listenWave.taptake{pointer-events:auto}
 html.ios.listening #txt,html.ios.listening.talk-mode #talkbar{display:none}
 html.ios #listenWaveDot{display:none}
 html.ios #listenWaveBars{gap:4px;height:22px}
@@ -984,7 +986,7 @@ html.ios #zoombox input{width:100%;flex:1}
     <div id="manual">
       <button id="ptt" disabled hidden>Hold to talk</button>
       <button id="micmode" type="button" aria-label="Switch between typing and talking" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg></button>
-      <button id="talkbar" type="button">Hold to talk</button>
+      <button id="talkbar" type="button">Tap or hold to talk</button>
       <textarea id="txt" rows="1" placeholder="Hold her head to talk, or type…" autocomplete="off" enterkeyhint="send"></textarea>
       <button id="emojiBtn" type="button" aria-label="Emoji"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zM8.6 9.2a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6zm6.8 0a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6zM7.6 14.2h8.8a4.6 4.6 0 0 1-8.8 0z"/></svg></button>
       <button id="plusBtn" type="button" aria-label="Attach photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z"/></svg></button>
@@ -3851,9 +3853,13 @@ window.MIC_LEVEL=0;
       return;
     }
     if(!started)started=performance.now();
-    if(clock){
+    // The abort warning owns the text slot while a lifted finger holds
+    // it; a tapped take signs its own exit next to the count.
+    const chip=document.getElementById('listenWave');
+    if(clock&&!(chip&&chip.classList.contains('abort'))){
       const t=(performance.now()-started)/1000;
-      clock.textContent=(t/60|0)+':'+(t%60).toFixed(1).padStart(4,'0');
+      clock.textContent=(t/60|0)+':'+(t%60).toFixed(1).padStart(4,'0')
+        +(chip&&chip.classList.contains('taptake')?' · tap to end':'');
     }
     // Fast attack, slow release - speech flickers, the eye needs a beat.
     const target=Math.min(1,window.MIC_LEVEL*7);
@@ -5813,11 +5819,12 @@ if(IS_IOS){
   };
   micmode.addEventListener('click',
     ()=>setTalkMode(!document.documentElement.classList.contains('talk-mode')));
-  let holdY=0,holdCancel=false;
+  let holdY=0,holdCancel=false,pressAt=0,tapTake=false;
   const CANCEL_LIFT_PX=70;
   talkbar.addEventListener('pointerdown',event=>{
     event.preventDefault();
     holdY=event.clientY;holdCancel=false;recDiscard=false;
+    pressAt=performance.now();
     try{talkbar.setPointerCapture(event.pointerId);}catch(error){}
     talkbar.classList.add('rec');
     document.documentElement.classList.add('listening');
@@ -5829,7 +5836,7 @@ if(IS_IOS){
     if(lifted!==holdCancel){
       holdCancel=lifted;
       talkbar.classList.toggle('cancel',lifted);
-      talkbar.textContent=lifted?'Release to cancel':'Hold to talk';
+      talkbar.textContent=lifted?'Release to cancel':'Tap or hold to talk';
       // The METER holds this row while recording, so the abort state has
       // to live there - on the bar it was invisible (2026-08-04).
       const meter=document.getElementById('listenWave');
@@ -5839,17 +5846,28 @@ if(IS_IOS){
     }
   });
   const endHold=()=>{
-    talkbar.classList.remove('rec','cancel');
-    talkbar.textContent='Hold to talk';
     const meter=document.getElementById('listenWave');
-    const label=document.getElementById('listenWaveText');
-    if(meter)meter.classList.remove('abort');
-    if(label)label.textContent='Listening…';
+    // A quick press is a TAP: the take keeps rolling, the chip counts the
+    // seconds and says "tap to end", and tapping IT finishes. A long
+    // press stays what it always was - release to send, lift to cancel.
+    if(!tapTake&&!holdCancel&&recording&&performance.now()-pressAt<300){
+      tapTake=true;
+      if(meter)meter.classList.add('taptake');
+      talkbar.classList.remove('rec','cancel');
+      return;
+    }
+    tapTake=false;
+    if(meter)meter.classList.remove('taptake','abort');
+    talkbar.classList.remove('rec','cancel');
+    talkbar.textContent='Tap or hold to talk';
     recDiscard=holdCancel;holdCancel=false;
     stopRec();
   };
   talkbar.addEventListener('pointerup',endHold);
   talkbar.addEventListener('pointercancel',endHold);
+  document.getElementById('listenWave').addEventListener('click',()=>{
+    if(tapTake)endHold();
+  });
   // Messenger bar, the standard grammar: mic, field, emoji, plus. The
   // emoji strip inserts into the field; plus attaches a photo into the
   // thread (owner: replicate WeChat/Telegram, don't invent).
