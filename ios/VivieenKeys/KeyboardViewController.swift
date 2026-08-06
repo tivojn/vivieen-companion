@@ -151,8 +151,10 @@ final class KeyboardViewController: UIInputViewController {
         super.viewDidLoad()
         paintSurfaces()
 
-        // Her WHOLE face, a chip at the wave's side (owner, 2026-08-06)
-        // - not a backdrop crop. It brightens as you speak.
+        // Her face, floor to ceiling on the wave's side (owner: "head is
+        // too small - top and down on one side", 2026-08-06): a
+        // full-height portrait column at the left, the wave and the
+        // words living to its right. She brightens as you speak.
         if let group = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: "group.com.vivieen.pocket"),
            let image = UIImage(contentsOfFile:
@@ -160,28 +162,30 @@ final class KeyboardViewController: UIInputViewController {
             face.image = image
             face.contentMode = .scaleAspectFill
             face.clipsToBounds = true
-            face.layer.cornerRadius = 22
+            face.layer.cornerRadius = 18
             face.alpha = 0.55
             face.isUserInteractionEnabled = false
             face.translatesAutoresizingMaskIntoConstraints = false
             // A pinned image view VOTES its intrinsic size, and a
             // thousand-pixel keyframe voted the whole keyboard onto the
-            // full screen (owner, 2026-08-06). The chip's own 44-point
-            // frame is the only size that counts.
+            // full screen (owner, 2026-08-06). The column's own frame is
+            // the only size that counts.
             for axis in [NSLayoutConstraint.Axis.horizontal, .vertical] {
                 face.setContentHuggingPriority(UILayoutPriority(1),
                                                for: axis)
                 face.setContentCompressionResistancePriority(
                     UILayoutPriority(1), for: axis)
             }
-            talk.addSubview(face)
+            view.addSubview(face)
             NSLayoutConstraint.activate([
-                face.leadingAnchor.constraint(equalTo: talk.leadingAnchor,
-                                              constant: 12),
-                face.centerYAnchor.constraint(equalTo: talk.bottomAnchor,
-                                              constant: -21),
-                face.widthAnchor.constraint(equalToConstant: 44),
-                face.heightAnchor.constraint(equalToConstant: 44),
+                face.leadingAnchor.constraint(equalTo: view.leadingAnchor,
+                                              constant: 8),
+                face.topAnchor.constraint(equalTo: view.topAnchor,
+                                          constant: 8),
+                face.bottomAnchor.constraint(
+                    equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                    constant: -8),
+                face.widthAnchor.constraint(equalToConstant: 108),
             ])
         }
 
@@ -236,18 +240,19 @@ final class KeyboardViewController: UIInputViewController {
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor,
-                                           constant: 10),
+            // Everything else lives to the RIGHT of her column.
+            stack.leadingAnchor.constraint(
+                equalTo: face.image != nil
+                    ? face.trailingAnchor : view.leadingAnchor,
+                constant: face.image != nil ? 12 : 10),
             stack.trailingAnchor.constraint(equalTo: view.trailingAnchor,
                                             constant: -10),
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 10),
             stack.bottomAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
             talk.heightAnchor.constraint(equalToConstant: 64),
-            // The wave starts after her chip when she is present.
-            wave.leadingAnchor.constraint(
-                equalTo: talk.leadingAnchor,
-                constant: face.image != nil ? 66 : 12),
+            wave.leadingAnchor.constraint(equalTo: talk.leadingAnchor,
+                                          constant: 12),
             wave.trailingAnchor.constraint(equalTo: talk.trailingAnchor,
                                            constant: -12),
             wave.bottomAnchor.constraint(equalTo: talk.bottomAnchor,
