@@ -224,16 +224,32 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         }
     }
 
-    /// The keyboard wears her face: the active avatar's head still,
-    /// mirrored into the App Group whenever it passes through - an
-    /// extension can reach no cache of ours, only the shared container.
+    /// The keyboard wears her face: the active avatar's still, mirrored
+    /// into the App Group whenever one passes through - an extension can
+    /// reach no cache of ours, only the shared container. The HEAD crop
+    /// is preferred, but the phone often only ever fetches the KEYFRAME
+    /// (that is what the Settings cards draw), so the keyframe stands in
+    /// until a head arrives - a missing face is worse than a wider one
+    /// (owner: "where is the talking face", 2026-08-06).
     private func mirrorFace(path: String, data: Data) {
         lock.lock(); let slug = activeSlug; lock.unlock()
-        guard bare(path) == "/files/\(slug)/head.png",
-              let group = FileManager.default.containerURL(
-                forSecurityApplicationGroupIdentifier:
-                    "group.com.vivieen.pocket") else { return }
-        try? data.write(to: group.appendingPathComponent("avatar.png"))
+        guard let group = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier:
+                "group.com.vivieen.pocket") else { return }
+        let target = group.appendingPathComponent("avatar.png")
+        // The marker names whose face the mirror holds, so a changed
+        // avatar replaces it instead of haunting the keyboard.
+        let marker = group.appendingPathComponent("avatar.slug")
+        let held = (try? String(contentsOf: marker, encoding: .utf8)) ?? ""
+        if bare(path) == "/files/\(slug)/head.png" {
+            try? data.write(to: target)
+            try? slug.write(to: marker, atomically: true, encoding: .utf8)
+        } else if bare(path) == "/files/\(slug)/keyframe.png",
+                  held != slug
+                  || !FileManager.default.fileExists(atPath: target.path) {
+            try? data.write(to: target)
+            try? slug.write(to: marker, atomically: true, encoding: .utf8)
+        }
     }
 
     /// On boot, seed the mirror from whatever the cache already holds -
@@ -242,9 +258,12 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         DispatchQueue.global().async { [weak self] in
             guard let self else { return }
             self.lock.lock(); let slug = self.activeSlug; self.lock.unlock()
-            let path = "/files/\(slug)/head.png"
-            if let data = try? Data(contentsOf: self.cacheURL(path)) {
-                self.mirrorFace(path: path, data: data)
+            for name in ["head.png", "keyframe.png"] {
+                let path = "/files/\(slug)/\(name)"
+                if let data = try? Data(contentsOf: self.cacheURL(path)) {
+                    self.mirrorFace(path: path, data: data)
+                    return
+                }
             }
         }
     }
