@@ -7,7 +7,19 @@ targets:
   Vivieen:
     type: application
     platform: iOS
-    sources: [Vivieen]
+    # The STRUCTURE ships with the app - the page and settings HTML are
+    # bundle resources, never fetched from the Mac. Only DATA syncs
+    # (owner, 2026-08-05: "each stays on its own"). catalog.json is the
+    # provider roster for solo settings; regenerate it with:
+    #   .venv/bin/python -c "import sys,json; sys.path.insert(0,'server');
+    #     import providers; json.dump(providers.catalog(),
+    #     open('ios/Vivieen/Resources/catalog.json','w'), indent=1)"
+    sources:
+      - Vivieen
+      - path: ../web/index.html
+        buildPhase: resources
+      - path: ../web/settings.html
+        buildPhase: resources
     dependencies:
       - target: VivieenKeys
         embed: true
@@ -25,7 +37,7 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Vivieen/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        MARKETING_VERSION: "0.11.4"
+        MARKETING_VERSION: "0.12.0"
         CURRENT_PROJECT_VERSION: "1" 
         # Ad-hoc signed, not unsigned. An unsigned app carries NO
         # entitlements, so every Keychain write fails -34018 and solo
@@ -62,7 +74,7 @@ targets:
         INFOPLIST_FILE: VivieenKeys/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         SWIFT_VERSION: "5.9"
-        MARKETING_VERSION: "0.11.4"
+        MARKETING_VERSION: "0.12.0"
         CURRENT_PROJECT_VERSION: "1"
         CODE_SIGN_ENTITLEMENTS: Vivieen/Shared.entitlements
         CODE_SIGN_IDENTITY: ""

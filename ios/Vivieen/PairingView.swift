@@ -49,9 +49,27 @@ struct PairingView: View {
                     }
                     .disabled(code.isEmpty || checking)
                 }
+                // Solo-first (owner, 2026-08-05): a Mac is an OPTION. The
+                // app must stand on its own from the first open - your
+                // own keys in Settings, chat, push-to-talk, live talk.
+                // Pairing later overwrites these placeholders.
+                Section {
+                    Button(action: startSolo) { Text("Start solo — pair later") }
+                } footer: {
+                    Text("Everything runs on this phone with your own API "
+                         + "keys. Couple with your Mac any time from the "
+                         + "road menu.")
+                }
             }
             .navigationTitle("Meet Vivieen")
         }
+    }
+
+    private func startSolo() {
+        // The sentinel address the relay path already uses for "no LAN
+        // yet"; the token is random so nothing can impersonate a pairing.
+        serverAddress = "http://vivieen.invalid"
+        pairingToken = UUID().uuidString
     }
 
     private func pasteBoth() {

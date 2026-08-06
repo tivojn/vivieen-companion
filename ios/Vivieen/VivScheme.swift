@@ -50,7 +50,11 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
     /// app clears it, so a pin set in a hotel cannot poison the walk home
     /// or quietly answer "why can't it find EnConvo" a month later
     /// (owner, 2026-08-04).
-    private var roadPin = "auto"
+    // SOLO is the default, deliberately (owner, 2026-08-05): the app
+    // opens as itself - chat, push-to-talk, live talk, Settings - with
+    // no Mac, no relay, no waiting. Coupling is a CHOICE made in the
+    // road menu, and only then does the phone go looking for the Mac.
+    private var roadPin = "solo"
     /// Bumped every time the pin changes. A request already in flight when
     /// the owner pins the phone must not be allowed to land: the whole
     /// point of reaching for "solo only" mid-conversation is to STOP
@@ -555,6 +559,21 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             return
         }
 
+        // The STRUCTURE ships with the app (owner, 2026-08-05): the page
+        // and Settings come from the bundle - never the Mac, never the
+        // page cache - and only DATA syncs. This is what makes launch
+        // instant and total: a powered-off Mac changes nothing about the
+        // shell, and the old "the phone cached a stale page" trap cannot
+        // exist.
+        if method == "GET",
+           let name = ["/": "index", "/settings": "settings"][bare(path)],
+           let file = Bundle.main.url(forResource: name, withExtension: "html"),
+           let html = try? Data(contentsOf: file) {
+            finish(task, url: requested, data: html,
+                   type: "text/html; charset=utf-8")
+            return
+        }
+
         // Health is a LIVENESS PROBE, and a probe must be allowed to
         // fail fast: routed through the relay's ten-minute reply window
         // it never failed at all, the page's poll hung on its very first
@@ -655,6 +674,10 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         // Settings spin for ten minutes and then blames the relay would be
         // worse than no pin (owner, 2026-08-04).
         if chosen == "solo" {
+            if soloSettings(task, requested: requested, path: path,
+                            method: method, body: body) {
+                return
+            }
             if method == "GET", let held = snapshot(path) {
                 finish(task, url: requested, data: held,
                        type: "application/json")
@@ -820,6 +843,245 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             self.finish(task, url: requested, data: data, type: type,
                         status: http.statusCode, extra: extra)
         }.resume()
+    }
+
+    // ------------------------------------------------- solo settings
+    //
+    // In solo the app IS the settings engine (owner, 2026-08-05: "it
+    // should be functioning independently from macOS"). The same
+    // settings page the Mac serves is answered here: lanes are read and
+    // written against SoloStore, pasted keys land in the iOS Keychain,
+    // and "Validate key & load" asks the PROVIDER directly from the
+    // phone. Data syncs when coupled; nothing here needs the Mac.
+
+    private func soloSettings(_ task: WKURLSchemeTask, requested: URL,
+                              path: String, method: String,
+                              body: Data?) -> Bool {
+        switch (method, bare(path)) {
+        case ("GET", "/api/config"):
+            json(task, requested, soloConfigAnswer())
+        case ("POST", "/api/config"):
+            soloConfigSave(body)
+            json(task, requested, soloConfigAnswer())
+        case ("POST", "/api/models"):
+            soloModels(task, requested: requested, body: body)
+        case ("POST", "/api/test"):
+            json(task, requested,
+                 ["ok": false,
+                  "detail": "Tests run through your Mac — solo validates "
+                          + "keys against the provider instead."])
+        default:
+            return false
+        }
+        return true
+    }
+
+    /// The page's /api/config answer, built from the phone's own store.
+    private func soloConfigAnswer() -> [String: Any] {
+        var cfg = SoloStore.shared.config
+        for kind in ["llm", "tts", "stt", "image", "video"] {
+            var block = (cfg[kind] as? [String: Any]) ?? [:]
+            block["api_key"] = ""
+            block["has_key"] =
+                !SoloStore.shared.secret("\(kind).api_key").isEmpty
+            cfg[kind] = block
+        }
+        var live = (cfg["live"] as? [String: Any]) ?? [:]
+        live["xai_api_key"] = ""
+        live["eleven_api_key"] = ""
+        live["has_xai_api_key"] =
+            !SoloStore.shared.secret("live.xai_api_key").isEmpty
+        live["has_eleven_api_key"] =
+            !SoloStore.shared.secret("live.eleven_api_key").isEmpty
+        cfg["live"] = live
+        // The platform keyring is the Mac's bookkeeping; solo keys are
+        // per-lane, so the ring reads empty rather than lying.
+        cfg["keys"] = [String: String]()
+        cfg["has_keys"] = [String: Bool]()
+        if cfg["persona"] == nil { cfg["persona"] = [String: String]() }
+        return ["config": cfg, "catalog": soloCatalog(),
+                "globals": [String: String](),
+                "routes": [String: String](),
+                "active": activeSlug]
+    }
+
+    /// The provider roster: the last synced one if the Mac ever answered,
+    /// the bundled copy on a fresh install - the page renders either way.
+    private func soloCatalog() -> Any {
+        if let held = snapshot("/api/config"),
+           let top = try? JSONSerialization.jsonObject(with: held)
+             as? [String: Any],
+           let catalog = top["catalog"] {
+            return catalog
+        }
+        if let url = Bundle.main.url(forResource: "catalog",
+                                     withExtension: "json"),
+           let data = try? Data(contentsOf: url),
+           let catalog = try? JSONSerialization.jsonObject(with: data) {
+            return catalog
+        }
+        return [String: Any]()
+    }
+
+    private func soloConfigSave(_ body: Data?) {
+        guard let body,
+              let asked = try? JSONSerialization.jsonObject(with: body)
+                as? [String: Any] else { return }
+        var cfg = SoloStore.shared.config
+        for kind in ["llm", "tts", "stt", "image", "video"] {
+            guard var block = asked[kind] as? [String: Any] else { continue }
+            let key = (block["api_key"] as? String) ?? ""
+            if key == "__clear__" {
+                SoloStore.shared.storeSecret("\(kind).api_key", "")
+            } else if !key.isEmpty {
+                SoloStore.shared.storeSecret("\(kind).api_key", key)
+            }
+            block["api_key"] = nil
+            block["has_key"] = nil
+            var kept = (cfg[kind] as? [String: Any]) ?? [:]
+            for (field, value) in block { kept[field] = value }
+            cfg[kind] = kept
+        }
+        if var live = asked["live"] as? [String: Any] {
+            for field in ["xai_api_key", "eleven_api_key"] {
+                let key = (live[field] as? String) ?? ""
+                if key == "__clear__" {
+                    SoloStore.shared.storeSecret("live.\(field)", "")
+                } else if !key.isEmpty {
+                    SoloStore.shared.storeSecret("live.\(field)", key)
+                }
+                live[field] = nil
+                live["has_" + field] = nil
+            }
+            var kept = (cfg["live"] as? [String: Any]) ?? [:]
+            for (field, value) in live { kept[field] = value }
+            cfg["live"] = kept
+        }
+        if let persona = asked["persona"] as? [String: Any] {
+            cfg["persona"] = persona
+        }
+        if let ui = asked["ui"] as? [String: Any] { cfg["ui"] = ui }
+        SoloStore.shared.config = cfg
+        // The dictation keyboard reads the shared mirror, and a Soniox
+        // key pasted in solo deserves to reach it just like a synced one.
+        SoloStore.shared.mirrorForKeyboard()
+    }
+
+    /// "Validate key & load", answered by the PROVIDER, from the phone.
+    private func soloModels(_ task: WKURLSchemeTask, requested: URL,
+                            body: Data?) {
+        guard let body,
+              let asked = try? JSONSerialization.jsonObject(with: body)
+                as? [String: Any] else {
+            json(task, requested, ["error": "bad request", "models": [],
+                                   "voices": [], "validated": false])
+            return
+        }
+        let kind = (asked["kind"] as? String) ?? "llm"
+        let cfg = (asked["cfg"] as? [String: Any]) ?? [:]
+        let provider = (cfg["provider"] as? String)
+            ?? ((SoloStore.shared.config[kind] as? [String: Any])?["provider"]
+                as? String) ?? ""
+        let spec = soloProviderSpec(kind: kind, id: provider)
+        let needsKey = (spec["key"] as? Bool) ?? true
+        var key = (cfg["api_key"] as? String) ?? ""
+        if key.isEmpty { key = SoloStore.shared.secret("\(kind).api_key") }
+        if needsKey, key.isEmpty {
+            json(task, requested,
+                 ["error": "Enter an API key before loading models.",
+                  "models": [], "voices": [], "validated": false])
+            return
+        }
+        var base = (cfg["base_url"] as? String) ?? ""
+        if base.isEmpty { base = (spec["base"] as? String) ?? "" }
+        while base.hasSuffix("/") { base = String(base.dropLast()) }
+        var listURL: URL?
+        var headers: [String: String] = [:]
+        var extract: ([String: Any]) -> [String] = { top in
+            ((top["data"] as? [[String: Any]]) ?? [])
+                .compactMap { $0["id"] as? String }
+        }
+        switch provider {
+        case "ollama":
+            listURL = URL(string: base + "/api/tags")
+            extract = { top in
+                ((top["models"] as? [[String: Any]]) ?? [])
+                    .compactMap { $0["name"] as? String }
+            }
+        case "gemini":
+            listURL = URL(string: base + "/models?pageSize=200&key=" + key)
+            extract = { top in
+                ((top["models"] as? [[String: Any]]) ?? [])
+                    .compactMap { ($0["name"] as? String) }
+                    .map { $0.hasPrefix("models/")
+                        ? String($0.dropFirst("models/".count)) : $0 }
+            }
+        case "anthropic":
+            listURL = URL(string: base + "/models")
+            headers = ["x-api-key": key, "anthropic-version": "2023-06-01"]
+        case "elevenlabs":
+            listURL = URL(string: "https://api.elevenlabs.io/v1/voices")
+            headers = ["xi-api-key": key]
+        default:
+            // The OpenAI wire shape is the market's lingua franca - the
+            // same /models works for most of the fleet.
+            listURL = URL(string: base + "/models")
+            headers = ["Authorization": "Bearer " + key]
+        }
+        guard let url = listURL else {
+            json(task, requested, ["error": "no endpoint for this provider",
+                                   "models": [], "voices": [],
+                                   "validated": false])
+            return
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 20
+        for (field, value) in headers {
+            request.setValue(value, forHTTPHeaderField: field)
+        }
+        session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self else { return }
+            guard error == nil, let data,
+                  let http = response as? HTTPURLResponse else {
+                self.json(task, requested,
+                          ["error": error?.localizedDescription
+                             ?? "the provider did not answer",
+                           "models": [], "voices": [], "validated": false])
+                return
+            }
+            guard http.statusCode == 200,
+                  let top = try? JSONSerialization.jsonObject(with: data)
+                    as? [String: Any] else {
+                self.json(task, requested,
+                          ["error": "the provider refused "
+                             + "(HTTP \(http.statusCode))",
+                           "models": [], "voices": [], "validated": false])
+                return
+            }
+            if provider == "elevenlabs" {
+                let voices = ((top["voices"] as? [[String: Any]]) ?? [])
+                    .compactMap { row -> [String: String]? in
+                        guard let id = row["voice_id"] as? String else {
+                            return nil
+                        }
+                        return ["id": id,
+                                "name": (row["name"] as? String) ?? id]
+                    }
+                self.json(task, requested,
+                          ["models": [], "voices": voices,
+                           "validated": true])
+                return
+            }
+            self.json(task, requested,
+                      ["models": extract(top).sorted(), "voices": [],
+                       "validated": true])
+        }.resume()
+    }
+
+    private func soloProviderSpec(kind: String, id: String) -> [String: Any] {
+        guard let catalog = soloCatalog() as? [String: Any],
+              let list = catalog[kind] as? [[String: Any]] else { return [:] }
+        return list.first { ($0["id"] as? String) == id } ?? [:]
     }
 
     /// The one sentence a refusal-by-choice is allowed to be. It says
@@ -1055,12 +1317,12 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
             // pinned - a cache that already spent its one refresh for this
             // launch and will not look again.
             refreshed.removeAll()
-            // But NOT straight back onto the LAN. The pinned road threw the
-            // proven LAN address away, and the paired one is a night-old
-            // DHCP lease; a POST against it gets a ten-minute ceiling. Six
-            // seconds on the relay is long enough for discoverMac to prove
-            // an address, and short enough that nobody notices.
-            directOffUntil = Date().addingTimeInterval(want == "auto" ? 6 : 0)
+            // Coupling is LAN FIRST (owner, 2026-08-05): open the direct
+            // road immediately and let discoverMac prove a fresh address
+            // in parallel - a failed direct try now retries against the
+            // proven address before accepting the relay, so the stale
+            // lease costs seconds, not a ten-minute ceiling.
+            directOffUntil = .distantPast
             if want != "auto" { lanAddress = nil }
             lock.unlock()
             NSLog("[viv-scheme] road pinned to %@", want)

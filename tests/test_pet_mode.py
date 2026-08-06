@@ -2283,12 +2283,13 @@ class PocketBarAndToolsTests(unittest.TestCase):
                       self.renderer)
 
     def test_the_road_can_be_pinned_by_hand(self):
-        # Auto is right almost always, and wrong in one shape no probe can
-        # diagnose: a network the phone and the Mac both sit on that will
-        # not carry a packet between them. Only the person standing in the
-        # hotel room knows that, so the ROAD is what gets an override.
+        # SOLO is the default (owner, 2026-08-05): the app opens as
+        # itself - chat, push-to-talk, live talk, Settings - with no Mac,
+        # no relay, no waiting. Coupling is the deliberate act, chosen in
+        # the road menu, and IT does the road-finding: LAN first, the
+        # internet route only if the wi-fi cannot carry a packet.
         scheme = (ROOT / "ios" / "Vivieen" / "VivScheme.swift").read_text()
-        self.assertIn('private var roadPin = "auto"', scheme)
+        self.assertIn('private var roadPin = "solo"', scheme)
         # In memory only. A pin is where you are standing today.
         self.assertNotIn('UserDefaults.standard.set(roadPin', scheme)
         self.assertIn('case "/solo/road":', scheme)
@@ -2308,9 +2309,11 @@ class PocketBarAndToolsTests(unittest.TestCase):
         # A request already in the air when the pin lands must not arrive.
         self.assertIn("private var pinGeneration: UInt64 = 0", scheme)
         self.assertIn("guard self.generation() == era else {", scheme)
-        # Letting go must not put a POST straight onto an address no probe
-        # has confirmed since - that road has a ten-minute ceiling.
-        self.assertIn('addingTimeInterval(want == "auto" ? 6 : 0)', scheme)
+        # Coupling is LAN FIRST (owner, 2026-08-05): the direct road opens
+        # immediately, discoverMac proves a fresh address in parallel, and
+        # a failed direct try retries against the proven address before
+        # accepting the relay.
+        self.assertIn("directOffUntil = .distantPast", scheme)
 
     def test_a_pin_closes_the_socket_door_too(self):
         # A WebSocket never passes through the native router, so the pin

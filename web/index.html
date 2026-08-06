@@ -1603,6 +1603,10 @@ function pinnedSorry(what){
    strobes - or that moves while you are waiting - reads as a crash. */
 const ROAD={shown:'',seen:'',since:0,pin:'auto',sheet:false,grace:0,
   word:{lan:'LAN',internet:'INTERNET',solo:'SOLO'}};
+/* The phone STARTS solo (owner, 2026-08-05) - the app must not spend one
+   frame assuming a Mac. The native side boots pinned to solo too; this
+   only keeps the page from guessing differently before the first poll. */
+if(IS_IOS)ROAD.pin='solo';
 /* Filled means you chose THIS road and you are on it. A relay pin whose
    relay has gone quiet falls back to solo - and that solo must read
    outlined, because you did not choose it and it is spending your keys. */
@@ -3781,7 +3785,7 @@ async function startLiveTalk(){
   if(ROAD.pin==='relay'){
     setStatus(idleStatus(),'on');
     flashPrompt('A call cannot go through the relay — it needs this wi-fi. '
-      +'Tap INTERNET in the corner and choose Automatic.');
+      +'Tap the road chip in the corner and choose Couple with EnConvo.');
     return;
   }
   const ws=(SOLO.active||ROAD.pin==='solo')
@@ -6349,7 +6353,7 @@ if(IS_IOS){
         note(SOLO.pinned
           ?'Pinned to this phone — your Mac’s brains are out of reach.'
           :'no brain configured yet');
-        if(SOLO.pinned)note('Tap SOLO in the corner and choose Automatic.');
+        if(SOLO.pinned)note('Tap SOLO in the corner and choose Couple with EnConvo.');
         return;
       }
       platforms.rows.forEach(row=>{
@@ -6380,15 +6384,18 @@ if(IS_IOS){
      standing in the hotel room can. So the road is the thing that gets a
      manual override, and the pin dies with the app because where you are
      standing is not where you will be tomorrow (owner, 2026-08-04). */
+  /* Two roads, chosen by hand (owner, 2026-08-05): SOLO is the default -
+     the app opens as itself, everything working, nothing waiting on a
+     Mac or a relay. Coupling is the deliberate act, and IT does the
+     road-finding: this wi-fi first, the internet route only if the wi-fi
+     cannot carry a packet. */
   const ROADS=[
-    {id:'auto',label:'Automatic',
-     why:'Your Mac when it is there, this phone when it is not.'},
-    {id:'relay',label:'Through the internet',
-     why:'Skip this wi-fi and go the long way round. For a network that '
-        +'will not reach your Mac. About five seconds a message.'},
     {id:'solo',label:'Solo — only this phone',
-     why:'Your own keys, charged per message. No EnConvo, no key refresh, '
-        +'and this conversation is held here and not saved.'},
+     why:'The default. Your own keys, chat, push-to-talk and live talk '
+        +'all here — nothing waits for the Mac.'},
+    {id:'auto',label:'Couple with EnConvo',
+     why:'Reach your Mac: this wi-fi first, the internet route if the '
+        +'wi-fi cannot carry it.'},
   ];
   const ROAD_NOW={
     lan:'Right now: your Mac is on this wi-fi.',
@@ -6396,9 +6403,8 @@ if(IS_IOS){
     solo:'Right now: nothing but this phone.',
   };
   const ROAD_SET={
-    auto:'Finding her own way again.',
-    relay:'Going the long way round — about five seconds a message.',
-    solo:'Pinned to this phone. Your own keys, and EnConvo stays on the Mac.',
+    auto:'Coupling — this wi-fi first, then the internet.',
+    solo:'Solo. Your own keys, and EnConvo stays on the Mac.',
   };
   async function pickRoad(id,row){
     if(row){row.disabled=true;row.classList.add('working');}

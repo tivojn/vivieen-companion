@@ -1,0 +1,354 @@
+{
+ "llm": [
+  {
+   "id": "enconvo",
+   "label": "EnConvo Global Default",
+   "managed": true,
+   "key": false,
+   "base": "",
+   "note": "Inherits Global Providers Settings \u2192 AI Model. Credentials remain inside EnConvo."
+  },
+  {
+   "id": "ollama",
+   "label": "Ollama",
+   "local": true,
+   "key": false,
+   "base": "http://localhost:11434",
+   "note": "Local models. Nothing leaves the Mac."
+  },
+  {
+   "id": "openai",
+   "label": "OpenAI",
+   "key": true,
+   "base": "https://api.openai.com/v1"
+  },
+  {
+   "id": "anthropic",
+   "label": "Anthropic",
+   "key": true,
+   "base": "https://api.anthropic.com/v1"
+  },
+  {
+   "id": "gemini",
+   "label": "Google Gemini",
+   "key": true,
+   "base": "https://generativelanguage.googleapis.com/v1beta"
+  },
+  {
+   "id": "xai",
+   "label": "xAI Grok",
+   "key": true,
+   "base": "https://api.x.ai/v1"
+  },
+  {
+   "id": "groq",
+   "label": "Groq",
+   "key": true,
+   "base": "https://api.groq.com/openai/v1"
+  },
+  {
+   "id": "deepseek",
+   "label": "DeepSeek",
+   "key": true,
+   "base": "https://api.deepseek.com/v1"
+  },
+  {
+   "id": "openrouter",
+   "label": "OpenRouter",
+   "key": true,
+   "base": "https://openrouter.ai/api/v1"
+  },
+  {
+   "id": "mistral",
+   "label": "Mistral",
+   "key": true,
+   "base": "https://api.mistral.ai/v1"
+  },
+  {
+   "id": "together",
+   "label": "Together AI",
+   "key": true,
+   "base": "https://api.together.xyz/v1"
+  },
+  {
+   "id": "fireworks",
+   "label": "Fireworks",
+   "key": true,
+   "base": "https://api.fireworks.ai/inference/v1"
+  },
+  {
+   "id": "perplexity",
+   "label": "Perplexity",
+   "key": true,
+   "base": "https://api.perplexity.ai"
+  },
+  {
+   "id": "moonshot",
+   "label": "Moonshot Kimi",
+   "key": true,
+   "base": "https://api.moonshot.ai/v1"
+  },
+  {
+   "id": "qwen",
+   "label": "Alibaba Qwen",
+   "key": true,
+   "base": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+  },
+  {
+   "id": "zhipu",
+   "label": "Zhipu GLM",
+   "key": true,
+   "base": "https://open.bigmodel.cn/api/paas/v4"
+  },
+  {
+   "id": "minimax_llm",
+   "label": "MiniMax",
+   "key": true,
+   "base": "https://api.minimax.io/v1"
+  },
+  {
+   "id": "cerebras",
+   "label": "Cerebras",
+   "key": true,
+   "base": "https://api.cerebras.ai/v1"
+  },
+  {
+   "id": "nvidia",
+   "label": "NVIDIA NIM",
+   "key": true,
+   "base": "https://integrate.api.nvidia.com/v1"
+  },
+  {
+   "id": "lmstudio",
+   "label": "LM Studio",
+   "local": true,
+   "key": false,
+   "base": "http://localhost:1234/v1",
+   "note": "Local OpenAI-compatible server."
+  },
+  {
+   "id": "custom",
+   "label": "Custom (OpenAI-compatible)",
+   "key": false,
+   "base": "",
+   "note": "Any server that speaks /v1/chat/completions."
+  }
+ ],
+ "tts": [
+  {
+   "id": "enconvo",
+   "label": "EnConvo Global Default",
+   "managed": true,
+   "key": false,
+   "base": "",
+   "note": "Inherits Global Providers Settings \u2192 Text-to-Speech. Credentials remain inside EnConvo."
+  },
+  {
+   "id": "kokoro",
+   "label": "Kokoro 82M",
+   "local": true,
+   "key": false,
+   "base": "",
+   "note": "Local, and the only engine with exact lip-sync - it reports its own per-phoneme durations.",
+   "exact": true
+  },
+  {
+   "id": "edge",
+   "label": "Edge TTS",
+   "key": false,
+   "base": "",
+   "note": "Free Microsoft voices. Ships word boundaries, so lip-sync is good."
+  },
+  {
+   "id": "elevenlabs",
+   "label": "ElevenLabs",
+   "key": true,
+   "base": "https://api.elevenlabs.io/v1",
+   "note": "Returns character-level timestamps, so lip-sync stays tight."
+  },
+  {
+   "id": "openai",
+   "label": "OpenAI",
+   "key": true,
+   "base": "https://api.openai.com/v1",
+   "note": "Audio only - mouth timing is estimated from the text."
+  },
+  {
+   "id": "gemini",
+   "label": "Google Gemini",
+   "key": true,
+   "base": "https://generativelanguage.googleapis.com/v1beta",
+   "note": "Audio only - mouth timing is estimated from the text."
+  },
+  {
+   "id": "deepgram",
+   "label": "Deepgram Aura",
+   "key": true,
+   "base": "https://api.deepgram.com/v1",
+   "note": "Audio only - mouth timing is estimated from the text."
+  },
+  {
+   "id": "cartesia",
+   "label": "Cartesia Sonic",
+   "key": true,
+   "base": "https://api.cartesia.ai",
+   "note": "Audio only - mouth timing is estimated from the text."
+  },
+  {
+   "id": "system",
+   "label": "macOS say",
+   "local": true,
+   "key": false,
+   "base": "",
+   "note": "Always available, no download."
+  }
+ ],
+ "stt": [
+  {
+   "id": "enconvo",
+   "label": "EnConvo Global Default",
+   "managed": true,
+   "key": false,
+   "base": "",
+   "note": "Inherits EnConvo's default speech-to-text provider. Credentials remain inside EnConvo."
+  },
+  {
+   "id": "soniox",
+   "label": "Soniox Realtime",
+   "key": true,
+   "base": "",
+   "note": "Realtime dictation over Soniox's WebSocket API - words stream into the input field while you speak."
+  },
+  {
+   "id": "mlx_whisper",
+   "label": "Whisper (MLX, local)",
+   "local": true,
+   "key": false,
+   "base": "",
+   "note": "Runs on the Metal GPU. Nothing leaves the Mac."
+  },
+  {
+   "id": "openai",
+   "label": "OpenAI",
+   "key": true,
+   "base": "https://api.openai.com/v1"
+  },
+  {
+   "id": "groq",
+   "label": "Groq",
+   "key": true,
+   "base": "https://api.groq.com/openai/v1",
+   "note": "Whisper large v3, very fast."
+  },
+  {
+   "id": "gemini",
+   "label": "Google Gemini",
+   "key": true,
+   "base": "https://generativelanguage.googleapis.com/v1beta"
+  },
+  {
+   "id": "deepgram",
+   "label": "Deepgram Nova",
+   "key": true,
+   "base": "https://api.deepgram.com/v1"
+  },
+  {
+   "id": "elevenlabs",
+   "label": "ElevenLabs Scribe",
+   "key": true,
+   "base": "https://api.elevenlabs.io/v1"
+  },
+  {
+   "id": "custom",
+   "label": "Custom (OpenAI-compatible)",
+   "key": false,
+   "base": ""
+  }
+ ],
+ "image": [
+  {
+   "id": "enconvo",
+   "label": "EnConvo Global Default",
+   "managed": true,
+   "key": false,
+   "base": "",
+   "note": "Inherits Global Providers Settings \u2192 Image Generation. Credentials remain inside EnConvo."
+  },
+  {
+   "id": "openai",
+   "label": "OpenAI Images",
+   "key": true,
+   "base": "https://api.openai.com/v1"
+  },
+  {
+   "id": "gemini",
+   "label": "Google Imagen",
+   "key": true,
+   "base": "https://generativelanguage.googleapis.com/v1beta"
+  },
+  {
+   "id": "xai",
+   "label": "xAI Grok Image",
+   "key": true,
+   "base": "https://api.x.ai/v1"
+  },
+  {
+   "id": "stability",
+   "label": "Stability AI",
+   "key": true,
+   "base": "https://api.stability.ai"
+  },
+  {
+   "id": "bfl",
+   "label": "Black Forest Labs FLUX",
+   "key": true,
+   "base": "https://api.bfl.ai"
+  },
+  {
+   "id": "together_image",
+   "label": "Together AI (FLUX)",
+   "key": true,
+   "base": "https://api.together.xyz/v1"
+  },
+  {
+   "id": "recraft",
+   "label": "Recraft",
+   "key": true,
+   "base": "https://external.api.recraft.ai/v1"
+  }
+ ],
+ "video": [
+  {
+   "id": "enconvo",
+   "label": "EnConvo Global Default",
+   "managed": true,
+   "key": false,
+   "base": "",
+   "note": "Inherits Global Providers Settings \u2192 Video Generation. Credentials remain inside EnConvo."
+  },
+  {
+   "id": "openai",
+   "label": "OpenAI Sora",
+   "key": true,
+   "base": "https://api.openai.com/v1"
+  },
+  {
+   "id": "gemini",
+   "label": "Google Veo",
+   "key": true,
+   "base": "https://generativelanguage.googleapis.com/v1beta"
+  },
+  {
+   "id": "luma",
+   "label": "Luma Dream Machine",
+   "key": true,
+   "base": "https://api.lumalabs.ai/dream-machine/v1"
+  },
+  {
+   "id": "runway",
+   "label": "Runway",
+   "key": true,
+   "base": "https://api.dev.runwayml.com/v1"
+  }
+ ]
+}

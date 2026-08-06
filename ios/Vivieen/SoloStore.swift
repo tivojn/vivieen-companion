@@ -93,6 +93,13 @@ final class SoloStore {
         shared.set((stt["language"] as? String) ?? "", forKey: "keys.language")
     }
 
+    /// The solo Settings engine's door: a key the owner pastes on the
+    /// PHONE lands in the iOS Keychain exactly like a synced one. An
+    /// empty value clears the entry.
+    func storeSecret(_ name: String, _ value: String) {
+        setSecret(name, value)
+    }
+
     func secret(_ name: String) -> String {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
