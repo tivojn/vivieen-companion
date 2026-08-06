@@ -27,6 +27,40 @@ final class KeyboardEar {
     private var stream: SonioxStream?
     private var takeID = ""
     private let queue = DispatchQueue(label: "com.vivieen.keys.ear")
+    private let gate = NSLock()
+
+    /// iOS refuses to START a capture from the background (forums
+    /// 120038) - the app answered the knock and its fresh microphone
+    /// delivered pure silence (owner's flat wave, 2026-08-06). So the
+    /// ear is ARMED from the foreground and never stops: the engine
+    /// runs, frames flow into this tap and are discarded until a take
+    /// attaches Soniox. The cost is worn openly - the mic indicator
+    /// stays lit while Vivieen is alive - and it is exactly the deal
+    /// every always-ready dictation keyboard makes.
+    func armIfNeeded() {
+        DispatchQueue.main.async {
+            guard !LiveTap.shared.isLive,
+                  !MicDriver.shared.isRunning else { return }
+            MicDriver.shared.earTap = { [weak self] pcm in
+                self?.route(pcm)
+            }
+            MicDriver.shared.start(rate: 16000, earOnly: true)
+            NSLog("[viv-ear] armed")
+        }
+    }
+
+    /// Every frame from the standing tap, on the audio thread: feed the
+    /// take if one is rolling, otherwise let it fall to the floor.
+    private func route(_ pcm: Data) {
+        gate.lock()
+        let id = takeID
+        let live = stream
+        gate.unlock()
+        guard !id.isEmpty, let live else { return }
+        live.feed(pcm)
+        suite?.set(Double(Self.loudness(pcm)), forKey: "take.level")
+        suite?.set(Date().timeIntervalSince1970, forKey: "take.beat")
+    }
 
     func listen() {
         let center = CFNotificationCenterGetDarwinNotifyCenter()
@@ -51,7 +85,18 @@ final class KeyboardEar {
             forName: UIApplication.willEnterForegroundNotification,
             object: nil, queue: .main) { [weak self] _ in
             self?.stopKeepAlive()
+            self?.armIfNeeded()
         }
+        // Live talk and the composer borrow the microphone and hand it
+        // back through stop(); the standing tap re-arms a beat later.
+        NotificationCenter.default.addObserver(
+            forName: MicDriver.becameIdle, object: nil,
+            queue: .main) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self?.armIfNeeded()
+            }
+        }
+        armIfNeeded()
     }
 
     // ------------------------------------------------------ keep-alive
@@ -59,7 +104,11 @@ final class KeyboardEar {
     private var keepAlive: AVAudioPlayer?
 
     private func startKeepAlive() {
-        guard keepAlive == nil else { return }
+        // An ARMED ear keeps the process alive by itself - and a playback
+        // session started over it would kill the very microphone the
+        // background is not allowed to reopen. Silence is only for a
+        // house whose ear never armed.
+        guard keepAlive == nil, !MicDriver.shared.isRunning else { return }
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default,
                                  options: [.mixWithOthers])
@@ -79,18 +128,6 @@ final class KeyboardEar {
         keepAlive = nil
         AudioSession.playbackOnly()
         NSLog("[viv-ear] keep-alive resting")
-    }
-
-    /// A take in the background borrows the session; hand it back to the
-    /// keep-alive afterwards or the NEXT take finds the house asleep.
-    private func resumeKeepAliveIfBackgrounded() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self,
-                  UIApplication.shared.applicationState != .active
-            else { return }
-            self.keepAlive = nil
-            self.startKeepAlive()
-        }
     }
 
     /// One second of 8 kHz silence, written once. Playing nothing is
@@ -144,7 +181,6 @@ final class KeyboardEar {
             return
         }
         end(takeID)                          // any straggling take
-        takeID = id
         let stt = (SoloStore.shared.config["stt"] as? [String: Any]) ?? [:]
         let key = suite.string(forKey: "keys.soniox") ?? ""
         guard !key.isEmpty else {
@@ -177,22 +213,31 @@ final class KeyboardEar {
             suite.set(error == nil ? "done" : "error \(error ?? "")",
                       forKey: "take.state")
             suite.set(Date().timeIntervalSince1970, forKey: "take.beat")
+            self.gate.lock()
             if self.takeID == id {
                 self.takeID = ""
                 self.stream = nil
-                MicDriver.shared.onPCM = nil
-                MicDriver.shared.stop()
-                self.resumeKeepAliveIfBackgrounded()
             }
+            self.gate.unlock()
+            // The engine keeps running - the standing tap is what lets
+            // the NEXT take start from the background at all.
         }
-        live.start()
+        // The mic must already be rolling: a background take cannot
+        // start one (forums 120038). If the ear is armed, attach; if the
+        // house is somehow quiet, try to arm - it only works foreground,
+        // and the honest error covers the rest.
+        if !MicDriver.shared.isRunning {
+            DispatchQueue.main.sync { [weak self] in
+                self?.keepAlive?.stop()
+                self?.keepAlive = nil
+            }
+            armIfNeeded()
+        }
+        gate.lock()
+        takeID = id
         stream = live
-        // The keep-alive holds the session; a take must take it CLEANLY
-        // or the microphone reads 0 Hz under the still-playing silence.
-        DispatchQueue.main.sync { [weak self] in
-            self?.keepAlive?.stop()
-            self?.keepAlive = nil
-        }
+        gate.unlock()
+        live.start()
         suite.set(id, forKey: "take.id")
         suite.set("", forKey: "take.settled")
         suite.set("", forKey: "take.refining")
@@ -202,23 +247,19 @@ final class KeyboardEar {
         // Flush so the keyboard's very next poll sees the answer, not the
         // previous take's leavings.
         suite.synchronize()
-        MicDriver.shared.onPCM = { [weak self] pcm in
-            guard let self, self.takeID == id else { return }
-            self.stream?.feed(pcm)
-            self.suite?.set(Double(Self.loudness(pcm)), forKey: "take.level")
-            self.suite?.set(Date().timeIntervalSince1970, forKey: "take.beat")
-        }
-        MicDriver.shared.start(rate: 16000)
         NSLog("[viv-ear] take %@ listening", id)
     }
 
     private func end(_ id: String) {
-        guard !id.isEmpty, id == takeID else { return }
-        MicDriver.shared.onPCM = nil
-        MicDriver.shared.stop()
+        gate.lock()
+        let matches = !id.isEmpty && id == takeID
+        let live = stream
+        gate.unlock()
+        guard matches else { return }
         // The socket's own four-second deadline lands the tail; onDone
-        // writes the final state either way.
-        stream?.stop()
+        // writes the final state either way. The microphone keeps
+        // rolling - it is the ear's, not the take's.
+        live?.stop()
         NSLog("[viv-ear] take %@ stopping", id)
     }
 

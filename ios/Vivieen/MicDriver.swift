@@ -15,13 +15,22 @@ final class MicDriver: NSObject {
     /// keep working with the WebView suspended, so the audio path cannot
     /// run through JavaScript (owner, 2026-08-03).
     var onPCM: ((Data) -> Void)?
+    /// The keyboard ear's STANDING tap: receives every frame alongside
+    /// whoever the primary consumer is. iOS refuses to START a capture
+    /// from the background (forums 120038), so the ear keeps this engine
+    /// running from the foreground on and only attaches Soniox per take.
+    var earTap: ((Data) -> Void)?
+    var isRunning: Bool { running }
+    static let becameIdle = Notification.Name("viv-mic-idle")
     private let engine = AVAudioEngine()
     private var converter: AVAudioConverter?
     private var running = false
+    private var earOnly = false
     weak var webView: WKWebView?
 
-    func start(rate: Double) {
+    func start(rate: Double, earOnly wantsEarOnly: Bool = false) {
         stop()
+        earOnly = wantsEarOnly
         // Recording needs the record-capable session; forced to the
         // speaker so she is heard across the room, not at the ear.
         AudioSession.speakAndListen()
@@ -93,6 +102,10 @@ final class MicDriver: NSObject {
         guard conversionError == nil, out.frameLength > 0,
               let pcm = out.int16ChannelData else { return }
         let data = Data(bytes: pcm[0], count: Int(out.frameLength) * 2)
+        earTap?(data)
+        // Standing duty for the ear alone: nobody else asked, so the
+        // page must not be fed frames it has no take for.
+        if earOnly { return }
         if let sink = onPCM { sink(data); return }
         let chunk = data.base64EncodedString()
         DispatchQueue.main.async { [weak self] in
@@ -108,8 +121,11 @@ final class MicDriver: NSObject {
         engine.stop()
         converter = nil
         running = false
+        earOnly = false
         // Hand the route back to plain playback so her replies stay loud.
         AudioSession.playbackOnly()
+        // Whoever keeps a standing tap may want the line back.
+        NotificationCenter.default.post(name: Self.becameIdle, object: nil)
     }
 
     private func report(_ line: String) {
