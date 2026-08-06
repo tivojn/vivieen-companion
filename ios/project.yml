@@ -16,6 +16,10 @@ targets:
     #     open('ios/Vivieen/Resources/catalog.json','w'), indent=1)"
     sources:
       - Vivieen
+      # The keyboard's Soniox streamer, compiled into the APP too: the
+      # extension is never handed the microphone, so the app is the one
+      # that actually opens this line (see KeyboardEar).
+      - path: VivieenKeys/SonioxStream.swift
       - path: ../web/index.html
         buildPhase: resources
       - path: ../web/settings.html

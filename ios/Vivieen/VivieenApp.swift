@@ -17,6 +17,10 @@ struct VivieenApp: App {
         // refresh them on every launch so a key synced last week reaches
         // a keyboard installed today.
         SoloStore.shared.mirrorForKeyboard()
+        // And it hears through THIS process: a keyboard extension is
+        // never handed the microphone, so the key knocks and the app
+        // records (see KeyboardEar).
+        KeyboardEar.shared.listen()
     }
 
     @AppStorage("serverAddress") private var serverAddress = ""
