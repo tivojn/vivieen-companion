@@ -367,6 +367,9 @@ html.ios #plusBtn{order:2}
 html.ios #emojiBtn{order:3}
 html.ios #micmode{order:4;margin-left:auto}
 html.ios #rail-live{order:5}
+#rail-mirror{display:none}
+html.ios #rail-mirror{display:flex;order:6}
+html.ios #rail-mirror.on{background:var(--hot);color:#fff}
 html.ios #sendBtn{order:6}
 html.ios #plusBtn,html.ios #emojiBtn,html.ios #micmode{
   display:flex;flex:none;width:34px;height:34px;border-radius:50%;padding:0;
@@ -922,6 +925,7 @@ html.ios #zoombox input{width:100%;flex:1}
 <div id="stage"><canvas id="cv"></canvas></div><div id="vignette"></div>
 <div id="rail">
   <button id="rail-live" type="button" aria-label="Live talk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.5 2.9 3.7 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z"/></svg></button>
+  <button id="rail-mirror" type="button" aria-label="Mirror — her face follows yours"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zM8.5 9a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM8 14.6c1.1 1.2 2.5 1.9 4 1.9s2.9-.7 4-1.9l1.1 1.1A7.4 7.4 0 0 1 12 18.5a7.4 7.4 0 0 1-5.1-2.8L8 14.6z"/></svg></button>
   <button id="rail-move" type="button" aria-label="Dance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.6c-.6-.4-1.3-.6-2-.6-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4V7h4V3h-6z"/></svg></button>
   <button id="rail-idle" type="button" aria-label="Rest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-1-.1-1.4A7 7 0 0 1 12.6 3.1L12 3z"/></svg></button>
   <button id="rail-close" type="button" aria-label="Closeup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6h-2V6.4l-4.3 4.3-1.4-1.4L17.6 5H15V3zM3 15h2v2.6l4.3-4.3 1.4 1.4L6.4 19H9v2H3v-6z"/></svg></button>
@@ -1480,6 +1484,67 @@ function handleMonitorSample(value){
   monitorButton.classList.toggle('active',speaking);
   renderMonitorStatus();
 }
+/* ---- her mouth on YOUR voice, and on your face -----------------------
+   Two native drivers share the monitor's viseme machinery. __vivTake:
+   the app hears the keyboard dictation and sends the same feature
+   samples the EnConvo tap would - her face (main stage or the floating
+   PiP window) mouths the words as they are said. __vivFace: ARKit
+   blendshapes while mirror mode is on - the camera is the truth, so the
+   shape is set directly. */
+let TAKE_UNTIL=0;
+const MIRROR={on:false,until:0,lvl:0};
+function takeLive(){return performance.now()<TAKE_UNTIL;}
+function mirrorLive(){return performance.now()<MIRROR.until;}
+window.__vivTake=json=>{
+  let m;try{m=JSON.parse(json);}catch(e){return;}
+  const stamp=Number(m.timestamp)||Date.now();
+  externalAudio={rms:Math.max(0,+m.rms||0),peak:Math.max(0,+m.peak||0),
+    low:Math.max(0,+m.low||0),mid:Math.max(0,+m.mid||0),
+    high:Math.max(0,+m.high||0),zcr:Math.max(0,+m.zcr||0),
+    active:!!m.active,timestamp:stamp,receivedAt:performance.now()};
+  TAKE_UNTIL=performance.now()+320;
+  stabiliseExternalViseme(externalAudio.active?byExternalEnergy():'sil',
+    stamp,externalAudio.active);
+  speaking=externalAudio.active||Boolean(localSource);
+};
+window.__vivFace=json=>{
+  let m;try{m=JSON.parse(json);}catch(e){return;}
+  MIRROR.until=performance.now()+400;
+  const jaw=+m.jaw||0,pucker=+m.pucker||0,funnel=+m.funnel||0,
+        smile=Math.max(+m.smileL||0,+m.smileR||0);
+  let shape='sil';
+  if(jaw>0.32)shape=pucker>0.30?'oh':'aa';
+  else if(pucker>0.42)shape='ou';
+  else if(jaw>0.12)shape=smile>0.35?'E':(funnel>0.25?'oh':'ih');
+  else if(smile>0.55)shape='ih';
+  externalPose=shape;
+  MIRROR.lvl=Math.min(1,jaw*0.9);
+  speaking=jaw>0.08;
+};
+{
+  const mirrorBtn=document.getElementById('rail-mirror');
+  if(mirrorBtn&&IS_IOS){
+    mirrorBtn.onclick=()=>{
+      MIRROR.on=!MIRROR.on;
+      mirrorBtn.classList.toggle('on',MIRROR.on);
+      try{webkit.messageHandlers.face.postMessage(
+        MIRROR.on?'start':'stop');}catch(e){
+        MIRROR.on=false;mirrorBtn.classList.remove('on');
+        setCaption('(this build has no mirror)');
+      }
+      if(!MIRROR.on){MIRROR.until=0;speaking=false;}
+    };
+    // The camera dies with the foreground; the button must not lie.
+    document.addEventListener('visibilitychange',()=>{
+      if(document.hidden&&MIRROR.on){
+        MIRROR.on=false;MIRROR.until=0;
+        mirrorBtn.classList.remove('on');
+        try{webkit.messageHandlers.face.postMessage('stop');}catch(e){}
+      }
+    });
+  }
+}
+
 if(SHELL&&SHELL.isElectron){
   SHELL.getState().then(syncShellState);
   SHELL.onState(syncShellState);
@@ -3036,7 +3101,8 @@ function drawEyes(lids){
 const td=new Uint8Array(2048),fd=new Uint8Array(512);
 
 function level(){
-  if(monitorEnabled)return externalAudio.rms;
+  if(mirrorLive())return MIRROR.lvl;
+  if(monitorEnabled||takeLive())return externalAudio.rms;
   if(!analyser)return 0;
   analyser.getByteTimeDomainData(td);
   let s=0;for(let i=0;i<td.length;i++){const v=(td[i]-128)/128;s+=v*v;}
@@ -3090,7 +3156,7 @@ function wanted(now=performance.now()/1000){
   // Her own reply owns the mouth while it plays, even in monitor mode:
   // a push-to-talk answer must not be mimed to EnConvo's audio.
   if(localSource&&track.length)return timedPose();
-  if(monitorEnabled)return externalPose;
+  if(monitorEnabled||takeLive()||mirrorLive())return externalPose;
   if(!speaking)return'sil';
   if(track.length)return timedPose();
   return byEnergy();

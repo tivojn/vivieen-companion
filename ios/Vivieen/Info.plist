@@ -45,6 +45,8 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Mirror mode reads your face so her avatar can follow it. Everything stays on this phone.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>

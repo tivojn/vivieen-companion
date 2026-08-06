@@ -237,6 +237,19 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         guard let group = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier:
                 "group.com.vivieen.pocket") else { return }
+        // Her SPEAKING faces: the runtime's full-face viseme frames pass
+        // through this cache at boot, and the keyboard swaps them in time
+        // with the owner's voice - so each one is mirrored small.
+        let key = bare(path)
+        if key.hasPrefix("/assets/"), key.hasSuffix("_open.jpg") {
+            let name = String(key.dropFirst("/assets/".count)
+                                 .dropLast("_open.jpg".count))
+            if name.allSatisfy({ $0.isLetter }) {
+                writeSmallFace(data, into: group,
+                               as: "viseme-\(name).jpg", side: 256)
+            }
+            return
+        }
         let target = group.appendingPathComponent("avatar.png")
         // The marker names whose face the mirror holds, so a changed
         // avatar replaces it instead of haunting the keyboard.
@@ -255,12 +268,13 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         }
     }
 
-    /// The island's copy. A widget lives under a hard memory cap and a
-    /// full keyframe decodes to more pixels than its whole budget - so
-    /// the mirror keeps a 128-point square alongside the big still.
-    private func writeSmallFace(_ data: Data, into group: URL) {
+    /// A downsized copy for the extensions: the island lives under a
+    /// hard memory cap, and the keyboard swaps sixteen of these per
+    /// utterance - full frames would sink both.
+    private func writeSmallFace(_ data: Data, into group: URL,
+                                as name: String = "avatar-small.png",
+                                side: CGFloat = 128) {
         guard let image = UIImage(data: data) else { return }
-        let side: CGFloat = 128
         let scale = max(side / max(image.size.width, 1),
                         side / max(image.size.height, 1))
         let drawn = CGSize(width: image.size.width * scale,
@@ -273,21 +287,30 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                                   width: drawn.width,
                                   height: drawn.height))
         }
-        try? small.pngData()?.write(
-            to: group.appendingPathComponent("avatar-small.png"))
+        let payload = name.hasSuffix(".jpg")
+            ? small.jpegData(compressionQuality: 0.8) : small.pngData()
+        try? payload?.write(to: group.appendingPathComponent(name))
     }
 
-    /// On boot, seed the mirror from whatever the cache already holds -
+    /// On boot, seed the mirrors from whatever the cache already holds -
     /// a face fetched last week should not wait for the next fetch.
     func seedFaceMirror() {
         DispatchQueue.global().async { [weak self] in
             guard let self else { return }
-            self.lock.lock(); let slug = self.activeSlug; self.lock.unlock()
             for name in ["head.png", "keyframe.png"] {
+                self.lock.lock(); let slug = self.activeSlug; self.lock.unlock()
                 let path = "/files/\(slug)/\(name)"
                 if let data = try? Data(contentsOf: self.cacheURL(path)) {
                     self.mirrorFace(path: path, data: data)
-                    return
+                    break
+                }
+            }
+            // Her speaking faces too, for the keyboard's mouth.
+            for viseme in ["sil", "PP", "FF", "TH", "DD", "kk", "CH", "SS",
+                           "nn", "RR", "aa", "E", "ih", "oh", "ou"] {
+                let path = "/assets/\(viseme)_open.jpg"
+                if let data = try? Data(contentsOf: self.cacheURL(path)) {
+                    self.mirrorFace(path: path, data: data)
                 }
             }
         }

@@ -34,6 +34,8 @@ final class KeyboardEar {
 
     /// Every frame from the tap, on the audio thread: feed the take if
     /// one is rolling, otherwise let it fall to the floor.
+    private var voiceFace = VoiceFace()
+
     private func route(_ pcm: Data) {
         gate.lock()
         let id = takeID
@@ -43,8 +45,20 @@ final class KeyboardEar {
         live.feed(pcm)
         let level = Double(Self.loudness(pcm))
         lastLevel = level
+        // The owner's voice shapes her mouth: the keyboard swaps her
+        // viseme stills through the App Group, and the page - whose PiP
+        // face may be floating over the host app - mouths along through
+        // the same features the EnConvo monitor would send.
+        let sample = voiceFace.consume(pcm)
         suite?.set(level, forKey: "take.level")
+        suite?.set(sample.viseme, forKey: "take.viseme")
         suite?.set(Date().timeIntervalSince1970, forKey: "take.beat")
+        let json = sample.json
+        DispatchQueue.main.async {
+            MicDriver.shared.webView?.evaluateJavaScript(
+                "window.__vivTake&&__vivTake('\(json)')",
+                completionHandler: nil)
+        }
         islandPush(listening: true,
                    settled: suite?.string(forKey: "take.settled") ?? "")
     }

@@ -164,6 +164,7 @@ struct CompanionWebView: UIViewRepresentable {
         configuration.userContentController.add(context.coordinator, name: "pip")
         configuration.userContentController.add(context.coordinator, name: "mic")
         configuration.userContentController.add(context.coordinator, name: "live")
+        configuration.userContentController.add(context.coordinator, name: "face")
         configuration.userContentController.add(context.coordinator, name: "audio")
         configuration.userContentController.add(context.coordinator, name: "share")
         configuration.userContentController.add(context.coordinator, name: "speech")
@@ -341,6 +342,18 @@ struct CompanionWebView: UIViewRepresentable {
                     mic.start(rate: Double(body.dropFirst(6)) ?? 16000)
                 } else if body == "stop" {
                     mic.stop()
+                }
+                return
+            }
+            // Mirror mode: the camera reads the owner, the avatar wears
+            // the face. Page-driven so the camera light means a choice.
+            if message.name == "face" {
+                guard let body = message.body as? String else { return }
+                if body == "start" {
+                    FaceTap.shared.webView = message.webView
+                    FaceTap.shared.start()
+                } else {
+                    FaceTap.shared.stop()
                 }
                 return
             }

@@ -92,6 +92,12 @@ final class KeyboardViewController: UIInputViewController {
     // avatar's head still into the App Group, and here it breathes with
     // the OWNER's voice instead of hers (owner, 2026-08-06).
     private let face = UIImageView()
+    // Her speaking faces: full-face viseme stills the app mirrors small,
+    // swapped in time with the owner's voice - she takes your dictation
+    // with her own lips.
+    private var mouths: [String: UIImage] = [:]
+    private var baseFace: UIImage?
+    private var shownViseme = ""
     private var takeStart: Date?
     private var clockTimer: Timer?
     // The relay take: its id, the poll that reads the app's answers, and
@@ -159,6 +165,14 @@ final class KeyboardViewController: UIInputViewController {
             forSecurityApplicationGroupIdentifier: "group.com.vivieen.pocket"),
            let image = UIImage(contentsOfFile:
             group.appendingPathComponent("avatar.png").path) {
+            baseFace = image
+            for viseme in ["sil", "PP", "FF", "TH", "DD", "kk", "CH", "SS",
+                           "nn", "RR", "aa", "E", "ih", "oh", "ou"] {
+                if let mouth = UIImage(contentsOfFile: group
+                    .appendingPathComponent("viseme-\(viseme).jpg").path) {
+                    mouths[viseme] = mouth
+                }
+            }
             face.image = image
             face.contentMode = .scaleAspectFill
             face.clipsToBounds = true
@@ -429,8 +443,16 @@ final class KeyboardViewController: UIInputViewController {
                   done: state == "done")
             let level = CGFloat(shared.double(forKey: "take.level"))
             wave.push(level * 6)
-            // She brightens as you speak - driven by YOUR voice.
+            // She brightens as you speak - driven by YOUR voice - and
+            // her lips take your words: the app classifies a viseme from
+            // the dictation stream and the portrait swaps to it.
             face.alpha = min(1.0, 0.55 + level * 2.2)
+            let viseme = shared.string(forKey: "take.viseme") ?? ""
+            if viseme != shownViseme {
+                shownViseme = viseme
+                face.image = mouths[viseme]
+                    ?? (viseme == "sil" ? baseFace : face.image)
+            }
         }
         if state == "done" {
             landTake(message: nil)
@@ -457,6 +479,8 @@ final class KeyboardViewController: UIInputViewController {
         clock.isHidden = true
         wave.rest()
         face.alpha = 0.55
+        shownViseme = ""
+        if let baseFace { face.image = baseFace }
         talk.setTitle("Tap or hold to speak", for: .normal)
         paintSurfaces()
         if let message { status.text = message } else { sayReadiness() }
