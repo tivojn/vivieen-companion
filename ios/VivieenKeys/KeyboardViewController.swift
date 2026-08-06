@@ -326,6 +326,18 @@ final class KeyboardViewController: UIInputViewController {
             status.text = "Switch on Allow Full Access for Vivieen Keys "
                 + "(Settings › General › Keyboard › Keyboards) — without it "
                 + "an extension cannot reach the network."
+        } else if shared != nil,
+                  (shared?.double(forKey: "ear.alive") ?? 0) > 0,
+                  Date().timeIntervalSince1970
+                    - (shared?.double(forKey: "ear.alive") ?? 0) > 90 {
+            // The container is fine and she HAS been here - she is just
+            // asleep. Say that, not "no shared container" (simulator
+            // run, 2026-08-06).
+            let gone = Int(Date().timeIntervalSince1970
+                - (shared?.double(forKey: "ear.alive") ?? 0)) / 60
+            status.text = gone > 0
+                ? "She fell asleep \(gone) min ago — open Vivieen to wake her"
+                : "Open Vivieen once — she hears through the app"
         } else if (shared?.string(forKey: "keys.soniox") ?? "").isEmpty {
             // Do NOT say "open Vivieen once" - the owner did, repeatedly,
             // and it changed nothing (2026-08-05). The shared container is
@@ -432,10 +444,19 @@ final class KeyboardViewController: UIInputViewController {
         guard let shared, !takeID.isEmpty else { return }
         guard shared.string(forKey: "take.id") == takeID else {
             // Nobody has answered yet. Past a beat and a half, nobody
-            // will: the app is not running, and only it may record.
+            // will: the app is not running, and only it may record. Say
+            // WHEN she fell asleep - the heartbeat knows.
             if Date().timeIntervalSince(askedAt) > 1.5 {
-                landTake(message: "Open Vivieen once — she hears through "
-                                + "the app")
+                let lastBeat = shared.double(forKey: "ear.alive")
+                var message = "Open Vivieen once — she hears through the app"
+                if lastBeat > 0 {
+                    let gone = Int(Date().timeIntervalSince1970 - lastBeat) / 60
+                    if gone > 0 {
+                        message = "She fell asleep \(gone) min ago — "
+                                + "open Vivieen to wake her"
+                    }
+                }
+                landTake(message: message)
             }
             return
         }

@@ -80,17 +80,35 @@ final class KeyboardEar {
         NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil, queue: .main) { [weak self] _ in
-            self?.startKeepAlive()
+            guard let self else { return }
+            if self.standbyWanted { self.startStandby() }
+            else { self.startKeepAlive() }
         }
         NotificationCenter.default.addObserver(
             forName: UIApplication.willEnterForegroundNotification,
             object: nil, queue: .main) { [weak self] _ in
-            self?.stopKeepAlive()
-            self?.syncIsland()
+            guard let self else { return }
+            self.stopKeepAlive()
+            self.standbyStop?.invalidate()
+            self.gate.lock(); let taking = !self.takeID.isEmpty
+            self.gate.unlock()
+            if !taking, MicDriver.shared.isRunning {
+                MicDriver.shared.stop()   // dot off in the foreground
+            }
+            self.syncIsland()
         }
         MicDriver.shared.earTap = { [weak self] pcm in
             self?.route(pcm)
         }
+        // The heartbeat: five-second proof-of-life in the App Group, so
+        // the keyboard can say WHEN she fell asleep instead of only that
+        // she did (owner, 2026-08-06).
+        Timer.scheduledTimer(withTimeInterval: 5, repeats: true) {
+            [weak self] _ in
+            self?.suite?.set(Date().timeIntervalSince1970,
+                             forKey: "ear.alive")
+        }
+        suite?.set(Date().timeIntervalSince1970, forKey: "ear.alive")
         // A phone call or Siri takes the session; when it is handed
         // back, a backgrounded house must resume breathing on its own.
         NotificationCenter.default.addObserver(
@@ -155,6 +173,46 @@ final class KeyboardEar {
         #endif
     }
 
+    // ------------------------------------------------- standby window
+
+    /// "Keep her ears warm": while backgrounded, the microphone ITSELF
+    /// stays open for a bounded window - real capture is the one audio
+    /// iOS never suspends, so dictation works everywhere, reliably. The
+    /// orange dot during the window is the honest price, named on the
+    /// toggle; every take renews it, ten minutes of disuse releases it.
+    private var standbyStop: Timer?
+
+    private var standbyWanted: Bool {
+        ((SoloStore.shared.config["ui"] as? [String: Any])?["standby"]
+            as? Bool) ?? false
+    }
+
+    private func startStandby() {
+        guard !LiveTap.shared.isLive else { return }
+        if !MicDriver.shared.isRunning {
+            MicDriver.shared.start(rate: 16000, earOnly: true)
+        }
+        renewStandby()
+        NSLog("[viv-ear] standby armed")
+    }
+
+    private func renewStandby() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.standbyStop?.invalidate()
+            self.standbyStop = Timer.scheduledTimer(
+                withTimeInterval: 600, repeats: false) { [weak self] _ in
+                guard let self,
+                      UIApplication.shared.applicationState != .active
+                else { return }
+                MicDriver.shared.stop(keepSession: true)
+                self.keepAlive = nil
+                self.startKeepAlive()
+                NSLog("[viv-ear] standby released")
+            }
+        }
+    }
+
     // ------------------------------------------------------ keep-alive
 
     private var keepAlive: AVAudioPlayer?
@@ -200,13 +258,19 @@ final class KeyboardEar {
     /// alive without a sound in the room.
     private static func silenceFile() -> URL {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("viv-keepalive-tone.wav")
+            .appendingPathComponent("viv-keepalive-tone2.wav")
         if FileManager.default.fileExists(atPath: url.path) { return url }
         let rate = 8000
         var body = Data(capacity: rate * 2)
         for i in 0..<rate {
+            // -38 dB at 40 Hz: the -56 dB whisper still read as
+            // "inaudible" to the suspension detector and she kept
+            // falling asleep mid-afternoon (owner, 2026-08-06). A phone
+            // speaker physically cannot reproduce 40 Hz at ANY level, so
+            // this stays silent in the room while the system sees
+            // healthy, unmistakably real audio.
             var sample = Int16(sin(2 * Double.pi * 40
-                * Double(i) / Double(rate)) * 50)
+                * Double(i) / Double(rate)) * 400)
             withUnsafeBytes(of: &sample) { body.append(contentsOf: $0) }
         }
         var wav = Data("RIFF".utf8)
@@ -296,20 +360,26 @@ final class KeyboardEar {
             // stays up (keepSession), because that standing session is
             // the only thing a backgrounded app may start capture on.
             if mine {
-                MicDriver.shared.stop(keepSession: true)
                 self.lastLevel = 0
                 self.islandPush(listening: false, settled: settled,
                                 force: true)
-                // The take's session dance can stop the keep-alive
-                // player; a backgrounded house must resume breathing or
-                // the NEXT knock lands on a suspended app.
-                DispatchQueue.main.async { [weak self] in
-                    guard let self,
-                          UIApplication.shared.applicationState != .active
-                    else { return }
-                    self.keepAlive?.stop()
-                    self.keepAlive = nil
-                    self.startKeepAlive()
+                if self.standbyWanted {
+                    // Warm ears: the capture keeps rolling and the take
+                    // renews its ten-minute lease.
+                    self.renewStandby()
+                } else {
+                    MicDriver.shared.stop(keepSession: true)
+                    // The take's session dance can stop the keep-alive
+                    // player; a backgrounded house must resume breathing
+                    // or the NEXT knock lands on a suspended app.
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self,
+                              UIApplication.shared.applicationState
+                                != .active else { return }
+                        self.keepAlive?.stop()
+                        self.keepAlive = nil
+                        self.startKeepAlive()
+                    }
                 }
             }
         }

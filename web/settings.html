@@ -672,6 +672,14 @@ document.documentElement.dataset.design='quiet';</script>
     <p class="note">A quiet presence while she waits; during dictation the
       island breathes with your voice and shows the words as they settle.
       Raised when the app opens — iOS only.</p>
+    <label style="display:flex;gap:10px;align-items:center;cursor:pointer;margin-top:12px">
+      <input type="checkbox" id="standbyToggle" style="width:auto">
+      <span>Keep her ears warm in the background</span>
+    </label>
+    <p class="note">The microphone stays open up to ten minutes after you
+      last used her, so dictation works in every app without reopening
+      Vivieen. The orange indicator shows while it does — that is the
+      price, named. Nothing is recorded or sent unless you hold the key.</p>
   </div>
 
   <h2>Live talk · realtime conversation</h2>
@@ -4219,6 +4227,14 @@ async function boot() {
     island.checked = Boolean((CFG.ui || {}).island);
     island.onchange = () => {
       CFG.ui = Object.assign({}, CFG.ui, {island: island.checked});
+      dirty();
+    };
+  }
+  const standby = $('#standbyToggle');
+  if (standby) {
+    standby.checked = Boolean((CFG.ui || {}).standby);
+    standby.onchange = () => {
+      CFG.ui = Object.assign({}, CFG.ui, {standby: standby.checked});
       dirty();
     };
   }
