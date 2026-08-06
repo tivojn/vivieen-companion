@@ -88,6 +88,10 @@ final class KeyboardViewController: UIInputViewController {
     private let heard = UILabel()
     private let wave = WaveView()
     private let clock = UILabel()
+    // Her face, dimmed behind the board - the app mirrors the active
+    // avatar's head still into the App Group, and here it breathes with
+    // the OWNER's voice instead of hers (owner, 2026-08-06).
+    private let face = UIImageView()
     private var takeStart: Date?
     private var clockTimer: Timer?
     // The relay take: its id, the poll that reads the app's answers, and
@@ -146,6 +150,25 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         paintSurfaces()
+
+        if let group = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: "group.com.vivieen.pocket"),
+           let image = UIImage(contentsOfFile:
+            group.appendingPathComponent("avatar.png").path) {
+            face.image = image
+            face.contentMode = .scaleAspectFill
+            face.clipsToBounds = true
+            face.alpha = 0.16
+            face.isUserInteractionEnabled = false
+            face.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(face)
+            NSLayoutConstraint.activate([
+                face.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                face.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                face.topAnchor.constraint(equalTo: view.topAnchor),
+                face.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+        }
 
         // No button. The WAVE is the surface (owner: "just leave a
         // dynamic wave shape, lengthwise, put your note along with the
@@ -272,12 +295,7 @@ final class KeyboardViewController: UIInputViewController {
                 + "build has no shared container. Vivieen Keys needs the "
                 + "App Group enabled on the developer account."
         } else {
-            // The build stamps itself: a week of "did the update take?"
-            // screenshots, answered by the corner of the keyboard
-            // (2026-08-06).
-            let build = Bundle.main.object(
-                forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
-            status.text = "Tap to talk · or hold, release to finish · b\(build)"
+            status.text = "Tap to talk · tap again to end — or hold"
         }
     }
 
@@ -387,7 +405,11 @@ final class KeyboardViewController: UIInputViewController {
         if state == "listening" || state == "done" {
             paint(settled: settled, refining: state == "done" ? "" : refining,
                   done: state == "done")
-            wave.push(CGFloat(shared.double(forKey: "take.level")) * 6)
+            let level = CGFloat(shared.double(forKey: "take.level"))
+            wave.push(level * 6)
+            // She brightens as you speak - the same dimmed presence the
+            // app wears, driven by YOUR voice here.
+            face.alpha = min(0.55, 0.16 + level * 2.2)
         }
         if state == "done" {
             landTake(message: nil)
@@ -413,6 +435,7 @@ final class KeyboardViewController: UIInputViewController {
         takeStart = nil
         clock.isHidden = true
         wave.rest()
+        face.alpha = 0.16
         talk.setTitle("Tap or hold to speak", for: .normal)
         paintSurfaces()
         if let message { status.text = message } else { sayReadiness() }

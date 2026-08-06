@@ -173,6 +173,8 @@ struct CompanionWebView: UIViewRepresentable {
             address: address, token: token,
             relayBase: UserDefaults.standard.string(forKey: "relayBase")
                 ?? RelayClient.defaultBase)
+        // The keyboard wears whatever face the cache already holds.
+        scheme.seedFaceMirror()
         // A changed face reaches the page at once, not next launch.
         scheme.onAvatarChanged = { [weak coordinator = context.coordinator] in
             coordinator?.webView?.evaluateJavaScript(

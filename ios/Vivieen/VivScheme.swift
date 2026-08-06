@@ -224,6 +224,31 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         }
     }
 
+    /// The keyboard wears her face: the active avatar's head still,
+    /// mirrored into the App Group whenever it passes through - an
+    /// extension can reach no cache of ours, only the shared container.
+    private func mirrorFace(path: String, data: Data) {
+        lock.lock(); let slug = activeSlug; lock.unlock()
+        guard bare(path) == "/files/\(slug)/head.png",
+              let group = FileManager.default.containerURL(
+                forSecurityApplicationGroupIdentifier:
+                    "group.com.vivieen.pocket") else { return }
+        try? data.write(to: group.appendingPathComponent("avatar.png"))
+    }
+
+    /// On boot, seed the mirror from whatever the cache already holds -
+    /// a face fetched last week should not wait for the next fetch.
+    func seedFaceMirror() {
+        DispatchQueue.global().async { [weak self] in
+            guard let self else { return }
+            self.lock.lock(); let slug = self.activeSlug; self.lock.unlock()
+            let path = "/files/\(slug)/head.png"
+            if let data = try? Data(contentsOf: self.cacheURL(path)) {
+                self.mirrorFace(path: path, data: data)
+            }
+        }
+    }
+
     /// Somewhere to tell the page the face changed under it.
     var onAvatarChanged: (() -> Void)?
 
@@ -827,6 +852,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
                 self.noteSlug(from: data, path: path)
                 self.warmDeck(from: data, path: path)
                 try? data.write(to: self.cacheURL(path))
+                self.mirrorFace(path: path, data: data)
             }
             let type = http.value(forHTTPHeaderField: "Content-Type")
                 ?? self.mime(for: path)
