@@ -114,6 +114,24 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         }
     }
 
+    /// The live handler, for the few things that must not travel as HTTP
+    /// - coupling from the empty-room card, whose road POST kept losing
+    /// its body ticket and left the phone pinned solo while the card
+    /// said "Coupling…" (simulator, 2026-08-06).
+    static weak var current: VivSchemeHandler?
+
+    /// Take the coupled road, now, with no request in the middle.
+    func couple() {
+        lock.lock()
+        roadPin = "auto"
+        pinGeneration &+= 1
+        refreshed.removeAll()
+        directOffUntil = .distantPast
+        lock.unlock()
+        NSLog("[viv-scheme] coupled by hand")
+        syncSolo()
+    }
+
     init(address: String, token: String, relayBase: String) {
         self.pairedAddress = address.hasSuffix("/") ? String(address.dropLast()) : address
         self.token = token
@@ -132,6 +150,7 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         session = URLSession(configuration: config)
         super.init()
+        Self.current = self
     }
 
     /// Everything her page needs to STAND UP is cacheable - the page

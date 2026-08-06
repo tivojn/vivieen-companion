@@ -1742,9 +1742,37 @@ function setRoad(name){
     if(!response.ok)throw new Error('no active avatar');
     M=await response.json();
   }catch(e){
+    // On the PHONE this is almost never "you have no avatar" - she has
+    // several, and they live on the Mac. Solo simply has not been handed
+    // her runtime yet. Saying "create your first avatar" to someone who
+    // made five is an insult with a button (owner, 2026-08-06).
+    if(IS_IOS){
+      const card=document.getElementById('emptyCard');
+      if(card){
+        card.innerHTML='<div id="emptyMark">◉</div>'
+          +'<h1>She has not come over yet</h1>'
+          +'<p>Her face lives on your Mac. Couple once and she is kept '
+          +'on this phone afterwards — solo works from then on.</p>'
+          +'<a id="emptyAction" href="#">Bring her over</a>';
+        const act=card.querySelector('#emptyAction');
+        if(act)act.onclick=async event=>{
+          event.preventDefault();
+          act.textContent='Coupling…';
+          // Fire and reload on a CLOCK, never on the pin's promise: the
+          // road POST can sit on its body ticket, and a card that waits
+          // for it says "Coupling…" forever (simulator, 2026-08-06).
+          // Straight to the native router: the road POST loses its
+          // body ticket often enough that a card must not depend on it.
+          try{webkit.messageHandlers.viv.postMessage('COUPLE');}
+          catch(e){pickRoad('auto');
+            setTimeout(()=>{try{location.reload();}catch(x){}},1600);}
+        };
+      }
+    }
     document.getElementById('emptyState').hidden=false;
     if(SHELL&&SHELL.isElectron)SHELL.setPetHit(true);
-    setStatus('avatar setup required','busy');
+    setStatus(IS_IOS?'she is still on your Mac':'avatar setup required',
+              'busy');
     ptt.disabled=true;txt.disabled=true;
     // She may exist and simply be on the far side of a pin. The poll below
     // is the only thing that raises the chip, and this branch used to
@@ -6533,6 +6561,16 @@ if(IS_IOS){
     else if(ROAD.pin==='solo')setRoad('solo');
     flashPrompt(ROAD_SET[ROAD.pin]||'');
     closeModels();
+    // Coupling with nobody on stage: her BOOT already ran, found no
+    // avatar down the solo road, drew "create your first avatar" and
+    // returned - and nothing re-runs it. So the Mac answered, the assets
+    // were there, and the phone went on showing an empty room (owner,
+    // 2026-08-06; reproduced in the simulator). Start her over.
+    if(id==='auto'&&!M){
+      flashPrompt('Coupled — bringing her over.');
+      setTimeout(()=>{try{webkit.messageHandlers.viv.postMessage('RELOAD');}
+        catch(e){try{location.reload();}catch(x){}}},700);
+    }
   }
   function showRoads(){
     sheetSeq++;                       // any brain fetch still in flight loses

@@ -373,6 +373,24 @@ struct CompanionWebView: UIViewRepresentable {
                 }
                 return
             }
+            // location.reload() is silently refused on a custom-scheme
+            // page - the coupling reload never fired and she stayed in an
+            // empty room with her manifest already fetched (simulator,
+            // 2026-08-06). The native side can always reload.
+            if message.name == "viv", (message.body as? String) == "RELOAD" {
+                message.webView?.reload()
+                return
+            }
+            // Coupling from the empty-room card: no HTTP, no body ticket
+            // to lose - take the road and come back with her.
+            if message.name == "viv", (message.body as? String) == "COUPLE" {
+                VivSchemeHandler.current?.couple()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    [weak webView = message.webView] in
+                    webView?.reload()
+                }
+                return
+            }
             NSLog("[viv-web] %@", String(describing: message.body))
         }
 
