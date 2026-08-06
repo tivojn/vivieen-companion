@@ -187,9 +187,25 @@ final class KeyboardEar {
     private static let standbyWindow: TimeInterval = 90
     private var standbyStop: Timer?
 
+    /// The DEFAULT is a microphone that opens per take and closes with
+    /// it - the light on only while you speak. Warm ears are the
+    /// fallback, and the app LEARNS when it needs them: one take that
+    /// draws no frame proves this device refuses a background start, and
+    /// from the next launch she keeps them warm by herself. The toggle
+    /// forces it on for anyone who would rather not meet the failure
+    /// once (owner: "after the input is done, stop the mic", 2026-08-06).
     private var standbyWanted: Bool {
-        ((SoloStore.shared.config["ui"] as? [String: Any])?["standby"]
-            as? Bool) ?? false
+        if ((SoloStore.shared.config["ui"] as? [String: Any])?["standby"]
+             as? Bool) == true { return true }
+        return UserDefaults.standard.bool(forKey: "standbyLearned")
+    }
+
+    private func learnStandby() {
+        guard !UserDefaults.standard.bool(forKey: "standbyLearned") else {
+            return
+        }
+        UserDefaults.standard.set(true, forKey: "standbyLearned")
+        NSLog("[viv-ear] background start refused - warm ears from now on")
     }
 
     private func startStandby() {
@@ -405,8 +421,12 @@ final class KeyboardEar {
             guard let self, !self.heardFrame else { return }
             self.gate.lock(); let still = self.takeID == id; self.gate.unlock()
             guard still else { return }
-            suite.set("error she could not open the microphone — "
-                      + "open Vivieen once", forKey: "take.state")
+            // This device will not open a microphone from the background
+            // on demand. Remember it, and say what changes.
+            self.learnStandby()
+            suite.set("error the microphone stayed shut — open Vivieen "
+                      + "once and she will keep her ears warm",
+                      forKey: "take.state")
             suite.synchronize()
             self.end(id)
         }
