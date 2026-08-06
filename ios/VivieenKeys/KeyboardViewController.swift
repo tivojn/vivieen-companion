@@ -93,6 +93,11 @@ final class KeyboardViewController: UIInputViewController,
     // The take's capture session and the queue its buffers arrive on.
     private var capture: AVCaptureSession?
     private let captureQueue = DispatchQueue(label: "com.vivieen.keys.mic")
+    // The line's own testimony, painted faintly while recording: the
+    // format the device actually delivers and the level actually heard -
+    // a flat wave then answers "which" instead of "why" (2026-08-06).
+    private var lastRms: Float = 0
+    private var lastFormat = ""
     private var stream: SonioxStream?
     private var recording = false
     // True from touch-down to release: an activation retry must die the
@@ -307,6 +312,8 @@ final class KeyboardViewController: UIInputViewController,
 
     private func beginRecording() {
         guard !recording, holdActive, capture == nil else { return }
+        lastRms = 0
+        lastFormat = ""
 
         // Space-join like dictation does: no leading space at a fresh
         // field or after whitespace. Decided once, when the take begins.
@@ -380,6 +387,9 @@ final class KeyboardViewController: UIInputViewController,
                     self.clock.text = String(format: "%d:%04.1f",
                         Int(elapsed) / 60,
                         elapsed.truncatingRemainder(dividingBy: 60))
+                    self.status.text = self.lastFormat.isEmpty ? "" :
+                        self.lastFormat + String(format: " · lvl %.3f",
+                                                 self.lastRms)
                 }
                 self.paintSurfaces()
                 self.status.text = ""
@@ -435,20 +445,32 @@ final class KeyboardViewController: UIInputViewController,
                 == kCMBlockBufferNoErr,
               let bytes = pointer, totalLength > 0 else { return }
         let raw = UnsafeRawPointer(bytes)
-        let channels = max(1, Int(asbd.mChannelsPerFrame))
+        // The ASBD's own byte layout is the authority - deriving the
+        // stride from flags guessed wrong on the real phone, and reading
+        // Int16 frames as Float32 turns speech into ~1e-39s: a flat wave,
+        // silence to Soniox, an empty take (owner's screenshots,
+        // 2026-08-06). mBytesPerFrame covers ALL interleaved channels;
+        // the first channel of each frame is the one that goes up.
         let isFloat = (asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0
-        let bytesPerSample = isFloat ? 4 : 2
-        let frames = totalLength / (bytesPerSample * channels)
+        let bits = Int(asbd.mBitsPerChannel)
+        var stride = Int(asbd.mBytesPerFrame)
+        if stride <= 0 {
+            stride = max(1, Int(asbd.mChannelsPerFrame)) * max(bits, 16) / 8
+        }
+        let frames = totalLength / max(1, stride)
         guard frames > 0 else { return }
         // One channel, Int16 little-endian - the shape Soniox is promised.
         var pcm = Data(capacity: frames * 2)
         var sum: Float = 0
         for i in 0..<frames {
-            let offset = i * channels * bytesPerSample
+            let offset = i * stride
             let value: Float
-            if isFloat {
+            if isFloat, bits == 32 {
                 value = max(-1, min(1,
                     raw.loadUnaligned(fromByteOffset: offset, as: Float32.self)))
+            } else if bits == 32 {
+                value = Float(raw.loadUnaligned(
+                    fromByteOffset: offset, as: Int32.self)) / 2147483648
             } else {
                 value = Float(raw.loadUnaligned(
                     fromByteOffset: offset, as: Int16.self)) / 32768
@@ -461,6 +483,10 @@ final class KeyboardViewController: UIInputViewController,
         // The wave is fed the REAL level, so silence looks like silence.
         // Gained up because speech RMS sits low.
         let rms = sqrt(sum / Float(frames))
+        lastRms = rms
+        lastFormat = "\(Int(asbd.mSampleRate / 1000)) kHz · "
+            + (isFloat ? "f\(bits)" : "i\(bits)")
+            + " · ch \(asbd.mChannelsPerFrame)"
         DispatchQueue.main.async { [weak self] in
             self?.wave.push(CGFloat(rms) * 6)
         }
