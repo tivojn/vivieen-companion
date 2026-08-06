@@ -110,6 +110,9 @@ final class KeyboardEar {
         suite.set(0.0, forKey: "take.level")
         suite.set("listening", forKey: "take.state")
         suite.set(Date().timeIntervalSince1970, forKey: "take.beat")
+        // Flush so the keyboard's very next poll sees the answer, not the
+        // previous take's leavings.
+        suite.synchronize()
         MicDriver.shared.onPCM = { [weak self] pcm in
             guard let self, self.takeID == id else { return }
             self.stream?.feed(pcm)

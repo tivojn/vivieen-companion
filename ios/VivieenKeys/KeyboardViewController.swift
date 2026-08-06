@@ -265,7 +265,12 @@ final class KeyboardViewController: UIInputViewController {
                 + "build has no shared container. Vivieen Keys needs the "
                 + "App Group enabled on the developer account."
         } else {
-            status.text = "Tap to talk · or hold, release to finish"
+            // The build stamps itself: a week of "did the update take?"
+            // screenshots, answered by the corner of the keyboard
+            // (2026-08-06).
+            let build = Bundle.main.object(
+                forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+            status.text = "Tap to talk · or hold, release to finish · b\(build)"
         }
     }
 
@@ -318,6 +323,10 @@ final class KeyboardViewController: UIInputViewController {
         shared?.set("", forKey: "take.state")
         shared?.set(0.0, forKey: "take.level")
         shared?.set("start \(id)", forKey: "take.cmd")
+        // Flush before knocking: the notification crosses processes
+        // faster than an unsynchronised default does, and the app would
+        // read the PREVIOUS command.
+        shared?.synchronize()
         knock()
         askedAt = Date()
 
@@ -457,6 +466,7 @@ final class KeyboardViewController: UIInputViewController {
         // Ask the app to land the tail; the poll carries it home (or the
         // eight-second cap in follow() does, if the finalise never comes).
         shared?.set("stop \(takeID)", forKey: "take.cmd")
+        shared?.synchronize()
         knock()
         finishing = true
         askedAt = Date()
