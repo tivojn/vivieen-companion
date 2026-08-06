@@ -161,6 +161,16 @@ final class KeyboardViewController: UIInputViewController {
             face.alpha = 0.16
             face.isUserInteractionEnabled = false
             face.translatesAutoresizingMaskIntoConstraints = false
+            // A pinned image view VOTES its intrinsic size, and a
+            // thousand-pixel keyframe voted the whole keyboard onto the
+            // full screen (owner, 2026-08-06). The board's own stack
+            // decides the height; the face merely fills it.
+            for axis in [NSLayoutConstraint.Axis.horizontal, .vertical] {
+                face.setContentHuggingPriority(UILayoutPriority(1),
+                                               for: axis)
+                face.setContentCompressionResistancePriority(
+                    UILayoutPriority(1), for: axis)
+            }
             view.addSubview(face)
             NSLayoutConstraint.activate([
                 face.leadingAnchor.constraint(equalTo: view.leadingAnchor),
