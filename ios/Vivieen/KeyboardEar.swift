@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import UIKit
 
 /// The keyboard's ears live HERE, in the app.
 ///
@@ -35,6 +36,87 @@ final class KeyboardEar {
             Unmanaged<KeyboardEar>.fromOpaque(observer)
                 .takeUnretainedValue().answer()
         }, Self.knock as CFString, nil, .deliverImmediately)
+        // The knock only reaches a RUNNING process. Backgrounded with no
+        // audio, iOS suspends the app within moments - so the keyboard
+        // worked inside Vivieen and fell deaf in every other app (owner,
+        // 2026-08-06). While backgrounded, a silent player breathes on a
+        // session that MIXES - nobody's music stops for it - and the ear
+        // stays reachable. The other half of Wispr Flow's trick.
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil, queue: .main) { [weak self] _ in
+            self?.startKeepAlive()
+        }
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil, queue: .main) { [weak self] _ in
+            self?.stopKeepAlive()
+        }
+    }
+
+    // ------------------------------------------------------ keep-alive
+
+    private var keepAlive: AVAudioPlayer?
+
+    private func startKeepAlive() {
+        guard keepAlive == nil else { return }
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default,
+                                 options: [.mixWithOthers])
+        try? session.setActive(true)
+        guard let player = try? AVAudioPlayer(
+            contentsOf: Self.silenceFile()) else { return }
+        player.numberOfLoops = -1
+        player.volume = 0
+        player.play()
+        keepAlive = player
+        NSLog("[viv-ear] keep-alive breathing")
+    }
+
+    private func stopKeepAlive() {
+        guard keepAlive != nil else { return }
+        keepAlive?.stop()
+        keepAlive = nil
+        AudioSession.playbackOnly()
+        NSLog("[viv-ear] keep-alive resting")
+    }
+
+    /// A take in the background borrows the session; hand it back to the
+    /// keep-alive afterwards or the NEXT take finds the house asleep.
+    private func resumeKeepAliveIfBackgrounded() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  UIApplication.shared.applicationState != .active
+            else { return }
+            self.keepAlive = nil
+            self.startKeepAlive()
+        }
+    }
+
+    /// One second of 8 kHz silence, written once. Playing nothing is
+    /// what keeps the process allowed to hear something.
+    private static func silenceFile() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("viv-keepalive.wav")
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+        let rate = 8000
+        let body = Data(count: rate * 2)
+        var wav = Data("RIFF".utf8)
+        func word(_ value: UInt32) {
+            withUnsafeBytes(of: value.littleEndian) { wav.append(contentsOf: $0) }
+        }
+        func half(_ value: UInt16) {
+            withUnsafeBytes(of: value.littleEndian) { wav.append(contentsOf: $0) }
+        }
+        word(UInt32(36 + body.count))
+        wav.append(contentsOf: Data("WAVEfmt ".utf8))
+        word(16); half(1); half(1)
+        word(UInt32(rate)); word(UInt32(rate * 2)); half(2); half(16)
+        wav.append(contentsOf: Data("data".utf8))
+        word(UInt32(body.count))
+        wav.append(body)
+        try? wav.write(to: url)
+        return url
     }
 
     private func answer() {
@@ -100,6 +182,7 @@ final class KeyboardEar {
                 self.stream = nil
                 MicDriver.shared.onPCM = nil
                 MicDriver.shared.stop()
+                self.resumeKeepAliveIfBackgrounded()
             }
         }
         live.start()
