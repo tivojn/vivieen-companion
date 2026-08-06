@@ -33,7 +33,19 @@ final class MicDriver: NSObject {
         // could not interrupt a long answer at all (2026-08-06).
         do { try input.setVoiceProcessingEnabled(true) }
         catch { report("mic-aec unavailable \(error.localizedDescription)") }
-        let source = input.outputFormat(forBus: 0)
+        var source = input.outputFormat(forBus: 0)
+        // A background restart can catch the session mid-handoff - the
+        // keyboard's second take found a 0 Hz input where the first found
+        // a microphone, and Soniox answered "No audio received" (owner,
+        // 2026-08-06). The input usually comes up a beat later: ask
+        // again before declaring it unusable.
+        var attempt = 0
+        while source.sampleRate <= 0, attempt < 4 {
+            attempt += 1
+            Thread.sleep(forTimeInterval: 0.15)
+            AudioSession.speakAndListen()
+            source = input.outputFormat(forBus: 0)
+        }
         guard source.sampleRate > 0, source.channelCount > 0,
               let wire = AVAudioFormat(commonFormat: .pcmFormatInt16,
                                        sampleRate: rate, channels: 1,

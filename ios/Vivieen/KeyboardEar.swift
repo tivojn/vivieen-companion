@@ -187,6 +187,12 @@ final class KeyboardEar {
         }
         live.start()
         stream = live
+        // The keep-alive holds the session; a take must take it CLEANLY
+        // or the microphone reads 0 Hz under the still-playing silence.
+        DispatchQueue.main.sync { [weak self] in
+            self?.keepAlive?.stop()
+            self?.keepAlive = nil
+        }
         suite.set(id, forKey: "take.id")
         suite.set("", forKey: "take.settled")
         suite.set("", forKey: "take.refining")

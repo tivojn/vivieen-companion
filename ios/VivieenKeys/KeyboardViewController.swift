@@ -27,7 +27,7 @@ import AVFoundation
 /// a dynamic wave hint while speaking", 2026-08-05).
 final class WaveView: UIView {
     var bar: UIColor = .label { didSet { setNeedsDisplay() } }
-    private var levels = [CGFloat](repeating: 0, count: 27)
+    private var levels = [CGFloat](repeating: 0, count: 48)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -147,10 +147,16 @@ final class KeyboardViewController: UIInputViewController {
         super.viewDidLoad()
         paintSurfaces()
 
+        // No button. The WAVE is the surface (owner: "just leave a
+        // dynamic wave shape, lengthwise, put your note along with the
+        // waves", 2026-08-06): a full-width line of bars, the hint
+        // riding quietly above it, and the whole field is the touch
+        // target.
         talk.setTitle("Tap or hold to speak", for: .normal)
-        talk.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
-        talk.layer.cornerRadius = 22
-        talk.layer.borderWidth = 1
+        talk.titleLabel?.font = .systemFont(ofSize: 12.5, weight: .medium)
+        talk.layer.cornerRadius = 0
+        talk.layer.borderWidth = 0
+        talk.backgroundColor = .clear
         talk.addTarget(self, action: #selector(holdBegan),
                        for: .touchDown)
         talk.addTarget(self, action: #selector(holdEnded),
@@ -179,7 +185,7 @@ final class KeyboardViewController: UIInputViewController {
         // modern phones, and a conditional globe covers the rest.
         clock.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
         clock.isHidden = true
-        wave.isHidden = true
+        talk.contentVerticalAlignment = .top
         for widget in [wave, clock] as [UIView] {
             widget.translatesAutoresizingMaskIntoConstraints = false
             widget.isUserInteractionEnabled = false
@@ -199,15 +205,18 @@ final class KeyboardViewController: UIInputViewController {
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 10),
             stack.bottomAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
-            talk.heightAnchor.constraint(equalToConstant: 96),
-            wave.centerXAnchor.constraint(equalTo: talk.centerXAnchor),
-            wave.centerYAnchor.constraint(equalTo: talk.centerYAnchor),
-            wave.widthAnchor.constraint(equalToConstant: 190),
+            talk.heightAnchor.constraint(equalToConstant: 64),
+            wave.leadingAnchor.constraint(equalTo: talk.leadingAnchor,
+                                          constant: 12),
+            wave.trailingAnchor.constraint(equalTo: talk.trailingAnchor,
+                                           constant: -12),
+            wave.bottomAnchor.constraint(equalTo: talk.bottomAnchor,
+                                         constant: -6),
             wave.heightAnchor.constraint(equalToConstant: 30),
             clock.leadingAnchor.constraint(equalTo: talk.leadingAnchor,
-                                           constant: 18),
-            clock.centerYAnchor.constraint(equalTo: talk.centerYAnchor),
-            view.heightAnchor.constraint(greaterThanOrEqualToConstant: 170),
+                                           constant: 14),
+            clock.centerYAnchor.constraint(equalTo: wave.centerYAnchor),
+            view.heightAnchor.constraint(greaterThanOrEqualToConstant: 140),
         ])
         if needsInputModeSwitchKey {
             let globe = UIButton(type: .system)
@@ -236,11 +245,9 @@ final class KeyboardViewController: UIInputViewController {
         status.textColor = faint
         heard.textColor = ink
         wave.bar = ink
-        talk.backgroundColor = recording ? hot : tint
-        talk.layer.borderColor = (recording ? hot : tintLine).cgColor
-        talk.setTitleColor(recording ? .white : ink, for: .normal)
-        wave.bar = recording ? .white : ink
-        clock.textColor = recording ? .white : faint
+        talk.setTitleColor(faint, for: .normal)
+        wave.bar = recording ? hot : faint
+        clock.textColor = recording ? hot : faint
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -332,7 +339,6 @@ final class KeyboardViewController: UIInputViewController {
 
         recording = true
         wave.rest()
-        wave.isHidden = false
         heard.isHidden = false
         heard.text = ""
         talk.setTitle("", for: .normal)
@@ -407,7 +413,6 @@ final class KeyboardViewController: UIInputViewController {
         takeStart = nil
         clock.isHidden = true
         wave.rest()
-        wave.isHidden = true
         talk.setTitle("Tap or hold to speak", for: .normal)
         paintSurfaces()
         if let message { status.text = message } else { sayReadiness() }
@@ -454,7 +459,7 @@ final class KeyboardViewController: UIInputViewController {
         // says how to end it. holdActive stays up so a take still opening
         // is not torn down by its own tap.
         if quick, recording || !takeID.isEmpty {
-            status.text = "tap to end"
+            talk.setTitle("tap to end", for: .normal)
             return
         }
         finishTake()
