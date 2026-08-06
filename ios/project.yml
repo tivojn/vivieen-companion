@@ -84,7 +84,13 @@ targets:
         SWIFT_VERSION: "5.9"
         MARKETING_VERSION: "0.12.0"
         CURRENT_PROJECT_VERSION: "1"
-        CODE_SIGN_ENTITLEMENTS: Vivieen/Shared.entitlements
+        # PARKED until the owner assigns group.com.vivieen.pocket to the
+        # island App ID in the portal (Identifiers →
+        # com.vivieen.pocket.island → App Groups → Configure) - the ASC
+        # API can enable the capability but cannot tick the group, and a
+        # TestFlight archive refuses the mismatch. Restore this line
+        # after the click and the island reads her face:
+        #   CODE_SIGN_ENTITLEMENTS: Vivieen/Shared.entitlements
         CODE_SIGN_IDENTITY: ""
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGNING_ALLOWED: NO
