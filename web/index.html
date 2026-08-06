@@ -3798,6 +3798,9 @@ async function startLiveTalk(){
     if(LIVE!==session||typeof e.data!=='string')return;
     const m=JSON.parse(e.data);
     if(m.type==='mouth'){liveNativeMouth(session,m.seconds||0);return;}
+    // The native leg's mic level - the page holds no microphone there,
+    // so this is the only thing that makes the listening wave dance.
+    if(m.type==='level'){window.MIC_LEVEL=Math.max(0,+m.v||0);return;}
     if(m.type==='ready'){
       // Native: the app already owns the microphone and her voice. Asking
       // the page to open a second capture would fight it for the device.
@@ -5854,7 +5857,11 @@ if(IS_IOS){
     // A quick press is a TAP: the take keeps rolling, the chip counts the
     // seconds and says "tap to end", and tapping IT finishes. A long
     // press stays what it always was - release to send, lift to cancel.
-    if(!tapTake&&!holdCancel&&recording&&performance.now()-pressAt<300){
+    // NOT gated on `recording`: the native mic opens ASYNCHRONOUSLY, so a
+    // quick tap releases before the flag flips - the old gate dropped it
+    // into the stop path as a 0.2s take and the owner was told "too
+    // short" for doing exactly what the button offers (2026-08-06).
+    if(!tapTake&&!holdCancel&&performance.now()-pressAt<300){
       tapTake=true;
       if(meter)meter.classList.add('taptake');
       talkbar.classList.remove('rec','cancel');

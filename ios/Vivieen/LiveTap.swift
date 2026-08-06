@@ -191,6 +191,10 @@ final class LiveTap: NSObject {
         gate.unlock()
         guard up else { return }
         let heard = LiveTap.loudness(pcm)
+        // The page's wave has no microphone of its own on the native leg -
+        // it dances only if the app tells it what it heard (owner: "the
+        // wave is not dancing", 2026-08-06). ~10 frames a second, tiny.
+        toPage(["type": "level", "v": Double(heard)])
         // BARGE-IN: voice processing (MicDriver) subtracts her own
         // playback from the mic, so a frame that is still loud inside the
         // echo window is the OWNER interrupting - it goes up for real.
