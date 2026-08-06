@@ -272,9 +272,13 @@ final class KeyboardViewController: UIInputViewController {
             wave.bottomAnchor.constraint(equalTo: talk.bottomAnchor,
                                          constant: -6),
             wave.heightAnchor.constraint(equalToConstant: 30),
-            clock.leadingAnchor.constraint(equalTo: wave.leadingAnchor,
-                                           constant: 2),
-            clock.centerYAnchor.constraint(equalTo: wave.centerYAnchor),
+            // The clock rides beside the hint, clear of the bars - laid
+            // over the wave it fought every tall peak for the same pixels
+            // (owner, 2026-08-06).
+            clock.trailingAnchor.constraint(equalTo: talk.trailingAnchor,
+                                            constant: -12),
+            clock.topAnchor.constraint(equalTo: talk.topAnchor,
+                                       constant: 2),
             view.heightAnchor.constraint(greaterThanOrEqualToConstant: 140),
         ])
         if needsInputModeSwitchKey {

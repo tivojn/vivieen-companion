@@ -91,6 +91,21 @@ final class KeyboardEar {
         MicDriver.shared.earTap = { [weak self] pcm in
             self?.route(pcm)
         }
+        // A phone call or Siri takes the session; when it is handed
+        // back, a backgrounded house must resume breathing on its own.
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil, queue: .main) { [weak self] note in
+            guard let self,
+                  let raw = note.userInfo?[
+                    AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: raw) == .ended,
+                  UIApplication.shared.applicationState != .active
+            else { return }
+            self.keepAlive?.stop()
+            self.keepAlive = nil
+            self.startKeepAlive()
+        }
         syncIsland()
     }
 
@@ -160,7 +175,9 @@ final class KeyboardEar {
         guard let player = try? AVAudioPlayer(
             contentsOf: Self.silenceFile()) else { return }
         player.numberOfLoops = -1
-        player.volume = 0
+        // Full volume of a -56 dB waveform: real to the system, nothing
+        // to the room.
+        player.volume = 1
         player.play()
         keepAlive = player
         NSLog("[viv-ear] keep-alive breathing")
@@ -174,14 +191,24 @@ final class KeyboardEar {
         NSLog("[viv-ear] keep-alive resting")
     }
 
-    /// One second of 8 kHz silence, written once. Playing nothing is
-    /// what keeps the process allowed to hear something.
+    /// One second of a 40 Hz whisper at -56 dB - INAUDIBLE, but not
+    /// silent. Pure zeros at volume zero taught us why that matters:
+    /// iOS detects inaudible playback and suspends the app anyway, and a
+    /// suspended app cannot hear the keyboard's knock - "works in
+    /// Vivieen, can't reach her from Notes" (owner, 2026-08-06). A real
+    /// waveform below the floor of hearing keeps the process honestly
+    /// alive without a sound in the room.
     private static func silenceFile() -> URL {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("viv-keepalive.wav")
+            .appendingPathComponent("viv-keepalive-tone.wav")
         if FileManager.default.fileExists(atPath: url.path) { return url }
         let rate = 8000
-        let body = Data(count: rate * 2)
+        var body = Data(capacity: rate * 2)
+        for i in 0..<rate {
+            var sample = Int16(sin(2 * Double.pi * 40
+                * Double(i) / Double(rate)) * 50)
+            withUnsafeBytes(of: &sample) { body.append(contentsOf: $0) }
+        }
         var wav = Data("RIFF".utf8)
         func word(_ value: UInt32) {
             withUnsafeBytes(of: value.littleEndian) { wav.append(contentsOf: $0) }
@@ -273,6 +300,17 @@ final class KeyboardEar {
                 self.lastLevel = 0
                 self.islandPush(listening: false, settled: settled,
                                 force: true)
+                // The take's session dance can stop the keep-alive
+                // player; a backgrounded house must resume breathing or
+                // the NEXT knock lands on a suspended app.
+                DispatchQueue.main.async { [weak self] in
+                    guard let self,
+                          UIApplication.shared.applicationState != .active
+                    else { return }
+                    self.keepAlive?.stop()
+                    self.keepAlive = nil
+                    self.startKeepAlive()
+                }
             }
         }
         gate.lock()
