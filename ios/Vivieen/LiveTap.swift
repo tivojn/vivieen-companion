@@ -190,12 +190,21 @@ final class LiveTap: NSObject {
         let up = live
         gate.unlock()
         guard up else { return }
-        // Inside the echo window send SILENCE rather than nothing: the
-        // provider's turn detector reads a gap in the stream as trouble.
-        if !quiet, LiveTap.loudness(pcm) > 0.012 {
+        let heard = LiveTap.loudness(pcm)
+        // BARGE-IN: voice processing (MicDriver) subtracts her own
+        // playback from the mic, so a frame that is still loud inside the
+        // echo window is the OWNER interrupting - it goes up for real.
+        // The 0.03 floor is the guard rail for a device where the
+        // cancellation did not engage: residual echo stays under it, a
+        // voice across the room does not (owner: "livetalk doesn't take
+        // my speech when he's talking", 2026-08-06).
+        let interrupting = quiet && heard > 0.03
+        if (!quiet && heard > 0.012) || interrupting {
             gate.lock(); lastVoice = Date(); gate.unlock()
         }
-        let frame = quiet ? Data(count: pcm.count) : pcm
+        // Inside the echo window send SILENCE rather than nothing: the
+        // provider's turn detector reads a gap in the stream as trouble.
+        let frame = (quiet && !interrupting) ? Data(count: pcm.count) : pcm
         let b64 = frame.base64EncodedString()
         if provider == "elevenlabs" {
             sendJSON(["user_audio_chunk": b64])
@@ -293,6 +302,12 @@ final class LiveTap: NSObject {
         gate.lock()
         let from = max(Date(), echoUntil)
         echoUntil = from.addingTimeInterval(seconds + 0.15)
+        // HER speech is liveness too. The quiet clock counted only the
+        // owner's voice, so a thirty-second answer read as thirty silent
+        // seconds and the line hung up MID-REPLY at fifteen (owner,
+        // 2026-08-06). An idle desk still hangs up - an idle desk has no
+        // agent audio either.
+        lastVoice = Date()
         gate.unlock()
         // The page has no audio to analyse when the app is doing the
         // playing, so it cannot time her mouth the usual way. Send it the

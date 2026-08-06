@@ -299,9 +299,16 @@ class ProviderDefaultsTests(unittest.TestCase):
         self.assertIn("api.x.ai/v1/realtime", swift)
         # ElevenLabs drops the line if its keep-alive goes unanswered
         self.assertIn('sendJSON(["type": "pong", "event_id": id ?? 0])', swift)
-        # only a VOICE resets the clock - the stream never stops
+        # only a VOICE resets the clock - the stream never stops. HERS
+        # counts too: a thirty-second answer must not read as thirty
+        # silent seconds and hang up mid-reply (owner, 2026-08-06). And a
+        # LOUD frame inside the echo window is the owner interrupting -
+        # voice processing has already subtracted her playback from it.
         self.assertIn("silenceHangup: TimeInterval = 15", swift)
-        self.assertIn("if !quiet, LiveTap.loudness(pcm) > 0.012 {", swift)
+        self.assertIn("let interrupting = quiet && heard > 0.03", swift)
+        self.assertIn('(!quiet && heard > 0.012) || interrupting', swift)
+        self.assertIn("setVoiceProcessingEnabled(true)",
+                      (ROOT / "ios" / "Vivieen" / "MicDriver.swift").read_text())
 
     def test_the_status_line_switches_the_model(self):
         # Settings -> Models -> scroll was three moves to change one word.

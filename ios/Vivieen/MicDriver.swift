@@ -26,6 +26,13 @@ final class MicDriver: NSObject {
         // speaker so she is heard across the room, not at the ear.
         AudioSession.speakAndListen()
         let input = engine.inputNode
+        // FaceTime's own echo cancellation: with voice processing on, the
+        // mic frames arrive with HER speaker output already subtracted,
+        // which is what makes real barge-in possible - without it the only
+        // defence was zeroing the mic for her whole reply, and the owner
+        // could not interrupt a long answer at all (2026-08-06).
+        do { try input.setVoiceProcessingEnabled(true) }
+        catch { report("mic-aec unavailable \(error.localizedDescription)") }
         let source = input.outputFormat(forBus: 0)
         guard source.sampleRate > 0, source.channelCount > 0,
               let wire = AVAudioFormat(commonFormat: .pcmFormatInt16,
