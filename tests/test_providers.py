@@ -307,8 +307,9 @@ class ProviderDefaultsTests(unittest.TestCase):
         self.assertIn("silenceHangup: TimeInterval = 15", swift)
         self.assertIn("let interrupting = quiet && heard > 0.03", swift)
         self.assertIn('(!quiet && heard > 0.012) || interrupting', swift)
-        self.assertIn("setVoiceProcessingEnabled(true)",
-                      (ROOT / "ios" / "Vivieen" / "MicDriver.swift").read_text())
+        mic = os.path.join(ROOT, "ios", "Vivieen", "MicDriver.swift")
+        with open(mic, encoding="utf-8") as handle:
+            self.assertIn("setVoiceProcessingEnabled(true)", handle.read())
 
     def test_the_status_line_switches_the_model(self):
         # Settings -> Models -> scroll was three moves to change one word.
