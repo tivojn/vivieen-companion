@@ -115,16 +115,18 @@ final class MicDriver: NSObject {
         }
     }
 
-    func stop() {
+    func stop(keepSession: Bool = false) {
         guard running || engine.isRunning else { return }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         converter = nil
         running = false
         earOnly = false
-        // Hand the route back to plain playback so her replies stay loud.
-        AudioSession.playbackOnly()
-        // Whoever keeps a standing tap may want the line back.
+        // Hand the route back to plain playback so her replies stay loud
+        // - unless the caller needs the record-capable session to SURVIVE:
+        // a backgrounded app may start capture only on a session that was
+        // never torn down (the keyboard's between-takes state).
+        if !keepSession { AudioSession.playbackOnly() }
         NotificationCenter.default.post(name: Self.becameIdle, object: nil)
     }
 

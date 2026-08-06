@@ -29,28 +29,8 @@ final class KeyboardEar {
     private let queue = DispatchQueue(label: "com.vivieen.keys.ear")
     private let gate = NSLock()
 
-    /// iOS refuses to START a capture from the background (forums
-    /// 120038) - the app answered the knock and its fresh microphone
-    /// delivered pure silence (owner's flat wave, 2026-08-06). So the
-    /// ear is ARMED from the foreground and never stops: the engine
-    /// runs, frames flow into this tap and are discarded until a take
-    /// attaches Soniox. The cost is worn openly - the mic indicator
-    /// stays lit while Vivieen is alive - and it is exactly the deal
-    /// every always-ready dictation keyboard makes.
-    func armIfNeeded() {
-        DispatchQueue.main.async {
-            guard !LiveTap.shared.isLive,
-                  !MicDriver.shared.isRunning else { return }
-            MicDriver.shared.earTap = { [weak self] pcm in
-                self?.route(pcm)
-            }
-            MicDriver.shared.start(rate: 16000, earOnly: true)
-            NSLog("[viv-ear] armed")
-        }
-    }
-
-    /// Every frame from the standing tap, on the audio thread: feed the
-    /// take if one is rolling, otherwise let it fall to the floor.
+    /// Every frame from the tap, on the audio thread: feed the take if
+    /// one is rolling, otherwise let it fall to the floor.
     private func route(_ pcm: Data) {
         gate.lock()
         let id = takeID
@@ -85,18 +65,10 @@ final class KeyboardEar {
             forName: UIApplication.willEnterForegroundNotification,
             object: nil, queue: .main) { [weak self] _ in
             self?.stopKeepAlive()
-            self?.armIfNeeded()
         }
-        // Live talk and the composer borrow the microphone and hand it
-        // back through stop(); the standing tap re-arms a beat later.
-        NotificationCenter.default.addObserver(
-            forName: MicDriver.becameIdle, object: nil,
-            queue: .main) { [weak self] _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                self?.armIfNeeded()
-            }
+        MicDriver.shared.earTap = { [weak self] pcm in
+            self?.route(pcm)
         }
-        armIfNeeded()
     }
 
     // ------------------------------------------------------ keep-alive
@@ -109,10 +81,13 @@ final class KeyboardEar {
         // background is not allowed to reopen. Silence is only for a
         // house whose ear never armed.
         guard keepAlive == nil, !MicDriver.shared.isRunning else { return }
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .default,
-                                 options: [.mixWithOthers])
-        try? session.setActive(true)
+        // RECORD-CAPABLE and mixing, on purpose: iOS lets a backgrounded
+        // app start capture only on a session that never went down. The
+        // silence keeps this session alive between takes, so the mic can
+        // open per take - the indicator lights while you SPEAK and goes
+        // dark after, instead of burning all day (owner: "the mic is
+        // always on - that can be a really bad bug", 2026-08-06).
+        AudioSession.speakAndListen()
         guard let player = try? AVAudioPlayer(
             contentsOf: Self.silenceFile()) else { return }
         player.numberOfLoops = -1
@@ -214,30 +189,28 @@ final class KeyboardEar {
                       forKey: "take.state")
             suite.set(Date().timeIntervalSince1970, forKey: "take.beat")
             self.gate.lock()
-            if self.takeID == id {
+            let mine = self.takeID == id
+            if mine {
                 self.takeID = ""
                 self.stream = nil
             }
             self.gate.unlock()
-            // The engine keeps running - the standing tap is what lets
-            // the NEXT take start from the background at all.
-        }
-        // The mic must already be rolling: a background take cannot
-        // start one (forums 120038). If the ear is armed, attach; if the
-        // house is somehow quiet, try to arm - it only works foreground,
-        // and the honest error covers the rest.
-        if !MicDriver.shared.isRunning {
-            DispatchQueue.main.sync { [weak self] in
-                self?.keepAlive?.stop()
-                self?.keepAlive = nil
+            // The take's microphone goes DOWN with it - the indicator
+            // lights only while someone is speaking - but the SESSION
+            // stays up (keepSession), because that standing session is
+            // the only thing a backgrounded app may start capture on.
+            if mine {
+                MicDriver.shared.stop(keepSession: true)
             }
-            armIfNeeded()
         }
         gate.lock()
         takeID = id
         stream = live
         gate.unlock()
         live.start()
+        if !MicDriver.shared.isRunning {
+            MicDriver.shared.start(rate: 16000, earOnly: true)
+        }
         suite.set(id, forKey: "take.id")
         suite.set("", forKey: "take.settled")
         suite.set("", forKey: "take.refining")
