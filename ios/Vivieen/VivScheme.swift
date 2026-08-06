@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import WebKit
 
 /// Her page stops caring where she lives.
@@ -244,12 +245,36 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         if bare(path) == "/files/\(slug)/head.png" {
             try? data.write(to: target)
             try? slug.write(to: marker, atomically: true, encoding: .utf8)
+            writeSmallFace(data, into: group)
         } else if bare(path) == "/files/\(slug)/keyframe.png",
                   held != slug
                   || !FileManager.default.fileExists(atPath: target.path) {
             try? data.write(to: target)
             try? slug.write(to: marker, atomically: true, encoding: .utf8)
+            writeSmallFace(data, into: group)
         }
+    }
+
+    /// The island's copy. A widget lives under a hard memory cap and a
+    /// full keyframe decodes to more pixels than its whole budget - so
+    /// the mirror keeps a 128-point square alongside the big still.
+    private func writeSmallFace(_ data: Data, into group: URL) {
+        guard let image = UIImage(data: data) else { return }
+        let side: CGFloat = 128
+        let scale = max(side / max(image.size.width, 1),
+                        side / max(image.size.height, 1))
+        let drawn = CGSize(width: image.size.width * scale,
+                           height: image.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(
+            size: CGSize(width: side, height: side))
+        let small = renderer.image { _ in
+            image.draw(in: CGRect(x: (side - drawn.width) / 2,
+                                  y: (side - drawn.height) / 2,
+                                  width: drawn.width,
+                                  height: drawn.height))
+        }
+        try? small.pngData()?.write(
+            to: group.appendingPathComponent("avatar-small.png"))
     }
 
     /// On boot, seed the mirror from whatever the cache already holds -

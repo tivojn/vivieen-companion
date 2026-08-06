@@ -27,6 +27,8 @@ targets:
     dependencies:
       - target: VivieenKeys
         embed: true
+      - target: VivieenIsland
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vivieen.pocket
@@ -63,6 +65,33 @@ targets:
           CODE_SIGN_IDENTITY: "-"
           CODE_SIGNING_ALLOWED: YES
           CODE_SIGN_ENTITLEMENTS: Vivieen/Vivieen.entitlements
+
+  # Vivieen Island - her face in the Dynamic Island (owner, 2026-08-06).
+  # A Live Activity the app starts from the foreground when the island
+  # toggle is on; keyboard takes update it from anywhere. Reads only the
+  # small mirrored face from the App Group.
+  VivieenIsland:
+    type: app-extension
+    platform: iOS
+    sources:
+      - VivieenIsland
+      - path: Vivieen/TakeActivity.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vivieen.pocket.island
+        INFOPLIST_FILE: VivieenIsland/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.12.0"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_ENTITLEMENTS: Vivieen/Shared.entitlements
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGNING_ALLOWED: YES
 
   # Vivieen Keys - her ears as a keyboard in every app (Wispr Flow's
   # trick on her stack). Shares SonioxTap with the app; the dictation

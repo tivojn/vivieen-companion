@@ -663,6 +663,17 @@ document.documentElement.dataset.design='quiet';</script>
   <h2>Hear · speech to text</h2>
   <div class="card" id="blk-stt"></div>
 
+  <h2>Vivieen Keys · on the phone</h2>
+  <div class="card">
+    <label style="display:flex;gap:10px;align-items:center;cursor:pointer">
+      <input type="checkbox" id="islandToggle" style="width:auto">
+      <span>Show her face in the Dynamic Island</span>
+    </label>
+    <p class="note">A quiet presence while she waits; during dictation the
+      island breathes with your voice and shows the words as they settle.
+      Raised when the app opens — iOS only.</p>
+  </div>
+
   <h2>Live talk · realtime conversation</h2>
   <div class="card" id="blk-live">
     <div class="row">
@@ -4203,6 +4214,14 @@ async function boot() {
   renderKeys();
   ['image', 'video'].forEach(renderMediaDefault);
   $('#pname').value = CFG.persona.name || '';
+  const island = $('#islandToggle');
+  if (island) {
+    island.checked = Boolean((CFG.ui || {}).island);
+    island.onchange = () => {
+      CFG.ui = Object.assign({}, CFG.ui, {island: island.checked});
+      dirty();
+    };
+  }
   $('#psys').value = CFG.persona.system || '';
   $('#pname').oninput = $('#psys').oninput = dirty;
   await Promise.all([loadAvatars(), refreshMediaDefaults(null, true)]);

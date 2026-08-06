@@ -151,6 +151,8 @@ final class KeyboardViewController: UIInputViewController {
         super.viewDidLoad()
         paintSurfaces()
 
+        // Her WHOLE face, a chip at the wave's side (owner, 2026-08-06)
+        // - not a backdrop crop. It brightens as you speak.
         if let group = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: "group.com.vivieen.pocket"),
            let image = UIImage(contentsOfFile:
@@ -158,25 +160,28 @@ final class KeyboardViewController: UIInputViewController {
             face.image = image
             face.contentMode = .scaleAspectFill
             face.clipsToBounds = true
-            face.alpha = 0.16
+            face.layer.cornerRadius = 22
+            face.alpha = 0.55
             face.isUserInteractionEnabled = false
             face.translatesAutoresizingMaskIntoConstraints = false
             // A pinned image view VOTES its intrinsic size, and a
             // thousand-pixel keyframe voted the whole keyboard onto the
-            // full screen (owner, 2026-08-06). The board's own stack
-            // decides the height; the face merely fills it.
+            // full screen (owner, 2026-08-06). The chip's own 44-point
+            // frame is the only size that counts.
             for axis in [NSLayoutConstraint.Axis.horizontal, .vertical] {
                 face.setContentHuggingPriority(UILayoutPriority(1),
                                                for: axis)
                 face.setContentCompressionResistancePriority(
                     UILayoutPriority(1), for: axis)
             }
-            view.addSubview(face)
+            talk.addSubview(face)
             NSLayoutConstraint.activate([
-                face.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                face.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                face.topAnchor.constraint(equalTo: view.topAnchor),
-                face.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                face.leadingAnchor.constraint(equalTo: talk.leadingAnchor,
+                                              constant: 12),
+                face.centerYAnchor.constraint(equalTo: talk.bottomAnchor,
+                                              constant: -21),
+                face.widthAnchor.constraint(equalToConstant: 44),
+                face.heightAnchor.constraint(equalToConstant: 44),
             ])
         }
 
@@ -239,15 +244,17 @@ final class KeyboardViewController: UIInputViewController {
             stack.bottomAnchor.constraint(
                 equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
             talk.heightAnchor.constraint(equalToConstant: 64),
-            wave.leadingAnchor.constraint(equalTo: talk.leadingAnchor,
-                                          constant: 12),
+            // The wave starts after her chip when she is present.
+            wave.leadingAnchor.constraint(
+                equalTo: talk.leadingAnchor,
+                constant: face.image != nil ? 66 : 12),
             wave.trailingAnchor.constraint(equalTo: talk.trailingAnchor,
                                            constant: -12),
             wave.bottomAnchor.constraint(equalTo: talk.bottomAnchor,
                                          constant: -6),
             wave.heightAnchor.constraint(equalToConstant: 30),
-            clock.leadingAnchor.constraint(equalTo: talk.leadingAnchor,
-                                           constant: 14),
+            clock.leadingAnchor.constraint(equalTo: wave.leadingAnchor,
+                                           constant: 2),
             clock.centerYAnchor.constraint(equalTo: wave.centerYAnchor),
             view.heightAnchor.constraint(greaterThanOrEqualToConstant: 140),
         ])
@@ -417,9 +424,8 @@ final class KeyboardViewController: UIInputViewController {
                   done: state == "done")
             let level = CGFloat(shared.double(forKey: "take.level"))
             wave.push(level * 6)
-            // She brightens as you speak - the same dimmed presence the
-            // app wears, driven by YOUR voice here.
-            face.alpha = min(0.55, 0.16 + level * 2.2)
+            // She brightens as you speak - driven by YOUR voice.
+            face.alpha = min(1.0, 0.55 + level * 2.2)
         }
         if state == "done" {
             landTake(message: nil)
@@ -445,7 +451,7 @@ final class KeyboardViewController: UIInputViewController {
         takeStart = nil
         clock.isHidden = true
         wave.rest()
-        face.alpha = 0.16
+        face.alpha = 0.55
         talk.setTitle("Tap or hold to speak", for: .normal)
         paintSurfaces()
         if let message { status.text = message } else { sayReadiness() }

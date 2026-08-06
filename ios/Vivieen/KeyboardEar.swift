@@ -1,3 +1,6 @@
+#if canImport(ActivityKit)
+import ActivityKit
+#endif
 import AVFoundation
 import Foundation
 import UIKit
@@ -38,8 +41,12 @@ final class KeyboardEar {
         gate.unlock()
         guard !id.isEmpty, let live else { return }
         live.feed(pcm)
-        suite?.set(Double(Self.loudness(pcm)), forKey: "take.level")
+        let level = Double(Self.loudness(pcm))
+        lastLevel = level
+        suite?.set(level, forKey: "take.level")
         suite?.set(Date().timeIntervalSince1970, forKey: "take.beat")
+        islandPush(listening: true,
+                   settled: suite?.string(forKey: "take.settled") ?? "")
     }
 
     func listen() {
@@ -65,10 +72,58 @@ final class KeyboardEar {
             forName: UIApplication.willEnterForegroundNotification,
             object: nil, queue: .main) { [weak self] _ in
             self?.stopKeepAlive()
+            self?.syncIsland()
         }
         MicDriver.shared.earTap = { [weak self] pcm in
             self?.route(pcm)
         }
+        syncIsland()
+    }
+
+    // ---------------------------------------------------------- island
+
+    #if canImport(ActivityKit)
+    private var island: Activity<TakeAttributes>?
+    #endif
+    private var lastLevel: Double = 0
+    private var lastIslandPush = Date.distantPast
+
+    /// Her face in the Dynamic Island, behind the "island" toggle in
+    /// Settings. iOS permits STARTING a Live Activity only from the
+    /// foreground, so the app raises it when it opens and merely updates
+    /// it from wherever a take happens.
+    func syncIsland() {
+        #if canImport(ActivityKit)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let want = ((SoloStore.shared.config["ui"] as? [String: Any])?[
+                "island"] as? Bool) ?? false
+            let existing = Activity<TakeAttributes>.activities.first
+            if want {
+                if let existing { self.island = existing; return }
+                let idle = TakeAttributes.ContentState(
+                    listening: false, level: 0, settled: "")
+                self.island = try? Activity.request(
+                    attributes: TakeAttributes(),
+                    content: .init(state: idle, staleDate: nil))
+            } else if let existing {
+                self.island = nil
+                Task { await existing.end(nil, dismissalPolicy: .immediate) }
+            }
+        }
+        #endif
+    }
+
+    private func islandPush(listening: Bool, settled: String,
+                            force: Bool = false) {
+        #if canImport(ActivityKit)
+        guard let island else { return }
+        if !force, Date().timeIntervalSince(lastIslandPush) < 0.4 { return }
+        lastIslandPush = Date()
+        let state = TakeAttributes.ContentState(
+            listening: listening, level: lastLevel, settled: settled)
+        Task { await island.update(.init(state: state, staleDate: nil)) }
+        #endif
     }
 
     // ------------------------------------------------------ keep-alive
@@ -201,6 +256,9 @@ final class KeyboardEar {
             // the only thing a backgrounded app may start capture on.
             if mine {
                 MicDriver.shared.stop(keepSession: true)
+                self.lastLevel = 0
+                self.islandPush(listening: false, settled: settled,
+                                force: true)
             }
         }
         gate.lock()
