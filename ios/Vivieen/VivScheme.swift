@@ -1022,6 +1022,18 @@ final class VivSchemeHandler: NSObject, WKURLSchemeHandler {
         case "elevenlabs":
             listURL = URL(string: "https://api.elevenlabs.io/v1/voices")
             headers = ["xi-api-key": key]
+        case "soniox":
+            // The catalogue's base is empty - realtime rides a wss://
+            // endpoint - so the default road built an invalid URL and the
+            // owner read "unsupported URL" (2026-08-06). The REST side
+            // answers for the key's validity.
+            listURL = URL(string: "https://api.soniox.com/v1/models")
+            headers = ["Authorization": "Bearer " + key]
+            extract = { top in
+                ((top["models"] as? [[String: Any]]) ?? [])
+                    .compactMap { ($0["id"] as? String)
+                        ?? ($0["name"] as? String) }
+            }
         default:
             // The OpenAI wire shape is the market's lingua franca - the
             // same /models works for most of the fleet.
