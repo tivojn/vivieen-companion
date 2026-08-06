@@ -35,6 +35,7 @@ final class KeyboardEar {
     /// Every frame from the tap, on the audio thread: feed the take if
     /// one is rolling, otherwise let it fall to the floor.
     private var voiceFace = VoiceFace()
+    private var heardFrame = false
 
     private func route(_ pcm: Data) {
         gate.lock()
@@ -42,6 +43,7 @@ final class KeyboardEar {
         let live = stream
         gate.unlock()
         guard !id.isEmpty, let live else { return }
+        heardFrame = true
         live.feed(pcm)
         let level = Double(Self.loudness(pcm))
         lastLevel = level
@@ -178,8 +180,11 @@ final class KeyboardEar {
     /// "Keep her ears warm": while backgrounded, the microphone ITSELF
     /// stays open for a bounded window - real capture is the one audio
     /// iOS never suspends, so dictation works everywhere, reliably. The
-    /// orange dot during the window is the honest price, named on the
-    /// toggle; every take renews it, ten minutes of disuse releases it.
+    /// orange dot is the price, and the window is SHORT for that reason:
+    /// ninety seconds carries a run of dictation, then the light goes
+    /// out (owner: "the mic is still on even after the input is done",
+    /// 2026-08-06). Each take renews the lease.
+    private static let standbyWindow: TimeInterval = 90
     private var standbyStop: Timer?
 
     private var standbyWanted: Bool {
@@ -201,7 +206,8 @@ final class KeyboardEar {
             guard let self else { return }
             self.standbyStop?.invalidate()
             self.standbyStop = Timer.scheduledTimer(
-                withTimeInterval: 600, repeats: false) { [weak self] _ in
+                withTimeInterval: Self.standbyWindow,
+                repeats: false) { [weak self] _ in
                 guard let self,
                       UIApplication.shared.applicationState != .active
                 else { return }
@@ -390,6 +396,19 @@ final class KeyboardEar {
         live.start()
         if !MicDriver.shared.isRunning {
             MicDriver.shared.start(rate: 16000, earOnly: true)
+        }
+        // A take that draws no frame in a second and a half is the
+        // background capture ban, not a quiet room - say so rather than
+        // streaming silence at Soniox and blaming the provider.
+        heardFrame = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self, !self.heardFrame else { return }
+            self.gate.lock(); let still = self.takeID == id; self.gate.unlock()
+            guard still else { return }
+            suite.set("error she could not open the microphone — "
+                      + "open Vivieen once", forKey: "take.state")
+            suite.synchronize()
+            self.end(id)
         }
         suite.set(id, forKey: "take.id")
         suite.set("", forKey: "take.settled")
