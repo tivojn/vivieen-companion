@@ -165,6 +165,7 @@ struct CompanionWebView: UIViewRepresentable {
         configuration.userContentController.add(context.coordinator, name: "mic")
         configuration.userContentController.add(context.coordinator, name: "live")
         configuration.userContentController.add(context.coordinator, name: "face")
+        configuration.userContentController.add(context.coordinator, name: "ears")
         configuration.userContentController.add(context.coordinator, name: "audio")
         configuration.userContentController.add(context.coordinator, name: "share")
         configuration.userContentController.add(context.coordinator, name: "speech")
@@ -342,6 +343,21 @@ struct CompanionWebView: UIViewRepresentable {
                     mic.start(rate: Double(body.dropFirst(6)) ?? 16000)
                 } else if body == "stop" {
                     mic.stop()
+                }
+                return
+            }
+            // The ears switch: warm (keyboard dictation works anywhere,
+            // indicator lit) or off (indicator dark). One tap, like the
+            // switch every dictation keyboard ends up shipping.
+            if message.name == "ears" {
+                guard let body = message.body as? String else { return }
+                if body == "state" {
+                    let warm = KeyboardEar.shared.earsWarm
+                    message.webView?.evaluateJavaScript(
+                        "window.__vivEars&&__vivEars(\(warm))",
+                        completionHandler: nil)
+                } else {
+                    KeyboardEar.shared.setStandby(body == "on")
                 }
                 return
             }

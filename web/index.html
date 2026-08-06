@@ -370,6 +370,9 @@ html.ios #rail-live{order:5}
 #rail-mirror{display:none}
 html.ios #rail-mirror{display:flex;order:6}
 html.ios #rail-mirror.on{background:var(--hot);color:#fff}
+#rail-ears{display:none}
+html.ios #rail-ears{display:flex;order:4}
+html.ios #rail-ears.on{background:var(--solid);color:var(--solid-ink)}
 html.ios #sendBtn{order:6}
 html.ios #plusBtn,html.ios #emojiBtn,html.ios #micmode{
   display:flex;flex:none;width:34px;height:34px;border-radius:50%;padding:0;
@@ -925,6 +928,7 @@ html.ios #zoombox input{width:100%;flex:1}
 <div id="stage"><canvas id="cv"></canvas></div><div id="vignette"></div>
 <div id="rail">
   <button id="rail-live" type="button" aria-label="Live talk"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 10.8c1.5 2.9 3.7 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z"/></svg></button>
+  <button id="rail-ears" type="button" aria-label="Her ears — keyboard dictation anywhere"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a5 5 0 0 0-5 5v4.5a3.5 3.5 0 0 0 3.5 3.5c1.1 0 1.5.6 1.5 1.5V19a2 2 0 0 0 2 2h1v-2h-1v-1.5c0-2-1.4-3.5-3.5-3.5A1.5 1.5 0 0 1 9 12.5V8a3 3 0 0 1 6 0v1h2V8a5 5 0 0 0-5-5z"/></svg></button>
   <button id="rail-mirror" type="button" aria-label="Mirror — her face follows yours"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zM8.5 9a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM8 14.6c1.1 1.2 2.5 1.9 4 1.9s2.9-.7 4-1.9l1.1 1.1A7.4 7.4 0 0 1 12 18.5a7.4 7.4 0 0 1-5.1-2.8L8 14.6z"/></svg></button>
   <button id="rail-move" type="button" aria-label="Dance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.6c-.6-.4-1.3-.6-2-.6-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4V7h4V3h-6z"/></svg></button>
   <button id="rail-idle" type="button" aria-label="Rest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-1-.1-1.4A7 7 0 0 1 12.6 3.1L12 3z"/></svg></button>
@@ -1521,7 +1525,34 @@ window.__vivFace=json=>{
   MIRROR.lvl=Math.min(1,jaw*0.9);
   speaking=jaw>0.08;
 };
+/* The ears switch, one tap from her face. Warm: dictation works in every
+   app and the indicator is lit - the honest cost every dictation
+   keyboard pays (Wispr Flow ships the same switch for the same reason).
+   Off: the light goes out and the keyboard asks you to open her first. */
+window.__vivEars=on=>{
+  const button=document.getElementById('rail-ears');
+  if(button)button.classList.toggle('on',Boolean(on));
+};
 {
+  const earsBtn=document.getElementById('rail-ears');
+  if(earsBtn&&IS_IOS){
+    try{webkit.messageHandlers.ears.postMessage('state');}catch(e){}
+    earsBtn.onclick=()=>{
+      const want=!earsBtn.classList.contains('on');
+      earsBtn.classList.toggle('on',want);
+      try{webkit.messageHandlers.ears.postMessage(want?'on':'off');}
+      catch(e){earsBtn.classList.toggle('on',!want);return;}
+      flashPrompt(want
+        ?'Her ears are warm — dictate in any app. The orange dot is her '
+         +'listening; tap here to send her to sleep.'
+        :'Ears off — the light goes out. Open her once before dictating.');
+    };
+    document.addEventListener('visibilitychange',()=>{
+      if(!document.hidden){
+        try{webkit.messageHandlers.ears.postMessage('state');}catch(e){}
+      }
+    });
+  }
   const mirrorBtn=document.getElementById('rail-mirror');
   if(mirrorBtn&&IS_IOS){
     mirrorBtn.onclick=()=>{

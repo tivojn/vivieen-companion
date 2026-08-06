@@ -200,6 +200,40 @@ final class KeyboardEar {
         return UserDefaults.standard.bool(forKey: "standbyLearned")
     }
 
+    /// The master switch, one tap from her face (Wispr Flow's own answer
+    /// to the same wall - a big toggle, on means warm and lit, off means
+    /// dark; owner's screenshots, 2026-08-06). Takes effect at once.
+    func setStandby(_ on: Bool) {
+        var cfg = SoloStore.shared.config
+        var ui = (cfg["ui"] as? [String: Any]) ?? [:]
+        ui["standby"] = on
+        cfg["ui"] = ui
+        SoloStore.shared.config = cfg
+        UserDefaults.standard.set(false, forKey: "standbyLearned")
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if on {
+                if UIApplication.shared.applicationState == .active {
+                    // Arm now: a background start may be refused, and the
+                    // whole point of ON is that the next take cannot fail.
+                    self.keepAlive?.stop()
+                    self.keepAlive = nil
+                    self.startStandby()
+                }
+            } else {
+                self.standbyStop?.invalidate()
+                self.gate.lock(); let taking = !self.takeID.isEmpty
+                self.gate.unlock()
+                if !taking, MicDriver.shared.isRunning {
+                    MicDriver.shared.stop(keepSession: true)
+                }
+            }
+            NSLog("[viv-ear] ears %@", on ? "warm" : "off")
+        }
+    }
+
+    var earsWarm: Bool { standbyWanted }
+
     private func learnStandby() {
         guard !UserDefaults.standard.bool(forKey: "standbyLearned") else {
             return
